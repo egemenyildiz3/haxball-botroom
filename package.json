@@ -1,0 +1,17 @@
+{
+  "name": "haxball-headless-room",
+  "version": "1.0.0",
+  "description": "Persistent Haxball headless room with automatic rotation and SQLite game storage.",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "haxball.js": "^5.0.7",
+    "sql.js": "^1.14.1"
+  },
+  "engines": {
+    "node": ">=22.18.0"
+  }
+}

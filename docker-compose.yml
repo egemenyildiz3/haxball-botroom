@@ -1,0 +1,19 @@
+services:
+  haxball:
+    build: .
+    container_name: haxball-headless
+    restart: unless-stopped
+    network_mode: "host"
+    working_dir: /usr/src/app
+    environment:
+      - HAXBALL_TOKEN=${HAXBALL_TOKEN}
+      - HAXBALL_ROOM_NAME=${HAXBALL_ROOM_NAME}
+      - HAXBALL_MAX_PLAYERS=${HAXBALL_MAX_PLAYERS:-16}
+      - HAXBALL_SCORE_LIMIT=${HAXBALL_SCORE_LIMIT:-3}
+      - HAXBALL_TIME_LIMIT=${HAXBALL_TIME_LIMIT:-4}
+      - HAXBALL_PROMOTION_COUNT=${HAXBALL_PROMOTION_COUNT:-4}
+      - HAXBALL_ADMIN_PASSWORD=${HAXBALL_ADMIN_PASSWORD}
+    volumes:
+      - ./db:/usr/src/app/db
+      - ./maps:/usr/src/app/maps
+    command: npm start

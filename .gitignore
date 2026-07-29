@@ -1,0 +1,9 @@
+node_modules/
+*.sqlite
+npm-debug.log*
+package-lock.json
+.env
+
+# runtime score files
+db/scores.blue
+db/scores.red
