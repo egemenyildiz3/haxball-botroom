@@ -509,11 +509,11 @@ function handlePlayerLeave(room, player, { playerAssignments, playerJoinOrder, l
 function checkAndStartGame(room, deps) {
   if (typeof room.getPlayerList !== 'function') return;
 
+  // Sahada (Kırmızı veya Mavi) olan oyuncuları bul
   const activePlayers = room.getPlayerList().filter((p) => p.id !== 0 && (p.team === 1 || p.team === 2));
-  const redCount = activePlayers.filter(p => p.team === 1).length;
-  const blueCount = activePlayers.filter(p => p.team === 2).length;
 
-  if (redCount >= 1 && blueCount >= 1 && !currentGame && typeof room.startGame === 'function') {
+  // Eğer sahada EN AZ 1 OYUNCU varsa ve maç başlamamışsa oyunu başlat!
+  if (activePlayers.length >= 1 && !currentGame && typeof room.startGame === 'function') {
     try {
       room.startGame();
     } catch (e) {
@@ -552,11 +552,14 @@ function rebalanceTeams(room, { playerAssignments, playerJoinOrder, loggedInPlay
       .sort((a, b) => (playerJoinOrder.get(a.id) ?? 0) - (playerJoinOrder.get(b.id) ?? 0));
 
     const activeNonAfkCount = players.filter((p) => p.id !== 0 && !afkPlayers.has(p.id)).length;
-    const maxTeamSize = Math.min(4, Math.max(1, Math.floor(activeNonAfkCount / 2)));
+    
+    // YENİ LOGİK: Eğer 1 kişi varsa en az 1 kişilik takım kurulur
+    const maxTeamSize = Math.min(4, Math.max(1, Math.ceil(activeNonAfkCount / 2)));
 
     let redCount = redPlayers.length;
     let blueCount = bluePlayers.length;
 
+    // Eğer sahada hiç kimse yoksa ve izleyicide biri varsa onu Kırmızıya at
     if (redCount === 0 && blueCount === 0 && spectators.length > 0) {
       const promote = spectators.shift();
       try {
@@ -589,23 +592,26 @@ function rebalanceTeams(room, { playerAssignments, playerJoinOrder, loggedInPlay
     redCount = redPlayers.length;
     blueCount = bluePlayers.length;
 
-    while (Math.abs(redCount - blueCount) > 1) {
-      if (redCount > blueCount) {
-        const movePlayer = redPlayers.pop();
-        if (!movePlayer) break;
-        try {
-          room.setPlayerTeam(movePlayer.id, 2);
-          redCount--;
-          blueCount++;
-        } catch (e) { break; }
-      } else {
-        const movePlayer = bluePlayers.pop();
-        if (!movePlayer) break;
-        try {
-          room.setPlayerTeam(movePlayer.id, 1);
-          blueCount--;
-          redCount++;
-        } catch (e) { break; }
+    // Eğer en az 2 kişi varsa ve dengesizlik varsa eşitle (Tek kişiyken dokunmaz)
+    if (activeNonAfkCount >= 2) {
+      while (Math.abs(redCount - blueCount) > 1) {
+        if (redCount > blueCount) {
+          const movePlayer = redPlayers.pop();
+          if (!movePlayer) break;
+          try {
+            room.setPlayerTeam(movePlayer.id, 2);
+            redCount--;
+            blueCount++;
+          } catch (e) { break; }
+        } else {
+          const movePlayer = bluePlayers.pop();
+          if (!movePlayer) break;
+          try {
+            room.setPlayerTeam(movePlayer.id, 1);
+            blueCount--;
+            redCount++;
+          } catch (e) { break; }
+        }
       }
     }
 
