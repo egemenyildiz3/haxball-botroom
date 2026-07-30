@@ -18,6 +18,15 @@ const afkPlayers = new Set([0]);
 // Takım dengeleme işlemleri sırasında sonsuz olay döngüsünü engellemek için bayrak
 let isRebalancing = false;
 
+// BOTUN SESSİZCE KAPANMASINI ENGELLER (Global Hata Yakalayıcılar)
+process.on('uncaughtException', (err) => {
+  console.error('❌ [CRITICAL ERROR] Yakalanmamış İstisna:', err.message, err.stack);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('⚠️ [UNHANDLED REJECTION] İşlenmemiş Promise Reddi:', reason);
+});
+
 /**
  * Oyuncu nesnesini Puppeteer / Haxball API uyumlu hale getirir ve auth/conn alanlarını korur.
  */
@@ -152,7 +161,6 @@ async function createRoom(room, deps) {
   // NATIVE KICK / BAN INTERCEPTION & OWNER PROTECTION
   // ---------------------------------------------------------------------
   room.onPlayerKicked = function (kickedPlayer, reason, ban, byPlayer) {
-    // Ignore actions triggered by system or Host player (ID 0)
     if (!byPlayer || byPlayer.id === 0) return;
 
     const safeKicked = sanitizePlayer(room, kickedPlayer);
@@ -160,16 +168,14 @@ async function createRoom(room, deps) {
     const kickedClean = getCleanName(safeKicked);
     const byClean = getCleanName(safeBy);
 
-    // 1. ODA SAHİBİ / SUPER ADMIN KORUMASI: Bir admin kurucuyu banlamaya/atmaya çalışırsa
+    // 1. ODA SAHİBİ / SUPER ADMIN KORUMASI
     const isOwnerKicked = loggedInPlayers.has(safeKicked.id) && loggedInPlayers.get(safeKicked.id).isadmin === 1;
 
     if (isOwnerKicked) {
       console.warn(`[SECURITY] ${byClean} (ID: ${safeBy.id}), Super Admin ${kickedClean}'ı atmaya çalıştı!`);
       
-      // Banı derhal kaldır (Haxball API'de clearBan player ID alır)
       try { room.clearBan(safeKicked.id); } catch (e) {}
 
-      // Saldırgan adminin yetkisini al ve odadan banla
       try {
         room.setPlayerAdmin(safeBy.id, false);
         room.kickPlayer(safeBy.id, "Kurucuya yetki uygulamaya çalıştığınız için banlandınız!", true);
@@ -183,10 +189,8 @@ async function createRoom(room, deps) {
     if (ban && Number(CONFIG_ADMIN_CAN_BAN) === 0) {
       console.warn(`[SECURITY] ${byClean} ban atmaya çalıştı fakat CONFIG_ADMIN_CAN_BAN=0!`);
       
-      // Banı kaldır
       try { room.clearBan(safeKicked.id); } catch (e) {}
 
-      // Uyarı mesajı ve adminliğini al
       try {
         room.setPlayerAdmin(safeBy.id, false);
       } catch (e) {}
@@ -201,25 +205,20 @@ async function createRoom(room, deps) {
   room.onPlayerAdminChange = function (changedPlayer, byPlayer) {
     if (isRebalancing) return;
 
-    // Ignore action if it was executed by Host player avatar (ID 0)
     if (byPlayer && byPlayer.id === 0) return;
 
     const safePlayer = sanitizePlayer(room, changedPlayer);
 
-    // Eğer yetki değişikliğini başka bir oyuncu yaptıysa ve admin verdiyse
     if (byPlayer && safePlayer.admin) {
       const safeBy = sanitizePlayer(room, byPlayer);
 
-      // CONFIG_ADMIN_CAN_GIVE_ADMIN = 0 ise
       if (Number(CONFIG_ADMIN_CAN_GIVE_ADMIN) === 0) {
-        // Yetki veren Super Admin değilse engelle
         const isBySuperAdmin = loggedInPlayers.has(safeBy.id) && loggedInPlayers.get(safeBy.id).isadmin === 1;
 
         if (!isBySuperAdmin) {
           console.warn(`[SECURITY] ${getCleanName(safeBy)} yetki vermeye çalıştı fakat CONFIG_ADMIN_CAN_GIVE_ADMIN=0!`);
           
           try {
-            // Adminliğini geri al
             room.setPlayerAdmin(safePlayer.id, false);
           } catch (e) {}
 
@@ -238,7 +237,6 @@ async function createRoom(room, deps) {
 
     const safePlayer = sanitizePlayer(room, changedPlayer);
 
-    // Host or AFK Control (Keep Host and AFK players permanently in Spec)
     if ((afkPlayers.has(safePlayer.id) || safePlayer.id === 0) && safePlayer.team !== 0) {
       try {
         room.setPlayerTeam(safePlayer.id, 0);
@@ -261,9 +259,7 @@ async function createRoom(room, deps) {
     const safePlayer = sanitizePlayer(room, player);
     const cleanedName = getCleanName(safePlayer);
 
-    // ---------------------------------------------------------------------
-    // BLACKLIST (KARALİSTE) KONTROLÜ
-    // ---------------------------------------------------------------------
+    // BLACKLIST KONTROLÜ
     if (isUserBlacklisted(db, cleanedName, safePlayer.auth)) {
       console.log(`${getTimestamp()} [BLACKLIST] Karlistedeki oyuncu engellendi: ${cleanedName} (ID: ${safePlayer.id}, Auth: ${safePlayer.auth || 'YOK'})`);
       try {
@@ -366,11 +362,12 @@ async function createRoom(room, deps) {
 
   lockTeams(room);
 
+  // DÜZELTME: Host bot (ID 0) sayımdan çıkarıldı!
   setInterval(() => {
     if (typeof room.getPlayerList === 'function') {
-      const players = room.getPlayerList();
-      if (players.length > 0) {
-        console.log(`${getTimestamp()} [STATUS] Odada şu an aktif ${players.length} oyuncu bulunuyor.`);
+      const realHumanPlayers = room.getPlayerList().filter(p => p.id !== 0);
+      if (realHumanPlayers.length > 0) {
+        console.log(`${getTimestamp()} [STATUS] Odada şu an aktif ${realHumanPlayers.length} oyuncu bulunuyor.`);
       }
     }
   }, 2 * 60 * 1000);
@@ -498,7 +495,6 @@ function handlePlayerLeave(room, player, { playerAssignments, playerJoinOrder, l
 
   if (typeof room.getPlayerList !== 'function') return;
 
-  // Filter real players excluding Host (ID 0)
   const activePlayers = room.getPlayerList().filter((p) => p.id !== 0 && (p.team === 1 || p.team === 2));
 
   if (activePlayers.length === 0 && typeof room.stopGame === 'function') {
@@ -513,12 +509,10 @@ function handlePlayerLeave(room, player, { playerAssignments, playerJoinOrder, l
 function checkAndStartGame(room, deps) {
   if (typeof room.getPlayerList !== 'function') return;
 
-  // Real players excluding Host (ID 0)
   const activePlayers = room.getPlayerList().filter((p) => p.id !== 0 && (p.team === 1 || p.team === 2));
   const redCount = activePlayers.filter(p => p.team === 1).length;
   const blueCount = activePlayers.filter(p => p.team === 2).length;
 
-  // Hem kırmızıda hem mavide en az 1 kişi olmalıdır (1v0 başlama engeli)
   if (redCount >= 1 && blueCount >= 1 && !currentGame && typeof room.startGame === 'function') {
     try {
       room.startGame();
@@ -546,13 +540,11 @@ function rebalanceTeams(room, { playerAssignments, playerJoinOrder, loggedInPlay
   try {
     let players = room.getPlayerList();
 
-    // Ensure Host (ID 0) is always on Spectator team (0)
     const hostPlayer = players.find(p => p.id === 0);
     if (hostPlayer && hostPlayer.team !== 0) {
       try { room.setPlayerTeam(0, 0); } catch (e) {}
     }
 
-    // Ignore Host (ID 0) from active teams
     let redPlayers = players.filter((p) => p.id !== 0 && p.team === 1 && !afkPlayers.has(p.id));
     let bluePlayers = players.filter((p) => p.id !== 0 && p.team === 2 && !afkPlayers.has(p.id));
     let spectators = players
@@ -666,7 +658,6 @@ async function handleGameStop(room, deps) {
   }
 
   const winnerTeam = scores.red > scores.blue ? 1 : scores.blue > scores.red ? 2 : null;
-  // Berabere kalınırsa varsayılan olarak Mavi Takım (2) yenilmiş kabul edilir
   const loserTeam = winnerTeam === 1 ? 2 : (winnerTeam === 2 ? 1 : 2); 
   const endedAt = new Date().toISOString();
   const durationSeconds = currentGame ? (new Date(endedAt) - new Date(currentGame.started_at)) / 1000 : 0;
@@ -683,7 +674,6 @@ async function handleGameStop(room, deps) {
 
   await sleep(2000);
 
-  // Rebalance tetiklemelerinin çakışmaması için rebalance kilidini açıyoruz
   isRebalancing = true;
 
   try {
@@ -691,19 +681,14 @@ async function handleGameStop(room, deps) {
     const activeNonAfkPlayers = allPlayers.filter((p) => p.id !== 0 && !afkPlayers.has(p.id));
 
     if (activeNonAfkPlayers.length <= 8) {
-      // ---------------------------------------------------------------------
-      // SENARYO 1: 8 veya daha az AFK OLMAYAN oyuncu var
-      // ---------------------------------------------------------------------
       console.log(`[MATCH ROTATION] Aktif oyuncu sayısı <= 8 (${activeNonAfkPlayers.length}). Tüm oyuncular resetlenip yeniden dağıtılıyor...`);
 
-      // 1. Tüm oyuncuları Spectator (0) konumuna çek (Host hariç)
       for (const p of allPlayers) {
         if (p.id !== 0 && p.team !== 0) {
           try { room.setPlayerTeam(p.id, 0); } catch (e) {}
         }
       }
 
-      // 2. Spectator'daki AFK olmayan tüm oyuncuları giriş sırasına göre al
       const availableSpecs = room.getPlayerList()
         .filter((p) => p.id !== 0 && !afkPlayers.has(p.id))
         .sort((a, b) => (playerJoinOrder.get(a.id) ?? 0) - (playerJoinOrder.get(b.id) ?? 0));
@@ -712,7 +697,6 @@ async function handleGameStop(room, deps) {
       const redCount = Math.min(4, Math.ceil(totalPlayers / 2));
       const blueCount = Math.min(4, totalPlayers - redCount);
 
-      // 3. İki takıma da maks 4 oyuncu olacak şekilde sırayla aktar
       for (let i = 0; i < availableSpecs.length; i++) {
         const p = availableSpecs[i];
         if (i < redCount) {
@@ -725,12 +709,8 @@ async function handleGameStop(room, deps) {
       }
 
     } else {
-      // ---------------------------------------------------------------------
-      // SENARYO 2: 8'den fazla AFK OLMAYAN oyuncu var (> 8)
-      // ---------------------------------------------------------------------
       console.log(`[MATCH ROTATION] Aktif oyuncu sayısı > 8 (${activeNonAfkPlayers.length}). Yenilen takım spece alınıyor ve sıradaki kişiler sahaya sürülüyor...`);
 
-      // 1. Yenilen takımdaki tüm oyuncuları spece koy ve sıranın arkasına at
       const losingPlayers = allPlayers.filter((p) => p.id !== 0 && p.team === loserTeam);
       for (const p of losingPlayers) {
         try { 
@@ -739,16 +719,13 @@ async function handleGameStop(room, deps) {
         } catch (e) {}
       }
 
-      // 2. Spectator'ın en üstündeki AFK OLMAYAN oyuncuları bul
       const currentSpecs = room.getPlayerList()
         .filter((p) => p.id !== 0 && p.team === 0 && !afkPlayers.has(p.id))
         .sort((a, b) => (playerJoinOrder.get(a.id) ?? 0) - (playerJoinOrder.get(b.id) ?? 0));
 
-      // Kaç oyuncu sahaya alınacak? (Varsayılan olarak elenen oyuncu sayısı kadar veya konfigürasyondaki sayı)
       const promotionCount = SPEC_PROMOTION_COUNT || (losingPlayers.length > 0 ? losingPlayers.length : 4);
       const nextToPlay = currentSpecs.slice(0, promotionCount);
 
-      // 3. Bu oyuncuları yenilen takıma yerleştir
       for (const p of nextToPlay) {
         try { room.setPlayerTeam(p.id, loserTeam); } catch (e) {}
       }
@@ -760,7 +737,6 @@ async function handleGameStop(room, deps) {
     isRebalancing = false;
   }
 
-  // Takımlar hazırlandıktan sonra maçı başlat
   await sleep(1000);
   checkAndStartGame(room, deps);
 }
