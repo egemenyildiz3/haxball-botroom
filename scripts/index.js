@@ -1,6 +1,5 @@
 const fs = require('fs');
 const path = require('path');
-const readline = require('readline');
 const HaxballJS = require('haxball.js').default;
 
 const { getTimestamp, sanitizeStadiumFileContents, sleep } = require('./util');
@@ -18,7 +17,7 @@ const PRIVATE_ROOM = false;
 const TOKEN = process.env.HAXBALL_TOKEN;
 const ADMIN_PASSWORD = process.env.HAXBALL_ADMIN_PASSWORD;
 
-// Configs read from .env (witch defaults)
+// Configs read from .env (with defaults)
 const CONFIG_ADMIN_CAN_BAN = Number(process.env.CONFIG_ADMIN_CAN_BAN ?? 1);
 const CONFIG_ADMIN_CAN_GIVE_ADMIN = Number(process.env.CONFIG_ADMIN_CAN_GIVE_ADMIN ?? 0);
 const CONFIG_ALLOW_MULTIPLE_JOIN = Number(process.env.CONFIG_ALLOW_MULTIPLE_JOIN ?? 0);
@@ -36,7 +35,7 @@ const mapDataRaw = fs.readFileSync(MAP_FILE, 'utf8');
 const mapData = sanitizeStadiumFileContents(mapDataRaw);
 const playerAssignments = new Map();
 const playerJoinOrder = new Map();
-const loggedInPlayers = new Map(); // Changed from Set to Map so .get() works properly
+const loggedInPlayers = new Map();
 const leavingIntentions = new Map();
 
 startRoom().catch((error) => {
@@ -65,26 +64,6 @@ async function startRoom() {
     noPlayer: false,
     token: TOKEN,
     geo: { code: 'tr', lat: 37.0208, lon: 30.8541 },
-  });
-
-  // ---------------------------------------------------------------------
-  // TERMINAL INPUT TO CHAT SETUP
-  // ---------------------------------------------------------------------
-  // const rl = readline.createInterface({
-  //   input: process.stdin,
-  //   output: process.stdout,
-  // });
-
-  rl.on('line', (line) => {
-    const text = line.trim();
-    if (text.length > 0) {
-      try {
-        room.sendChat(text);
-        console.log(`💬 [TERMINAL CHAT]: ${text}`);
-      } catch (err) {
-        console.warn('Sohbet mesajı gönderilemedi:', err.message);
-      }
-    }
   });
 
   await createRoom(room, {

@@ -2,10 +2,86 @@ const { normalizeCmd } = require('./util');
 
 function sendMsg(room, text, targetId, color = 0x00FF7F, style = 'bold') {
   try {
+    // Docker / Terminal loglarına çıktı ver
+    console.log(`[BOT MSG] ${targetId ? `(Hedef ID: ${targetId}) ` : '(Genel) '}${text}`);
     room.sendAnnouncement(text, targetId, color, style, 1);
   } catch (err) {
     console.warn('sendAnnouncement hatası:', err.message);
   }
+}
+
+/**
+ * Oyuncuyu ID (Haxball ID veya [100] etiketi) ya da İsim ile bulma yardımcısı.
+ */
+function resolveTargetPlayer(room, args, playerAssignments) {
+  if (typeof room.getPlayerList !== 'function' || args.length < 2) {
+    return { target: null, reason: '' };
+  }
+
+  const players = room.getPlayerList().filter((p) => p.id !== 0);
+  const firstArg = args[1];
+
+  // 1. Doğrudan Haxball ID eşleşmesi (ör. !kick 1)
+  if (!isNaN(firstArg)) {
+    const targetId = Number(firstArg);
+    const pById = players.find((x) => x.id === targetId);
+    if (pById) {
+      return { target: pById, reason: args.slice(2).join(' ') };
+    }
+  }
+
+  // 2. Parantez içi etiket eşleşmesi (ör. "[100] Loréx" için !kick 100)
+  if (!isNaN(firstArg)) {
+    const pByTag = players.find((p) => {
+      const dName = (playerAssignments && playerAssignments.get(p.id)) || p.name || '';
+      const tagMatch = dName.match(/^\[(\d+)\]/);
+      return tagMatch && Number(tagMatch[1]) === Number(firstArg);
+    });
+    if (pByTag) {
+      return { target: pByTag, reason: args.slice(2).join(' ') };
+    }
+  }
+
+  // 3. Tam İsim eşleşmesi
+  const fullInput = args.slice(1).join(' ').trim().toLowerCase();
+  let match = players.find((p) => {
+    const dName = ((playerAssignments && playerAssignments.get(p.id)) || p.name || '').toLowerCase();
+    const rawName = (p.name || '').toLowerCase();
+    const cleanName = rawName.replace(/^\[\d+\]\s*/, '').trim();
+    return dName === fullInput || rawName === fullInput || cleanName === fullInput;
+  });
+  if (match) {
+    return { target: match, reason: '' };
+  }
+
+  // 4. İlk kelime isim eşleşmesi
+  const firstArgLower = firstArg.toLowerCase();
+  match = players.find((p) => {
+    const dName = ((playerAssignments && playerAssignments.get(p.id)) || p.name || '').toLowerCase();
+    const rawName = (p.name || '').toLowerCase();
+    const cleanName = rawName.replace(/^\[\d+\]\s*/, '').trim();
+    return dName === firstArgLower || rawName === firstArgLower || cleanName === firstArgLower;
+  });
+  if (match) {
+    return { target: match, reason: args.slice(2).join(' ') };
+  }
+
+  // 5. Kısmi İsim eşleşmesi
+  const partialMatches = players.filter((p) => {
+    const dName = ((playerAssignments && playerAssignments.get(p.id)) || p.name || '').toLowerCase();
+    const rawName = (p.name || '').toLowerCase();
+    return dName.includes(firstArgLower) || rawName.includes(firstArgLower) || dName.includes(fullInput);
+  });
+
+  if (partialMatches.length === 1) {
+    return { target: partialMatches[0], reason: args.slice(2).join(' ') };
+  }
+
+  if (partialMatches.length > 1) {
+    return { target: null, reason: '', candidates: partialMatches };
+  }
+
+  return { target: null, reason: '' };
 }
 
 function checkDuplicateLogin(room, player, { loggedInPlayers, CONFIG_ALLOW_MULTIPLE_JOIN = 0 }) {
@@ -43,7 +119,6 @@ function handleAutoLogin(room, player, { db, DB_FILE, loggedInPlayers, persistDa
       const dbAuth = row.auth_key || '';
 
       if ((playerToken && dbAuth && playerToken === dbAuth) || dbAuth === '' || !dbAuth) {
-        // Logged-in Map structure: id -> { username, isadmin }
         loggedInPlayers.set(player.id, { username: cleanedName, isadmin: row.isadmin });
 
         if (playerToken && playerToken !== dbAuth) {
@@ -87,19 +162,18 @@ function handlePlayerChat(room, player, msg, deps) {
     afkPlayers,
     rebalanceTeams,
     CONFIG_ADMIN_CAN_BAN = 1,
-    CONFIG_ADMIN_CAN_GIVE_ADMIN = 0
+    CONFIG_ADMIN_CAN_GIVE_ADMIN = 0,
   } = deps;
 
   const text = String(msg || '').trim();
-  
+
   const displayName = playerAssignments.get(player.id) || (player.name ? player.name.replace(/^\[\d{3}\]\s*/, '').trim() : '');
   const cleanedName = (player.name || '').replace(/^\[\d{3}\]\s*/, '').trim();
 
   const args = text.split(' ');
-  const command = normalizeCmd(args[0] || '');  
+  const command = normalizeCmd(args[0] || '');
   const playerToken = player.auth || player.conn || '';
 
-  // Get Super-Admin status (isadmin === 1)
   const userData = loggedInPlayers.get(player.id);
   const isSuperAdmin = userData && userData.isadmin === 1;
 
@@ -110,9 +184,7 @@ function handlePlayerChat(room, player, msg, deps) {
     return false;
   }
 
-  // ---------------------------------------------------------------------
-  // SUPER-ADMIN CLEAR BANS COMMAND
-  // ---------------------------------------------------------------------
+  // Super-Admin Clear Bans
   if (command === '!clearbans' || command === '!clear_bans' || command === '!unbanall') {
     if (!isSuperAdmin) {
       sendMsg(room, '❌ Bu komutu sadece Super-Admin (Kurucu) kullanabilir!', player.id, 0xFF5555, 'bold');
@@ -134,14 +206,34 @@ function handlePlayerChat(room, player, msg, deps) {
     return false;
   }
 
-  if (command === '!afk') {
+  // Oyuncu Listesi Komutu
+  if (command === '!oyuncular' || command === '!oyunculistesi' || command === '!players') {
+    if (typeof room.getPlayerList !== 'function') return false;
+
+    const players = room.getPlayerList().filter((p) => p.id !== 0);
+    if (players.length === 0) {
+      sendMsg(room, '👥 Odada başka oyuncu bulunmuyor.', player.id, 0x00BFFF, 'normal');
+      return false;
+    }
+
+    const playerListText = players
+      .map((p) => {
+        const dName = playerAssignments.get(p.id) || p.name || '';
+        return `• [HB-ID: ${p.id}] ${dName}`;
+      })
+      .join('\n');
+
+    sendMsg(room, `👥 Odadaki Oyuncular (${players.length}):\n${playerListText}`, player.id, 0x00BFFF, 'normal');
+  } else if (command === '!afk') {
     if (afkPlayers.has(player.id)) {
       afkPlayers.delete(player.id);
       sendMsg(room, `🔔 ${displayName} artık AFK değil! Oyuna girmeye hazır.`, null, 0x00FF7F, 'bold');
     } else {
       afkPlayers.add(player.id);
       if (player.team !== 0 && typeof room.setPlayerTeam === 'function') {
-        try { room.setPlayerTeam(player.id, 0); } catch (e) {}
+        try {
+          room.setPlayerTeam(player.id, 0);
+        } catch (e) {}
       }
       sendMsg(room, `💤 ${displayName} AFK moduna geçti.`, null, 0xFFCC00, 'bold');
     }
@@ -206,15 +298,15 @@ function handlePlayerChat(room, player, msg, deps) {
           stmt.free();
           const playerIp = player.ip || '';
           console.log(`[BACKEND-DB] Yeni kullanıcı ekleniyor -> Kullanıcı: "${cleanedName}" | Token: "${playerToken}"`);
-          
+
           db.run(
             'INSERT INTO users (username, password, auth_key, registered_at, last_ip, isadmin, goals, assists, wins, losses) VALUES (?, ?, ?, ?, ?, 0, 0, 0, 0, 0)',
             [cleanedName, password, playerToken, new Date().toISOString(), playerIp]
           );
-          
+
           persistDatabase(db, DB_FILE);
           loggedInPlayers.set(player.id, { username: cleanedName, isadmin: 0 });
-          
+
           console.log(`[BACKEND-DB] Yeni kullanıcı başarıyla kaydedildi ve dosyaya yazıldı -> "${cleanedName}"`);
           sendMsg(room, `🎉 Hesabınız oluşturuldu ve giriş yapıldı!`, player.id, 0x00FF7F, 'bold');
         }
@@ -284,23 +376,31 @@ function handlePlayerChat(room, player, msg, deps) {
       return false;
     }
 
-    const targetId = Number(args[1]);
-    const reason = args.slice(2).join(' ') || 'Yönetici tarafından banlandınız.';
+    const { target, reason, candidates } = resolveTargetPlayer(room, args, playerAssignments);
 
-    if (Number.isNaN(targetId)) {
-      sendMsg(room, '❌ Kullanım: !ban <oyuncu_id> [sebep]', player.id, 0xFF5555, 'bold');
+    if (candidates && candidates.length > 1) {
+      const candidateList = candidates.map((c) => `#${c.id} ${(playerAssignments.get(c.id) || c.name || '').trim()}`).join(', ');
+      sendMsg(room, `⚠️ Birden fazla eşleşen oyuncu bulundu: ${candidateList}. Lütfen net bir ID/isim belirtin.`, player.id, 0xFFCC00, 'bold');
       return false;
     }
 
-    const targetUserData = loggedInPlayers.get(targetId);
+    if (!target) {
+      sendMsg(room, '❌ Oyuncu bulunamadı! Kullanım: !ban <id / etiket / oyuncu_adı> [sebep]', player.id, 0xFF5555, 'bold');
+      return false;
+    }
+
+    const targetUserData = loggedInPlayers.get(target.id);
     if (targetUserData && targetUserData.isadmin === 1) {
       sendMsg(room, '🛡️ Super-Admin (Kurucu) banlanamaz!', player.id, 0xFF5555, 'bold');
       return false;
     }
 
+    const banReason = reason || 'Yönetici tarafından banlandınız.';
+    const targetCleanName = playerAssignments.get(target.id) || target.name || '';
+
     try {
-      room.kickPlayer(targetId, reason, true);
-      sendMsg(room, `🔨 ID: ${targetId} olan oyuncu banlandı.`, player.id, 0x00FF7F, 'bold');
+      room.kickPlayer(target.id, banReason, true);
+      sendMsg(room, `🔨 ${targetCleanName} (HB-ID: ${target.id}) banlandı.`, player.id, 0x00FF7F, 'bold');
     } catch (err) {
       sendMsg(room, `❌ Oyuncu banlanamadı: ${err.message}`, player.id, 0xFF5555, 'bold');
     }
@@ -310,37 +410,48 @@ function handlePlayerChat(room, player, msg, deps) {
       return false;
     }
 
-    const targetId = Number(args[1]);
-    const reason = args.slice(2).join(' ') || 'Yönetici tarafından atıldınız.';
+    const { target, reason, candidates } = resolveTargetPlayer(room, args, playerAssignments);
 
-    if (Number.isNaN(targetId)) {
-      sendMsg(room, '❌ Kullanım: !kick <oyuncu_id> [sebep]', player.id, 0xFF5555, 'bold');
+    if (candidates && candidates.length > 1) {
+      const candidateList = candidates.map((c) => `#${c.id} ${(playerAssignments.get(c.id) || c.name || '').trim()}`).join(', ');
+      sendMsg(room, `⚠️ Birden fazla eşleşen oyuncu bulundu: ${candidateList}. Lütfen net bir ID/isim belirtin.`, player.id, 0xFFCC00, 'bold');
       return false;
     }
 
-    const targetUserData = loggedInPlayers.get(targetId);
+    if (!target) {
+      sendMsg(room, '❌ Oyuncu bulunamadı! Kullanım: !kick <id / etiket / oyuncu_adı> [sebep]', player.id, 0xFF5555, 'bold');
+      return false;
+    }
+
+    const targetUserData = loggedInPlayers.get(target.id);
     if (targetUserData && targetUserData.isadmin === 1) {
       sendMsg(room, '🛡️ Super-Admin (Kurucu) odadan atılamaz!', player.id, 0xFF5555, 'bold');
       return false;
     }
 
+    const kickReason = reason || 'Yönetici tarafından atıldınız.';
+    const targetCleanName = playerAssignments.get(target.id) || target.name || '';
+
     try {
-      room.kickPlayer(targetId, reason, false);
-      sendMsg(room, `👢 ID: ${targetId} olan oyuncu odadan atıldı.`, player.id, 0x00FF7F, 'bold');
+      room.kickPlayer(target.id, kickReason, false);
+      sendMsg(room, `👢 ${targetCleanName} (HB-ID: ${target.id}) odadan atıldı.`, player.id, 0x00FF7F, 'bold');
     } catch (err) {
       sendMsg(room, `❌ Oyuncu atılamadı: ${err.message}`, player.id, 0xFF5555, 'bold');
     }
   } else if (command === '!yardim' || command === '!yardım' || command === '!help') {
-      const helpText = [
-        '📖 Spacebounce 4v4 - Komut listesi:',
-        '• !s / !stats / !istatistik — İstatistiklerinizi gösterir',
-        '• !afk — AFK modunu açar/kapatır',
-        '• !kaydol <şifre> — Hesap oluşturur ve oturum açar',
-        '• !giris <şifre> — Mevcut hesabınıza giriş yapar',
-        isSuperAdmin ? '• !clearbans — Tüm banları temizler (Super-Admin)' : ''
-      ].filter(Boolean).join('\n');
+    const helpText = [
+      '📖 Spacebounce 4v4 - Komut listesi:',
+      '• !oyuncular — Odadaki oyuncuları ve ID\'lerini listeler',
+      '• !s / !stats / !istatistik — İstatistiklerinizi gösterir',
+      '• !afk — AFK modunu açar/kapatır',
+      '• !kaydol <şifre> — Hesap oluşturur ve oturum açar',
+      '• !giris <şifre> — Mevcut hesabınıza giriş yapar',
+      isSuperAdmin ? '• !clearbans — Tüm banları temizler (Super-Admin)' : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
 
-      sendMsg(room, helpText, player.id, 0x00BFFF, 'normal');
+    sendMsg(room, helpText, player.id, 0x00BFFF, 'normal');
   } else {
     sendMsg(room, '❌ Hatalı komut! Yardım için !yardım yazabilirsiniz.', player.id, 0xFF5555, 'bold');
   }

@@ -41,6 +41,9 @@ logs-f:
 logs-backend:
 	docker logs -f $(CONTAINER) | grep --line-buffered "\[BACKEND-DB\]"
 
+make attach:
+	docker attach haxball-headless
+
 # --- SQLite Veritabanı Komutları ---
 
 db-all:
