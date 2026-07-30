@@ -40,6 +40,11 @@ function initDatabase(db) {
       first_visited_at TEXT NOT NULL,
       last_visited_at TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS blacklisted_users (
+      username TEXT,
+      auth_key TEXT
+    );
   `);
 
   // Existing Alter Table Migrations
@@ -57,6 +62,31 @@ function initDatabase(db) {
   try { db.exec('ALTER TABLE users ADD COLUMN assists INTEGER DEFAULT 0'); } catch (e) {}
   try { db.exec('ALTER TABLE users ADD COLUMN wins INTEGER DEFAULT 0'); } catch (e) {}
   try { db.exec('ALTER TABLE users ADD COLUMN losses INTEGER DEFAULT 0'); } catch (e) {}
+}
+
+/**
+ * Kullanıcının karalistede (blacklisted_users) olup olmadığını kontrol eder.
+ */
+function isUserBlacklisted(db, username, authKey) {
+  if (!username && !authKey) return false;
+
+  try {
+    const stmt = db.prepare(`
+      SELECT 1 FROM blacklisted_users 
+      WHERE (username = ? AND username != '') 
+         OR (auth_key = ? AND auth_key != '') 
+      LIMIT 1
+    `);
+    
+    stmt.bind([username || '', authKey || '']);
+    const isBlacklisted = stmt.step();
+    stmt.free();
+
+    return isBlacklisted;
+  } catch (err) {
+    console.warn('[BACKEND-DB] Blacklist kontrolü hatası:', err.message);
+    return false;
+  }
 }
 
 function logVisitedUser(db, DB_FILE, username, persistFn) {
@@ -147,6 +177,7 @@ module.exports = {
   loadOrCreateDatabase,
   persistDatabase,
   initDatabase,
+  isUserBlacklisted,
   logVisitedUser,
   saveGameResult,
 };

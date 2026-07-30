@@ -1,5 +1,6 @@
+const readline = require('readline');
 const { getCleanName } = require('./util');
-const { saveGameResult, logVisitedUser } = require('./db');
+const { saveGameResult, logVisitedUser, isUserBlacklisted } = require('./db');
 const { sendMsg, checkDuplicateLogin, handleAutoLogin, handlePlayerChat } = require('./commands');
 
 let lastTouchPlayer = null;
@@ -11,8 +12,8 @@ let nextJoinOrder = 1;
 // Oyuncuların katılırken sahip olduğu auth kodlarını hafızada tutan harita
 const playerAuths = new Map();
 
-// AFK olan oyuncuların ID'lerini tutan küme
-const afkPlayers = new Set();
+// AFK olan oyuncuların ID'lerini tutan küme (Host player ID 0 permanently stays here)
+const afkPlayers = new Set([0]);
 
 // Takım dengeleme işlemleri sırasında sonsuz olay döngüsünü engellemek için bayrak
 let isRebalancing = false;
@@ -54,7 +55,86 @@ async function createRoom(room, deps) {
     ADMIN_PASSWORD,
     getTimestamp,
     sleep,
+    // ENV CONFIGS
+    CONFIG_ADMIN_CAN_BAN = 1,
+    CONFIG_ADMIN_CAN_GIVE_ADMIN = 0,
+    CONFIG_ALLOW_MULTIPLE_JOIN = 0,
   } = deps;
+
+  // ---------------------------------------------------------------------
+  // TERMINAL INPUT & COMMAND ROUTER
+  // ---------------------------------------------------------------------
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  const hostPlayer = { id: 0, name: 'Host-admin', admin: true, team: 0 };
+
+  rl.on('line', (line) => {
+    const text = line.trim();
+    if (!text) return;
+
+    // 1. Console Slash Commands (e.g. /clear_bans, /start, /stop)
+    if (text.startsWith('/')) {
+      const cmd = text.toLowerCase();
+      if (cmd === '/clear_bans' || cmd === '/clearbans') {
+        try {
+          if (typeof room.clearBans === 'function') {
+            room.clearBans();
+            console.log('⚡ [CONSOLE]: Tüm banlar kaldırıldı.');
+          } else {
+            console.warn('⚡ [CONSOLE]: room.clearBans() metodu bulunamadı.');
+          }
+        } catch (e) {
+          console.warn('Banlar kaldırılamadı:', e.message);
+        }
+      } else if (cmd === '/start') {
+        try {
+          room.startGame();
+          console.log('⚡ [CONSOLE]: Oyun başlatıldı.');
+        } catch (e) {
+          console.warn('Oyun başlatılamadı:', e.message);
+        }
+      } else if (cmd === '/stop') {
+        try {
+          room.stopGame();
+          console.log('⚡ [CONSOLE]: Oyun durduruldu.');
+        } catch (e) {
+          console.warn('Oyun durdurulamadı:', e.message);
+        }
+      } else {
+        console.log(`⚠️ Bilinmeyen konsol komutu: ${text}`);
+      }
+      return;
+    }
+
+    // 2. Bot Commands (Starting with !)
+    if (text.startsWith('!')) {
+      console.log(`⚡ [CONSOLE CMD]: ${text}`);
+      handlePlayerChat(room, hostPlayer, text, {
+        db,
+        DB_FILE,
+        loggedInPlayers,
+        playerAssignments,
+        persistDatabase,
+        ADMIN_PASSWORD,
+        afkPlayers,
+        rebalanceTeams: () => rebalanceTeams(room, { playerAssignments, playerJoinOrder, loggedInPlayers }),
+        CONFIG_ADMIN_CAN_BAN,
+        CONFIG_ADMIN_CAN_GIVE_ADMIN,
+      });
+      return;
+    }
+
+    // 3. Regular Chat Message
+    try {
+      room.sendChat(text);
+      console.log(`💬 [TERMINAL CHAT]: ${text}`);
+    } catch (err) {
+      console.warn('Sohbet mesajı gönderilemedi:', err.message);
+    }
+  });
 
   const originalKickPlayer = room.kickPlayer.bind(room);
   room.kickPlayer = function (id, reason, ban) {
@@ -68,22 +148,156 @@ async function createRoom(room, deps) {
     console.log('========================================\n');
   };
 
+  // ---------------------------------------------------------------------
+  // NATIVE KICK / BAN INTERCEPTION & OWNER PROTECTION
+  // ---------------------------------------------------------------------
+  room.onPlayerKicked = function (kickedPlayer, reason, ban, byPlayer) {
+    // Ignore actions triggered by system or Host player (ID 0)
+    if (!byPlayer || byPlayer.id === 0) return;
+
+    const safeKicked = sanitizePlayer(room, kickedPlayer);
+    const safeBy = sanitizePlayer(room, byPlayer);
+    const kickedClean = getCleanName(safeKicked);
+    const byClean = getCleanName(safeBy);
+
+    // 1. ODA SAHİBİ / SUPER ADMIN KORUMASI: Bir admin kurucuyu banlamaya/atmaya çalışırsa
+    const isOwnerKicked = loggedInPlayers.has(safeKicked.id) && loggedInPlayers.get(safeKicked.id).isadmin === 1;
+
+    if (isOwnerKicked) {
+      console.warn(`[SECURITY] ${byClean} (ID: ${safeBy.id}), Super Admin ${kickedClean}'ı atmaya çalıştı!`);
+      
+      // Banı derhal kaldır
+      if (safeKicked.auth) room.clearBan(safeKicked.auth);
+
+      // Saldırgan adminin yetkisini al ve odadan banla
+      try {
+        room.setPlayerAdmin(safeBy.id, false);
+        room.kickPlayer(safeBy.id, "Kurucuya yetki uygulamaya çalıştığınız için banlandınız!", true);
+      } catch (e) {}
+
+      sendMsg(room, `🛡️ ${byClean}, Super-Admin'i atmaya çalıştığı için cezalandırıldı!`, null, 0xFF5555, 'bold');
+      return;
+    }
+
+    // 2. CONFIG_ADMIN_CAN_BAN = 0 KONTROLÜ
+    if (ban && Number(CONFIG_ADMIN_CAN_BAN) === 0) {
+      console.warn(`[SECURITY] ${byClean} ban atmaya çalıştı fakat CONFIG_ADMIN_CAN_BAN=0!`);
+      
+      // Banı kaldır
+      if (safeKicked.auth) room.clearBan(safeKicked.auth);
+
+      // Uyarı mesajı ve adminliğini al
+      try {
+        room.setPlayerAdmin(safeBy.id, false);
+      } catch (e) {}
+
+      sendMsg(room, `⚠️ Adminlerin ban yetkisi kapalıdır! ${kickedClean} üzerindeki ban kaldırıldı.`, null, 0xFF5555, 'bold');
+    }
+  };
+
+  // ---------------------------------------------------------------------
+  // NATIVE ADMIN GIVE INTERCEPTION
+  // ---------------------------------------------------------------------
+  room.onPlayerAdminChange = function (changedPlayer, byPlayer) {
+    if (isRebalancing) return;
+
+    // Ignore action if it was executed by Host player avatar (ID 0)
+    if (byPlayer && byPlayer.id === 0) return;
+
+    const safePlayer = sanitizePlayer(room, changedPlayer);
+
+    // Eğer yetki değişikliğini başka bir oyuncu yaptıysa ve admin verdiyse
+    if (byPlayer && safePlayer.admin) {
+      const safeBy = sanitizePlayer(room, byPlayer);
+
+      // CONFIG_ADMIN_CAN_GIVE_ADMIN = 0 ise
+      if (Number(CONFIG_ADMIN_CAN_GIVE_ADMIN) === 0) {
+        // Yetki veren Super Admin değilse engelle
+        const isBySuperAdmin = loggedInPlayers.has(safeBy.id) && loggedInPlayers.get(safeBy.id).isadmin === 1;
+
+        if (!isBySuperAdmin) {
+          console.warn(`[SECURITY] ${getCleanName(safeBy)} yetki vermeye çalıştı fakat CONFIG_ADMIN_CAN_GIVE_ADMIN=0!`);
+          
+          try {
+            // Adminliğini geri al
+            room.setPlayerAdmin(safePlayer.id, false);
+          } catch (e) {}
+
+          sendMsg(room, `⚠️ Adminlerin başkasına yetki verme yetkisi kapalıdır!`, safeBy.id, 0xFF5555, 'bold');
+          return;
+        }
+      }
+    }
+
+    // Host or AFK Control (Keep Host permanently in Spec)
+    if ((afkPlayers.has(safePlayer.id) || safePlayer.id === 0) && safePlayer.team !== 0) {
+      try {
+        room.setPlayerTeam(safePlayer.id, 0);
+        if (safePlayer.id !== 0) {
+          sendMsg(room, '💤 AFK modundasınız. Sahaya girmek için sohbetten !afk yazmalısınız.', safePlayer.id, 0xFF5555, 'bold');
+        }
+      } catch (e) {}
+    }
+
+    rebalanceTeams(room, { playerAssignments, playerJoinOrder, loggedInPlayers });
+  };
+
   room.onPlayerJoin = async function (player) {
-    if (player && player.auth) {
+    if (!player) return;
+
+    if (player.auth) {
       playerAuths.set(String(player.id), player.auth);
     }
 
     const safePlayer = sanitizePlayer(room, player);
     const cleanedName = getCleanName(safePlayer);
 
-    // Ziyaretçi kullanıcısını veritabanına kaydet / son ziyaret tarihini güncelle
-    logVisitedUser(db, DB_FILE, cleanedName, persistDatabase);
-
-    assignPlayerInternal(room, safePlayer, { playerAssignments, playerJoinOrder, getTimestamp });
-
-    if (checkDuplicateLogin(room, safePlayer, { loggedInPlayers })) {
+    // ---------------------------------------------------------------------
+    // BLACKLIST (KARALİSTE) KONTROLÜ
+    // ---------------------------------------------------------------------
+    if (isUserBlacklisted(db, cleanedName, safePlayer.auth)) {
+      console.log(`${getTimestamp()} [BLACKLIST] Karlistedeki oyuncu engellendi: ${cleanedName} (ID: ${safePlayer.id}, Auth: ${safePlayer.auth || 'YOK'})`);
+      try {
+        room.kickPlayer(safePlayer.id, "Karalisteye alındınız.", true);
+      } catch (e) {
+        console.warn('Blacklist banlama hatası:', e.message);
+      }
       return;
     }
+
+    // Çift Giriş Kontrolü
+    if (Number(CONFIG_ALLOW_MULTIPLE_JOIN) !== 1) {
+      const existingPlayers = typeof room.getPlayerList === 'function' ? room.getPlayerList() : [];
+      const isDuplicate = existingPlayers.some((p) => {
+        if (p.id === safePlayer.id) return false;
+
+        const pClean = getCleanName(p);
+        const pAuth = p.auth || playerAuths.get(String(p.id)) || playerAuths.get(Number(p.id)) || '';
+        const pConn = p.conn || '';
+
+        const nameMatch = pClean.toLowerCase() === cleanedName.toLowerCase();
+        const authMatch = safePlayer.auth && pAuth && safePlayer.auth === pAuth;
+        const connMatch = safePlayer.conn && pConn && safePlayer.conn === pConn;
+
+        return nameMatch || authMatch || connMatch;
+      });
+
+      if (isDuplicate) {
+        console.log(`${getTimestamp()} [DUPLICATE] Çift giriş tespit edildi, atılıyor: id=${safePlayer.id}, isim=${cleanedName}`);
+        try {
+          sendMsg(room, `⚠️ ${cleanedName}, zaten odada bir oturumunuz açık!`, safePlayer.id, 0xFF5555, 'bold');
+          room.kickPlayer(safePlayer.id, "Zaten odadasınız! (Duplicate join)", false);
+        } catch (e) {}
+        return;
+      }
+    }
+
+    if (checkDuplicateLogin(room, safePlayer, { loggedInPlayers, CONFIG_ALLOW_MULTIPLE_JOIN })) {
+      return;
+    }
+
+    logVisitedUser(db, DB_FILE, cleanedName, persistDatabase);
+    assignPlayerInternal(room, safePlayer, { playerAssignments, playerJoinOrder, getTimestamp });
 
     await sleep(800);
 
@@ -107,22 +321,10 @@ async function createRoom(room, deps) {
       persistDatabase,
       ADMIN_PASSWORD,
       afkPlayers,
-      rebalanceTeams: () => rebalanceTeams(room, { playerAssignments, playerJoinOrder, loggedInPlayers })
+      rebalanceTeams: () => rebalanceTeams(room, { playerAssignments, playerJoinOrder, loggedInPlayers }),
+      CONFIG_ADMIN_CAN_BAN,
+      CONFIG_ADMIN_CAN_GIVE_ADMIN,
     });
-  };
-
-  room.onPlayerTeamChange = function (changedPlayer, byPlayer) {
-    if (isRebalancing) return;
-    const safePlayer = sanitizePlayer(room, changedPlayer);
-
-    if (afkPlayers.has(safePlayer.id) && safePlayer.team !== 0) {
-      try {
-        room.setPlayerTeam(safePlayer.id, 0);
-        sendMsg(room, '💤 AFK modundasınız. Sahaya girmek için sohbetten !afk yazmalısınız.', safePlayer.id, 0xFF5555, 'bold');
-      } catch (e) {}
-    }
-
-    rebalanceTeams(room, { playerAssignments, playerJoinOrder, loggedInPlayers });
   };
 
   room.onPlayerBallKick = function (player) {
@@ -279,7 +481,8 @@ function handlePlayerLeave(room, player, { playerAssignments, playerJoinOrder, l
 
   if (typeof room.getPlayerList !== 'function') return;
 
-  const activePlayers = room.getPlayerList().filter((p) => p.team === 1 || p.team === 2);
+  // Filter real players excluding Host (ID 0)
+  const activePlayers = room.getPlayerList().filter((p) => p.id !== 0 && (p.team === 1 || p.team === 2));
 
   if (activePlayers.length === 0 && typeof room.stopGame === 'function') {
     try {
@@ -293,7 +496,8 @@ function handlePlayerLeave(room, player, { playerAssignments, playerJoinOrder, l
 function checkAndStartGame(room, deps) {
   if (typeof room.getPlayerList !== 'function') return;
 
-  const activePlayers = room.getPlayerList().filter((p) => p.team === 1 || p.team === 2);
+  // Filter real players excluding Host (ID 0)
+  const activePlayers = room.getPlayerList().filter((p) => p.id !== 0 && (p.team === 1 || p.team === 2));
   if (activePlayers.length >= 1 && !currentGame && typeof room.startGame === 'function') {
     try {
       room.startGame();
@@ -319,13 +523,20 @@ function rebalanceTeams(room, { playerAssignments, playerJoinOrder, loggedInPlay
   try {
     let players = room.getPlayerList();
 
-    let redPlayers = players.filter((p) => p.team === 1 && !afkPlayers.has(p.id));
-    let bluePlayers = players.filter((p) => p.team === 2 && !afkPlayers.has(p.id));
+    // Ensure Host (ID 0) is always on Spectator team (0)
+    const hostPlayer = players.find(p => p.id === 0);
+    if (hostPlayer && hostPlayer.team !== 0) {
+      try { room.setPlayerTeam(0, 0); } catch (e) {}
+    }
+
+    // Ignore Host (ID 0) from active teams
+    let redPlayers = players.filter((p) => p.id !== 0 && p.team === 1 && !afkPlayers.has(p.id));
+    let bluePlayers = players.filter((p) => p.id !== 0 && p.team === 2 && !afkPlayers.has(p.id));
     let spectators = players
-      .filter((p) => p.team === 0 && !afkPlayers.has(p.id))
+      .filter((p) => p.id !== 0 && p.team === 0 && !afkPlayers.has(p.id))
       .sort((a, b) => (playerJoinOrder.get(a.id) ?? 0) - (playerJoinOrder.get(b.id) ?? 0));
 
-    const activeNonAfkCount = players.filter((p) => !afkPlayers.has(p.id)).length;
+    const activeNonAfkCount = players.filter((p) => p.id !== 0 && !afkPlayers.has(p.id)).length;
     const maxTeamSize = Math.min(4, Math.max(1, Math.floor(activeNonAfkCount / 2)));
 
     let redCount = redPlayers.length;
@@ -358,8 +569,8 @@ function rebalanceTeams(room, { playerAssignments, playerJoinOrder, loggedInPlay
     }
 
     players = room.getPlayerList();
-    redPlayers = players.filter((p) => p.team === 1 && !afkPlayers.has(p.id));
-    bluePlayers = players.filter((p) => p.team === 2 && !afkPlayers.has(p.id));
+    redPlayers = players.filter((p) => p.id !== 0 && p.team === 1 && !afkPlayers.has(p.id));
+    bluePlayers = players.filter((p) => p.id !== 0 && p.team === 2 && !afkPlayers.has(p.id));
     redCount = redPlayers.length;
     blueCount = bluePlayers.length;
 
@@ -399,7 +610,7 @@ function handleGameStart(room, { getTimestamp, sendMsg, playerAssignments }) {
     started_at: new Date().toISOString(),
     redScore: 0,
     blueScore: 0,
-    players: room.getPlayerList().map((player) => ({
+    players: room.getPlayerList().filter(p => p.id !== 0).map((player) => ({
       id: player.id,
       cleanName: getCleanName(player),
       team: player.team,
@@ -464,10 +675,10 @@ function rotateTeams(room, loserTeam, { playerJoinOrder, SPEC_PROMOTION_COUNT })
 
   try {
     const players = room.getPlayerList();
-    const losingPlayers = players.filter((p) => p.team === loserTeam);
+    const losingPlayers = players.filter((p) => p.id !== 0 && p.team === loserTeam);
     
     const spectators = players
-      .filter((p) => p.team === 0 && !afkPlayers.has(p.id))
+      .filter((p) => p.id !== 0 && p.team === 0 && !afkPlayers.has(p.id))
       .sort((a, b) => (playerJoinOrder.get(a.id) ?? 0) - (playerJoinOrder.get(b.id) ?? 0));
 
     const countToPromote = Math.min(losingPlayers.length, spectators.length);
