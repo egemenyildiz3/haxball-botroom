@@ -166,8 +166,8 @@ async function createRoom(room, deps) {
     if (isOwnerKicked) {
       console.warn(`[SECURITY] ${byClean} (ID: ${safeBy.id}), Super Admin ${kickedClean}'ı atmaya çalıştı!`);
       
-      // Banı derhal kaldır
-      if (safeKicked.auth) room.clearBan(safeKicked.auth);
+      // Banı derhal kaldır (Haxball API'de clearBan player ID alır)
+      try { room.clearBan(safeKicked.id); } catch (e) {}
 
       // Saldırgan adminin yetkisini al ve odadan banla
       try {
@@ -184,7 +184,7 @@ async function createRoom(room, deps) {
       console.warn(`[SECURITY] ${byClean} ban atmaya çalıştı fakat CONFIG_ADMIN_CAN_BAN=0!`);
       
       // Banı kaldır
-      if (safeKicked.auth) room.clearBan(safeKicked.auth);
+      try { room.clearBan(safeKicked.id); } catch (e) {}
 
       // Uyarı mesajı ve adminliğini al
       try {
@@ -228,8 +228,17 @@ async function createRoom(room, deps) {
         }
       }
     }
+  };
 
-    // Host or AFK Control (Keep Host permanently in Spec)
+  // ---------------------------------------------------------------------
+  // NATIVE TEAM CHANGE & AFK PROTECTION
+  // ---------------------------------------------------------------------
+  room.onPlayerTeamChange = function (changedPlayer, byPlayer) {
+    if (isRebalancing) return;
+
+    const safePlayer = sanitizePlayer(room, changedPlayer);
+
+    // Host or AFK Control (Keep Host and AFK players permanently in Spec)
     if ((afkPlayers.has(safePlayer.id) || safePlayer.id === 0) && safePlayer.team !== 0) {
       try {
         room.setPlayerTeam(safePlayer.id, 0);
@@ -421,16 +430,24 @@ function handleTeamGoal(room, team, { getTimestamp }) {
       let assistText = '';
       
       if (currentGame) {
-        const scorer = currentGame.players.find(p => p.id === lastTouchPlayer.id);
-        if (scorer) scorer.goals = (scorer.goals || 0) + 1;
+        let scorer = currentGame.players.find(p => p.id === lastTouchPlayer.id);
+        if (!scorer) {
+          scorer = { id: lastTouchPlayer.id, cleanName: getCleanName(lastTouchPlayer), team: lastTouchPlayer.team, goals: 0, assists: 0 };
+          currentGame.players.push(scorer);
+        }
+        scorer.goals = (scorer.goals || 0) + 1;
       }
 
       if (secondLastTouchPlayer && secondLastTouchPlayer.team === team && secondLastTouchPlayer.id !== lastTouchPlayer.id) {
         assistText = ` (Asist: ${secondLastTouchPlayer.name})`;
         
         if (currentGame) {
-          const assister = currentGame.players.find(p => p.id === secondLastTouchPlayer.id);
-          if (assister) assister.assists = (assister.assists || 0) + 1;
+          let assister = currentGame.players.find(p => p.id === secondLastTouchPlayer.id);
+          if (!assister) {
+            assister = { id: secondLastTouchPlayer.id, cleanName: getCleanName(secondLastTouchPlayer), team: secondLastTouchPlayer.team, goals: 0, assists: 0 };
+            currentGame.players.push(assister);
+          }
+          assister.assists = (assister.assists || 0) + 1;
         }
       }
       announcement = `⚽ GOL! ${lastTouchPlayer.name}${assistText} [${timeStr}] | KIRMIZI ${scores.red} - ${scores.blue} MAVİ`;
@@ -496,16 +513,22 @@ function handlePlayerLeave(room, player, { playerAssignments, playerJoinOrder, l
 function checkAndStartGame(room, deps) {
   if (typeof room.getPlayerList !== 'function') return;
 
-  // Filter real players excluding Host (ID 0)
+  // Real players excluding Host (ID 0)
   const activePlayers = room.getPlayerList().filter((p) => p.id !== 0 && (p.team === 1 || p.team === 2));
-  if (activePlayers.length >= 1 && !currentGame && typeof room.startGame === 'function') {
+  const redCount = activePlayers.filter(p => p.team === 1).length;
+  const blueCount = activePlayers.filter(p => p.team === 2).length;
+
+  // Hem kırmızıda hem mavide en az 1 kişi olmalıdır (1v0 başlama engeli)
+  if (redCount >= 1 && blueCount >= 1 && !currentGame && typeof room.startGame === 'function') {
     try {
       room.startGame();
     } catch (e) {
       console.warn('Oyun hemen başlatılamadı, 1.5 saniye sonra tekrar deneniyor:', e.message);
       setTimeout(() => {
         try {
-          room.startGame();
+          if (!currentGame && typeof room.startGame === 'function') {
+            room.startGame();
+          }
         } catch (err) {
           console.warn('Yeniden deneme başarısız oldu:', err.message);
         }
@@ -627,7 +650,7 @@ function handleGameStart(room, { getTimestamp, sendMsg, playerAssignments }) {
  * MAÇ BİTİMİ KONTROLÜ VE TAKIM ROTASYON MANTIĞI
  */
 async function handleGameStop(room, deps) {
-  const { db, DB_FILE, persistDatabase, getTimestamp, sendMsg, playerAssignments, playerJoinOrder, loggedInPlayers, sleep } = deps;
+  const { db, DB_FILE, persistDatabase, getTimestamp, sendMsg, playerAssignments, playerJoinOrder, loggedInPlayers, sleep, SPEC_PROMOTION_COUNT } = deps;
 
   const liveScores = typeof room.getScores === 'function' ? room.getScores() : null;
   let scores = { red: 0, blue: 0, time: 0 };
@@ -705,7 +728,7 @@ async function handleGameStop(room, deps) {
       // ---------------------------------------------------------------------
       // SENARYO 2: 8'den fazla AFK OLMAYAN oyuncu var (> 8)
       // ---------------------------------------------------------------------
-      console.log(`[MATCH ROTATION] Aktif oyuncu sayısı > 8 (${activeNonAfkPlayers.length}). Yenilen takım spece alınıyor ve sıradaki 4 kişi sahaya sürülüyor...`);
+      console.log(`[MATCH ROTATION] Aktif oyuncu sayısı > 8 (${activeNonAfkPlayers.length}). Yenilen takım spece alınıyor ve sıradaki kişiler sahaya sürülüyor...`);
 
       // 1. Yenilen takımdaki tüm oyuncuları spece koy ve sıranın arkasına at
       const losingPlayers = allPlayers.filter((p) => p.id !== 0 && p.team === loserTeam);
@@ -716,14 +739,16 @@ async function handleGameStop(room, deps) {
         } catch (e) {}
       }
 
-      // 2. Spectator'ın en üstündeki AFK OLMAYAN ilk 4 oyuncuyu bul
+      // 2. Spectator'ın en üstündeki AFK OLMAYAN oyuncuları bul
       const currentSpecs = room.getPlayerList()
         .filter((p) => p.id !== 0 && p.team === 0 && !afkPlayers.has(p.id))
         .sort((a, b) => (playerJoinOrder.get(a.id) ?? 0) - (playerJoinOrder.get(b.id) ?? 0));
 
-      const nextToPlay = currentSpecs.slice(0, 4);
+      // Kaç oyuncu sahaya alınacak? (Varsayılan olarak elenen oyuncu sayısı kadar veya konfigürasyondaki sayı)
+      const promotionCount = SPEC_PROMOTION_COUNT || (losingPlayers.length > 0 ? losingPlayers.length : 4);
+      const nextToPlay = currentSpecs.slice(0, promotionCount);
 
-      // 3. Bu 4 oyuncuyu yenilen takıma yerleştir
+      // 3. Bu oyuncuları yenilen takıma yerleştir
       for (const p of nextToPlay) {
         try { room.setPlayerTeam(p.id, loserTeam); } catch (e) {}
       }
@@ -737,7 +762,7 @@ async function handleGameStop(room, deps) {
 
   // Takımlar hazırlandıktan sonra maçı başlat
   await sleep(1000);
-  checkAndStartGame(room, { playerAssignments, playerJoinOrder, loggedInPlayers });
+  checkAndStartGame(room, deps);
 }
 
 function lockTeams(room) {
