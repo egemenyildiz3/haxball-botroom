@@ -61,6 +61,10 @@ db-game_players:
 db-visited_users:
 	docker exec -it $(CONTAINER) node -e "const fs = require('fs'); const initSqlJs = require('sql.js'); initSqlJs().then(SQL => { const db = new SQL.Database(fs.readFileSync('./db/haxball-results.sqlite')); const stmt = db.prepare('SELECT * FROM visited_users'); const rows = []; while (stmt.step()) rows.push(stmt.getAsObject()); stmt.free(); console.table(rows); });"
 
+db-blacklist:
+	docker exec -it $(CONTAINER) node -e "const fs = require('fs'); const initSqlJs = require('sql.js'); initSqlJs().then(SQL => { const db = new SQL.Database(fs.readFileSync('./db/haxball-results.sqlite')); const stmt = db.prepare('SELECT * FROM blacklisted_users'); const rows = []; while (stmt.step()) rows.push(stmt.getAsObject()); stmt.free(); console.table(rows); });"
+
+
 # --- DANGER ZONE ---
 
 db-make_admin: #USERNAME=player1
@@ -75,5 +79,22 @@ db-make_admin: #USERNAME=player1
 			console.log('$(USERNAME) kullanıcısı admin yapıldı.'); \
 		});"
 
+db-blacklist_player: #USERNAME=player1
+	docker exec -it $(CONTAINER) node -e "\
+		const fs = require('fs'); \
+		const initSqlJs = require('sql.js'); \
+		initSqlJs().then(SQL => { \
+			const dbPath = './db/haxball-results.sqlite'; \
+			const db = new SQL.Database(fs.readFileSync(dbPath)); \
+			let authKey = '', ip = ''; \
+			const stmt = db.prepare('SELECT auth_key, last_ip FROM users WHERE username = ?'); \
+			stmt.bind(['$(USERNAME)']); \
+			if (stmt.step()) { const r = stmt.getAsObject(); authKey = r.auth_key || ''; ip = r.last_ip || ''; } \
+			stmt.free(); \
+			db.run('INSERT INTO blacklisted_users (username, auth_key, ip, reason, banned_at) VALUES (?, ?, ?, ?, ?)', ['$(USERNAME)', authKey, ip, 'Makefile üzerinden engellendi', new Date().toISOString()]); \
+			fs.writeFileSync(dbPath, Buffer.from(db.export())); \
+			console.log('$(USERNAME) kullanıcısı kara listeye eklendi.'); \
+		});"
+		
 db-drop-users:
 	docker exec -it $(CONTAINER) node -e "const fs = require('fs'); const initSqlJs = require('sql.js'); initSqlJs().then(SQL => { const db = new SQL.Database(fs.readFileSync('./db/haxball-results.sqlite')); db.run('DROP TABLE IF EXISTS users;'); fs.writeFileSync('./db/haxball-results.sqlite', Buffer.from(db.export())); console.log('Users tablosu tamamen silindi!'); });"

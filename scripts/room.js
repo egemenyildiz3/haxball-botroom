@@ -623,9 +623,13 @@ function handleGameStart(room, { getTimestamp, sendMsg, playerAssignments }) {
   sendMsg(room, '🚀 Maç başladı! Herkese başarılar ve iyi oyunlar!', null, 0x00FF7F, 'bold');
 }
 
-async function handleGameStop(room, { db, DB_FILE, persistDatabase, getTimestamp, sendMsg, playerAssignments, playerJoinOrder, loggedInPlayers, sleep, SPEC_PROMOTION_COUNT }) {
-  const liveScores = typeof room.getScores === 'function' ? room.getScores() : null;
+/**
+ * MAÇ BİTİMİ KONTROLÜ VE TAKIM ROTASYON MANTIĞI
+ */
+async function handleGameStop(room, deps) {
+  const { db, DB_FILE, persistDatabase, getTimestamp, sendMsg, playerAssignments, playerJoinOrder, loggedInPlayers, sleep } = deps;
 
+  const liveScores = typeof room.getScores === 'function' ? room.getScores() : null;
   let scores = { red: 0, blue: 0, time: 0 };
 
   if (liveScores && (liveScores.red > 0 || liveScores.blue > 0)) {
@@ -639,7 +643,8 @@ async function handleGameStop(room, { db, DB_FILE, persistDatabase, getTimestamp
   }
 
   const winnerTeam = scores.red > scores.blue ? 1 : scores.blue > scores.red ? 2 : null;
-  const loserTeam = winnerTeam === 1 ? 2 : winnerTeam === 2 ? 1 : null;
+  // Berabere kalınırsa varsayılan olarak Mavi Takım (2) yenilmiş kabul edilir
+  const loserTeam = winnerTeam === 1 ? 2 : (winnerTeam === 2 ? 1 : 2); 
   const endedAt = new Date().toISOString();
   const durationSeconds = currentGame ? (new Date(endedAt) - new Date(currentGame.started_at)) / 1000 : 0;
 
@@ -655,45 +660,84 @@ async function handleGameStop(room, { db, DB_FILE, persistDatabase, getTimestamp
 
   await sleep(2000);
 
-  if (loserTeam !== null) {
-    rotateTeams(room, loserTeam, { playerJoinOrder, SPEC_PROMOTION_COUNT });
-  }
-
-  await sleep(500);
-  rebalanceTeams(room, { playerAssignments, playerJoinOrder, loggedInPlayers });
-
-  setTimeout(() => {
-    checkAndStartGame(room, { playerAssignments, playerJoinOrder, loggedInPlayers });
-  }, 1000);
-}
-
-function rotateTeams(room, loserTeam, { playerJoinOrder, SPEC_PROMOTION_COUNT }) {
-  if (isRebalancing) return;
-  if (typeof room.getPlayerList !== 'function' || typeof room.setPlayerTeam !== 'function') return;
-
+  // Rebalance tetiklemelerinin çakışmaması için rebalance kilidini açıyoruz
   isRebalancing = true;
 
   try {
-    const players = room.getPlayerList();
-    const losingPlayers = players.filter((p) => p.id !== 0 && p.team === loserTeam);
-    
-    const spectators = players
-      .filter((p) => p.id !== 0 && p.team === 0 && !afkPlayers.has(p.id))
-      .sort((a, b) => (playerJoinOrder.get(a.id) ?? 0) - (playerJoinOrder.get(b.id) ?? 0));
+    const allPlayers = room.getPlayerList();
+    const activeNonAfkPlayers = allPlayers.filter((p) => p.id !== 0 && !afkPlayers.has(p.id));
 
-    const countToPromote = Math.min(losingPlayers.length, spectators.length);
-    const promoted = spectators.slice(0, countToPromote);
+    if (activeNonAfkPlayers.length <= 8) {
+      // ---------------------------------------------------------------------
+      // SENARYO 1: 8 veya daha az AFK OLMAYAN oyuncu var
+      // ---------------------------------------------------------------------
+      console.log(`[MATCH ROTATION] Aktif oyuncu sayısı <= 8 (${activeNonAfkPlayers.length}). Tüm oyuncular resetlenip yeniden dağıtılıyor...`);
 
-    for (const player of losingPlayers) {
-      try { room.setPlayerTeam(player.id, 0); } catch (e) {}
+      // 1. Tüm oyuncuları Spectator (0) konumuna çek (Host hariç)
+      for (const p of allPlayers) {
+        if (p.id !== 0 && p.team !== 0) {
+          try { room.setPlayerTeam(p.id, 0); } catch (e) {}
+        }
+      }
+
+      // 2. Spectator'daki AFK olmayan tüm oyuncuları giriş sırasına göre al
+      const availableSpecs = room.getPlayerList()
+        .filter((p) => p.id !== 0 && !afkPlayers.has(p.id))
+        .sort((a, b) => (playerJoinOrder.get(a.id) ?? 0) - (playerJoinOrder.get(b.id) ?? 0));
+
+      const totalPlayers = availableSpecs.length;
+      const redCount = Math.min(4, Math.ceil(totalPlayers / 2));
+      const blueCount = Math.min(4, totalPlayers - redCount);
+
+      // 3. İki takıma da maks 4 oyuncu olacak şekilde sırayla aktar
+      for (let i = 0; i < availableSpecs.length; i++) {
+        const p = availableSpecs[i];
+        if (i < redCount) {
+          try { room.setPlayerTeam(p.id, 1); } catch (e) {}
+        } else if (i < redCount + blueCount) {
+          try { room.setPlayerTeam(p.id, 2); } catch (e) {}
+        } else {
+          try { room.setPlayerTeam(p.id, 0); } catch (e) {}
+        }
+      }
+
+    } else {
+      // ---------------------------------------------------------------------
+      // SENARYO 2: 8'den fazla AFK OLMAYAN oyuncu var (> 8)
+      // ---------------------------------------------------------------------
+      console.log(`[MATCH ROTATION] Aktif oyuncu sayısı > 8 (${activeNonAfkPlayers.length}). Yenilen takım spece alınıyor ve sıradaki 4 kişi sahaya sürülüyor...`);
+
+      // 1. Yenilen takımdaki tüm oyuncuları spece koy ve sıranın arkasına at
+      const losingPlayers = allPlayers.filter((p) => p.id !== 0 && p.team === loserTeam);
+      for (const p of losingPlayers) {
+        try { 
+          room.setPlayerTeam(p.id, 0); 
+          playerJoinOrder.set(p.id, nextJoinOrder++);
+        } catch (e) {}
+      }
+
+      // 2. Spectator'ın en üstündeki AFK OLMAYAN ilk 4 oyuncuyu bul
+      const currentSpecs = room.getPlayerList()
+        .filter((p) => p.id !== 0 && p.team === 0 && !afkPlayers.has(p.id))
+        .sort((a, b) => (playerJoinOrder.get(a.id) ?? 0) - (playerJoinOrder.get(b.id) ?? 0));
+
+      const nextToPlay = currentSpecs.slice(0, 4);
+
+      // 3. Bu 4 oyuncuyu yenilen takıma yerleştir
+      for (const p of nextToPlay) {
+        try { room.setPlayerTeam(p.id, loserTeam); } catch (e) {}
+      }
     }
 
-    for (const player of promoted) {
-      try { room.setPlayerTeam(player.id, loserTeam); } catch (e) {}
-    }
+    lockTeams(room);
+
   } finally {
     isRebalancing = false;
   }
+
+  // Takımlar hazırlandıktan sonra maçı başlat
+  await sleep(1000);
+  checkAndStartGame(room, { playerAssignments, playerJoinOrder, loggedInPlayers });
 }
 
 function lockTeams(room) {

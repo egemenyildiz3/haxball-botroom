@@ -206,6 +206,54 @@ function handlePlayerChat(room, player, msg, deps) {
     return false;
   }
 
+  // Super-Admin Blacklist (Kalıcı Veritabanı Banı)
+  if (command === '!blacklist' || command === '!blackban' || command === '!permaban') {
+    if (!isSuperAdmin) {
+      sendMsg(room, '❌ Bu komutu sadece Super-Admin (Kurucu) kullanabilir!', player.id, 0xFF5555, 'bold');
+      return false;
+    }
+
+    const { target, reason, candidates } = resolveTargetPlayer(room, args, playerAssignments);
+
+    if (candidates && candidates.length > 1) {
+      const candidateList = candidates.map((c) => `#${c.id} ${(playerAssignments.get(c.id) || c.name || '').trim()}`).join(', ');
+      sendMsg(room, `⚠️ Birden fazla eşleşen oyuncu bulundu: ${candidateList}. Lütfen net bir ID/isim belirtin.`, player.id, 0xFFCC00, 'bold');
+      return false;
+    }
+
+    if (!target) {
+      sendMsg(room, '❌ Oyuncu bulunamadı! Kullanım: !blacklist <id / etiket / oyuncu_adı> [sebep]', player.id, 0xFF5555, 'bold');
+      return false;
+    }
+
+    const targetUserData = loggedInPlayers.get(target.id);
+    if (targetUserData && targetUserData.isadmin === 1) {
+      sendMsg(room, '🛡️ Super-Admin (Kurucu) kara listeye alınamaz!', player.id, 0xFF5555, 'bold');
+      return false;
+    }
+
+    const banReason = reason || 'Super-Admin tarafından kalıcı kara listeye alındınız.';
+    const targetCleanName = (target.name || '').replace(/^\[\d{3}\]\s*/, '').trim();
+    const targetAuth = target.auth || target.conn || '';
+    const targetIp = target.ip || '';
+
+    try {
+      db.run(
+        'INSERT INTO blacklisted_users (username, auth_key, ip, reason, banned_at) VALUES (?, ?, ?, ?, ?)',
+        [targetCleanName, targetAuth, targetIp, banReason, new Date().toISOString()]
+      );
+      persistDatabase(db, DB_FILE);
+
+      room.kickPlayer(target.id, banReason, true);
+      sendMsg(room, `⛔ ${targetCleanName} (HB-ID: ${target.id}) veritabanı kara listesine (blacklisted_users) eklendi ve odadan yasaklandı!`, null, 0xFF0000, 'bold');
+      console.log(`[BLACKLIST] Super-Admin ${cleanedName}, ${targetCleanName} kullanıcısını kara listeye ekledi. Auth: ${targetAuth}, IP: ${targetIp}`);
+    } catch (err) {
+      console.warn('[BLACKLIST] Veritabanı hatası:', err.message);
+      sendMsg(room, `❌ Kara listeye ekleme hatası: ${err.message}`, player.id, 0xFF5555, 'bold');
+    }
+    return false;
+  }
+
   // Oyuncu Listesi Komutu
   if (command === '!oyuncular' || command === '!oyunculistesi' || command === '!players') {
     if (typeof room.getPlayerList !== 'function') return false;
@@ -446,6 +494,7 @@ function handlePlayerChat(room, player, msg, deps) {
       '• !afk — AFK modunu açar/kapatır',
       '• !kaydol <şifre> — Hesap oluşturur ve oturum açar',
       '• !giris <şifre> — Mevcut hesabınıza giriş yapar',
+      isSuperAdmin ? '• !blacklist <id/isim> [sebep] — Oyuncuyu veritabanı kara listesine ekler (Super-Admin)' : '',
       isSuperAdmin ? '• !clearbans — Tüm banları temizler (Super-Admin)' : '',
     ]
       .filter(Boolean)
