@@ -442,7 +442,7 @@ async function handleGameStop(room, { db, DB_FILE, persistDatabase, getTimestamp
 
   currentGame = null;
 
-  await sleep(3000);
+  await sleep(2000);
 
   if (loserTeam !== null) {
     rotateTeams(room, loserTeam, { playerJoinOrder, SPEC_PROMOTION_COUNT });
