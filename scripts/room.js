@@ -76,7 +76,7 @@ async function createRoom(room, deps) {
     const safePlayer = sanitizePlayer(room, player);
     const cleanedName = getCleanName(safePlayer);
 
-    // Ziyaretçi kullanıcısını veritabanına kaydet (Varsa atlar)
+    // Ziyaretçi kullanıcısını veritabanına kaydet / son ziyaret tarihini güncelle
     logVisitedUser(db, DB_FILE, cleanedName, persistDatabase);
 
     assignPlayerInternal(room, safePlayer, { playerAssignments, playerJoinOrder, getTimestamp });

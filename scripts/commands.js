@@ -85,7 +85,7 @@ function handlePlayerChat(room, player, msg, { db, DB_FILE, loggedInPlayers, pla
   const command = normalizeCmd(args[0] || '');  
   const playerToken = player.auth || player.conn || '';
 
-  console.log(`[CHAT] ${displayName} (Token: ${playerToken || 'YOK'}): ${text}`);
+  console.log(`[CHAT] ${displayName} : ${text}`);
 
   if (!text.startsWith('!')) {
     sendMsg(room, `💬 ${displayName}: ${text}`, null, 0xFFFFFF, 'normal');

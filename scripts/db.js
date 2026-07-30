@@ -31,20 +31,27 @@ function initDatabase(db) {
     CREATE TABLE IF NOT EXISTS users (
       username TEXT PRIMARY KEY,
       password TEXT NOT NULL,
-      isadmin INTEGER DEFAULT 0
+      isadmin INTEGER DEFAULT 0,
+      last_visited_at TEXT
     );
 
     CREATE TABLE IF NOT EXISTS visited_users (
       username TEXT PRIMARY KEY,
-      first_visited_at TEXT NOT NULL
+      first_visited_at TEXT NOT NULL,
+      last_visited_at TEXT
     );
   `);
 
+  // Existing Alter Table Migrations
   try { db.exec('ALTER TABLE users ADD COLUMN auth_key TEXT'); } catch (e) {}
   try { db.exec('ALTER TABLE users ADD COLUMN registered_at TEXT'); } catch (e) {}
   try { db.exec('ALTER TABLE users ADD COLUMN last_ip TEXT'); } catch (e) {}
   try { db.exec('ALTER TABLE users ADD COLUMN isadmin INTEGER DEFAULT 0'); } catch (e) {}
   
+  // last_visited_at Migrations
+  try { db.exec('ALTER TABLE users ADD COLUMN last_visited_at TEXT'); } catch (e) {}
+  try { db.exec('ALTER TABLE visited_users ADD COLUMN last_visited_at TEXT'); } catch (e) {}
+
   // İstatistik Sütunları
   try { db.exec('ALTER TABLE users ADD COLUMN goals INTEGER DEFAULT 0'); } catch (e) {}
   try { db.exec('ALTER TABLE users ADD COLUMN assists INTEGER DEFAULT 0'); } catch (e) {}
@@ -56,9 +63,21 @@ function logVisitedUser(db, DB_FILE, username, persistFn) {
   if (!username) return;
 
   try {
-    const stmt = db.prepare('INSERT OR IGNORE INTO visited_users (username, first_visited_at) VALUES (?, ?)');
-    stmt.run([username, new Date().toISOString()]);
-    stmt.free();
+    const now = new Date().toISOString();
+
+    // 1. visited_users tablosuna ekle veya var olan kullanıcının last_visited_at alanını güncelle
+    const stmtVisited = db.prepare(`
+      INSERT INTO visited_users (username, first_visited_at, last_visited_at)
+      VALUES (?, ?, ?)
+      ON CONFLICT(username) DO UPDATE SET last_visited_at = excluded.last_visited_at
+    `);
+    stmtVisited.run([username, now, now]);
+    stmtVisited.free();
+
+    // 2. Eğer kullanıcı users tablosunda kayıtlı ise onun da last_visited_at alanını güncelle
+    const stmtUser = db.prepare('UPDATE users SET last_visited_at = ? WHERE username = ?');
+    stmtUser.run([now, username]);
+    stmtUser.free();
 
     if (typeof persistFn === 'function') {
       persistFn(db, DB_FILE);
