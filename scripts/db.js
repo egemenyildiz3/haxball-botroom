@@ -37,6 +37,7 @@ function initDatabase(db) {
 
     CREATE TABLE IF NOT EXISTS visited_users (
       username TEXT PRIMARY KEY,
+      auth_key TEXT,
       first_visited_at TEXT NOT NULL,
       last_visited_at TEXT
     );
@@ -52,10 +53,11 @@ function initDatabase(db) {
   try { db.exec('ALTER TABLE users ADD COLUMN registered_at TEXT'); } catch (e) {}
   try { db.exec('ALTER TABLE users ADD COLUMN last_ip TEXT'); } catch (e) {}
   try { db.exec('ALTER TABLE users ADD COLUMN isadmin INTEGER DEFAULT 0'); } catch (e) {}
-  
-  // last_visited_at Migrations
+
+  // visited_users & last_visited_at Migrations
   try { db.exec('ALTER TABLE users ADD COLUMN last_visited_at TEXT'); } catch (e) {}
   try { db.exec('ALTER TABLE visited_users ADD COLUMN last_visited_at TEXT'); } catch (e) {}
+  try { db.exec('ALTER TABLE visited_users ADD COLUMN auth_key TEXT'); } catch (e) {}
 
   // İstatistik Sütunları
   try { db.exec('ALTER TABLE users ADD COLUMN goals INTEGER DEFAULT 0'); } catch (e) {}
@@ -72,12 +74,12 @@ function isUserBlacklisted(db, username, authKey) {
 
   try {
     const stmt = db.prepare(`
-      SELECT 1 FROM blacklisted_users 
-      WHERE (username = ? AND username != '') 
-         OR (auth_key = ? AND auth_key != '') 
+      SELECT 1 FROM blacklisted_users
+      WHERE (username = ? AND username != '')
+         OR (auth_key = ? AND auth_key != '')
       LIMIT 1
     `);
-    
+
     stmt.bind([username || '', authKey || '']);
     const isBlacklisted = stmt.step();
     stmt.free();
@@ -89,19 +91,30 @@ function isUserBlacklisted(db, username, authKey) {
   }
 }
 
-function logVisitedUser(db, DB_FILE, username, persistFn) {
+/**
+ * Odaya giren kullanıcıları visited_users ve users tablolarına kaydeder/günceller.
+ */
+function logVisitedUser(db, DB_FILE, username, authKey, persistFn) {
   if (!username) return;
+
+  // Parametrelerin kayması ihtimaline karşı persistFn kontrolü
+  if (typeof authKey === 'function') {
+    persistFn = authKey;
+    authKey = '';
+  }
 
   try {
     const now = new Date().toISOString();
 
-    // 1. visited_users tablosuna ekle veya var olan kullanıcının last_visited_at alanını güncelle
+    // 1. visited_users tablosuna ekle veya var olan kullanıcının auth_key / last_visited_at alanlarını güncelle
     const stmtVisited = db.prepare(`
-      INSERT INTO visited_users (username, first_visited_at, last_visited_at)
-      VALUES (?, ?, ?)
-      ON CONFLICT(username) DO UPDATE SET last_visited_at = excluded.last_visited_at
+      INSERT INTO visited_users (username, auth_key, first_visited_at, last_visited_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(username) DO UPDATE SET
+        auth_key = COALESCE(NULLIF(excluded.auth_key, ''), visited_users.auth_key),
+        last_visited_at = excluded.last_visited_at
     `);
-    stmtVisited.run([username, now, now]);
+    stmtVisited.run([username, authKey || '', now, now]);
     stmtVisited.free();
 
     // 2. Eğer kullanıcı users tablosunda kayıtlı ise onun da last_visited_at alanını güncelle
@@ -140,7 +153,7 @@ function saveGameResult(db, DB_FILE, scores, winnerTeam, loserTeam, game, endedA
     insertGame.free();
 
     const updateUserStats = db.prepare(`
-      UPDATE users 
+      UPDATE users
       SET goals = goals + ?,
           assists = assists + ?,
           wins = wins + ?,

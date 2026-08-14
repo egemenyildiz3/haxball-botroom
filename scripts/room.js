@@ -32,7 +32,7 @@ process.on('unhandledRejection', (reason, promise) => {
  */
 function sanitizePlayer(room, player) {
   if (!player || typeof player.id === 'undefined') return player;
-  
+
   const realPlayer = (typeof room.getPlayer === 'function') ? (room.getPlayer(player.id) || player) : player;
   const cachedAuth = playerAuths.get(String(player.id)) || playerAuths.get(Number(player.id)) || '';
 
@@ -173,7 +173,7 @@ async function createRoom(room, deps) {
 
     if (isOwnerKicked) {
       console.warn(`[SECURITY] ${byClean} (ID: ${safeBy.id}), Super Admin ${kickedClean}'ı atmaya çalıştı!`);
-      
+
       try { room.clearBan(safeKicked.id); } catch (e) {}
 
       try {
@@ -188,7 +188,7 @@ async function createRoom(room, deps) {
     // 2. CONFIG_ADMIN_CAN_BAN = 0 KONTROLÜ
     if (ban && Number(CONFIG_ADMIN_CAN_BAN) === 0) {
       console.warn(`[SECURITY] ${byClean} ban atmaya çalıştı fakat CONFIG_ADMIN_CAN_BAN=0!`);
-      
+
       try { room.clearBan(safeKicked.id); } catch (e) {}
 
       try {
@@ -217,7 +217,7 @@ async function createRoom(room, deps) {
 
         if (!isBySuperAdmin) {
           console.warn(`[SECURITY] ${getCleanName(safeBy)} yetki vermeye çalıştı fakat CONFIG_ADMIN_CAN_GIVE_ADMIN=0!`);
-          
+
           try {
             room.setPlayerAdmin(safePlayer.id, false);
           } catch (e) {}
@@ -301,7 +301,7 @@ async function createRoom(room, deps) {
       return;
     }
 
-    logVisitedUser(db, DB_FILE, cleanedName, persistDatabase);
+    logVisitedUser(db, DB_FILE, cleanedName, safePlayer.auth, persistDatabase);
     assignPlayerInternal(room, safePlayer, { playerAssignments, playerJoinOrder, getTimestamp });
 
     await sleep(800);
@@ -425,7 +425,7 @@ function handleTeamGoal(room, team, { getTimestamp }) {
   if (lastTouchPlayer) {
     if (lastTouchPlayer.team === team) {
       let assistText = '';
-      
+
       if (currentGame) {
         let scorer = currentGame.players.find(p => p.id === lastTouchPlayer.id);
         if (!scorer) {
@@ -437,7 +437,7 @@ function handleTeamGoal(room, team, { getTimestamp }) {
 
       if (secondLastTouchPlayer && secondLastTouchPlayer.team === team && secondLastTouchPlayer.id !== lastTouchPlayer.id) {
         assistText = ` (Asist: ${secondLastTouchPlayer.name})`;
-        
+
         if (currentGame) {
           let assister = currentGame.players.find(p => p.id === secondLastTouchPlayer.id);
           if (!assister) {
@@ -552,7 +552,7 @@ function rebalanceTeams(room, { playerAssignments, playerJoinOrder, loggedInPlay
       .sort((a, b) => (playerJoinOrder.get(a.id) ?? 0) - (playerJoinOrder.get(b.id) ?? 0));
 
     const activeNonAfkCount = players.filter((p) => p.id !== 0 && !afkPlayers.has(p.id)).length;
-    
+
     // YENİ LOGİK: Eğer 1 kişi varsa en az 1 kişilik takım kurulur
     const maxTeamSize = Math.min(4, Math.max(1, Math.ceil(activeNonAfkCount / 2)));
 
@@ -664,7 +664,7 @@ async function handleGameStop(room, deps) {
   }
 
   const winnerTeam = scores.red > scores.blue ? 1 : scores.blue > scores.red ? 2 : null;
-  const loserTeam = winnerTeam === 1 ? 2 : (winnerTeam === 2 ? 1 : 2); 
+  const loserTeam = winnerTeam === 1 ? 2 : (winnerTeam === 2 ? 1 : 2);
   const endedAt = new Date().toISOString();
   const durationSeconds = currentGame ? (new Date(endedAt) - new Date(currentGame.started_at)) / 1000 : 0;
 
@@ -719,8 +719,8 @@ async function handleGameStop(room, deps) {
 
       const losingPlayers = allPlayers.filter((p) => p.id !== 0 && p.team === loserTeam);
       for (const p of losingPlayers) {
-        try { 
-          room.setPlayerTeam(p.id, 0); 
+        try {
+          room.setPlayerTeam(p.id, 0);
           playerJoinOrder.set(p.id, nextJoinOrder++);
         } catch (e) {}
       }

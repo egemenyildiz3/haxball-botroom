@@ -79,22 +79,10 @@ db-make_admin: #USERNAME=player1
 			console.log('$(USERNAME) kullanıcısı admin yapıldı.'); \
 		});"
 
-db-blacklist_player: #USERNAME=player1
-	docker exec -it $(CONTAINER) node -e "\
-		const fs = require('fs'); \
-		const initSqlJs = require('sql.js'); \
-		initSqlJs().then(SQL => { \
-			const dbPath = './db/haxball-results.sqlite'; \
-			const db = new SQL.Database(fs.readFileSync(dbPath)); \
-			let authKey = '', ip = ''; \
-			const stmt = db.prepare('SELECT auth_key, last_ip FROM users WHERE username = ?'); \
-			stmt.bind(['$(USERNAME)']); \
-			if (stmt.step()) { const r = stmt.getAsObject(); authKey = r.auth_key || ''; ip = r.last_ip || ''; } \
-			stmt.free(); \
-			db.run('INSERT INTO blacklisted_users (username, auth_key, ip, reason, banned_at) VALUES (?, ?, ?, ?, ?)', ['$(USERNAME)', authKey, ip, 'Makefile üzerinden engellendi', new Date().toISOString()]); \
-			fs.writeFileSync(dbPath, Buffer.from(db.export())); \
-			console.log('$(USERNAME) kullanıcısı kara listeye eklendi.'); \
-		});"
-		
-db-drop-users:
-	docker exec -it $(CONTAINER) node -e "const fs = require('fs'); const initSqlJs = require('sql.js'); initSqlJs().then(SQL => { const db = new SQL.Database(fs.readFileSync('./db/haxball-results.sqlite')); db.run('DROP TABLE IF EXISTS users;'); fs.writeFileSync('./db/haxball-results.sqlite', Buffer.from(db.export())); console.log('Users tablosu tamamen silindi!'); });"
+
+# KARA LISTE
+USERNAME ?= sdgsfgg
+AUTH ?= sdsd
+
+db-blacklist_player:
+	docker exec -it $(CONTAINER) node -e 'const fs = require("fs"); const initSqlJs = require("sql.js"); initSqlJs().then(SQL => { const dbPath = "./db/haxball-results.sqlite"; const db = new SQL.Database(fs.readFileSync(dbPath)); let targetUser = "$(USERNAME)".trim(); let targetAuth = "$(AUTH)".trim(); let ip = ""; if (!targetAuth && targetUser) { const stmtV = db.prepare("SELECT auth_key FROM visited_users WHERE LOWER(username) = LOWER(?) AND auth_key IS NOT NULL AND auth_key != \"\""); stmtV.bind([targetUser]); if (stmtV.step()) { targetAuth = stmtV.getAsObject().auth_key || ""; } stmtV.free(); if (!targetAuth) { const stmtU = db.prepare("SELECT auth_key, last_ip FROM users WHERE LOWER(username) = LOWER(?)"); stmtU.bind([targetUser]); if (stmtU.step()) { const r = stmtU.getAsObject(); targetAuth = r.auth_key || ""; ip = r.last_ip || ""; } stmtU.free(); } } if (!targetUser && !targetAuth) { console.log("⚠️ HATA: Username veya Auth Key belirtilmedi!"); return; } db.run("INSERT INTO blacklisted_users (username, auth_key, ip, reason, banned_at) VALUES (?, ?, ?, ?, ?)", [targetUser, targetAuth, ip, "Makefile üzerinden engellendi", new Date().toISOString()]); fs.writeFileSync(dbPath, Buffer.from(db.export())); console.log("🚫 Blacklist Eklendi -> Kullanıcı: \"" + targetUser + "\" | Auth: \"" + targetAuth + "\""); });'
