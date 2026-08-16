@@ -59,6 +59,8 @@ const DEFAULTS = {
   // --- Topa vurma ---
   kickPadding: 4, // yarıçapların ötesinde vuruşun tuttuğu ek mesafe
   releaseTicks: 3, // tekrar vurabilmek için tuşu bırakma süresi
+  preKickReleaseMargin: 18, // topa girmeden önce fren/kick tuşunu bırakmaya başla
+  preKickReleaseTicks: 1, // temas anında yeni kick kaydolması için kısa hazırlık
   postInset: 22, // direğe bu kadar içeriden nişan al
 
   // Bölgeye göre vuruş kararı:
@@ -732,26 +734,47 @@ function decide(view, memory, config) {
     inShootingRange ? onTarget : forwardness >= activeCfg.clearConeCos
   );
 
+  const nearKickRange = distToBall <= kickRange + activeCfg.preKickReleaseMargin;
+  const likelyKickSoon = role === 'attacker' && nearKickRange && safeDirection && (
+    inShootingRange ? true : forwardness >= activeCfg.clearConeCos
+  );
+
+  if (!inKickRange && likelyKickSoon && (nav.brake || memory.lastKeyDown)) {
+    memory.preKickReleaseTicks = Math.max(
+      memory.preKickReleaseTicks || 0,
+      activeCfg.preKickReleaseTicks
+    );
+  }
+
   // Haxball'da tuşu basılı tutmak tek vuruş yapar; tekrar vurmak için önce
   // BIRAKMAK gerekir. Fren de aynı tuşu kullandığı için, frenden çıkıp topa
   // vuracaksak arada mutlaka bir tick tuşu bırakmalıyız; yoksa şut kaydolmaz.
   let shot = false;
+  let releasingForKick = false;
   if (wantKick) {
-    if (memory.kickCooldown > 0) {
+    if (memory.preKickReleaseTicks > 0) {
+      memory.preKickReleaseTicks--;
+      releasingForKick = true;
+    } else if (memory.kickCooldown > 0) {
       memory.kickCooldown--;
     } else if (memory.lastKeyDown) {
       // Tuş (büyük ihtimalle fren yüzünden) zaten basılıydı: bu tick bırak.
+      releasingForKick = true;
     } else {
       shot = true;
       memory.kickCooldown = activeCfg.releaseTicks;
     }
   } else {
     memory.kickCooldown = 0;
+    if (memory.preKickReleaseTicks > 0) {
+      memory.preKickReleaseTicks--;
+      releasingForKick = true;
+    }
   }
 
   // Top vuruş menzilindeyken frenlemek istemsiz bir dokunuşa yol açar;
   // bu yüzden menzil içinde frene izin vermiyoruz.
-  const braking = nav.brake && !inKickRange;
+  const braking = nav.brake && !inKickRange && !releasingForKick;
   const keyDown = shot || braking;
   memory.lastKeyDown = keyDown;
 

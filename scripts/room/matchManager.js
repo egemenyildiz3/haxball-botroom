@@ -8,10 +8,57 @@ const ROTATION_MOVE_DELAY_MS = 350;
 const ROTATION_END_DELAY_MS = 500;
 
 function handlePlayerBallKick(state, player) {
+  if (!Array.isArray(state.touchHistory)) state.touchHistory = [];
+
   if (!state.lastTouchPlayer || state.lastTouchPlayer.id !== player.id) {
     state.secondLastTouchPlayer = state.lastTouchPlayer;
     state.lastTouchPlayer = player;
+    state.touchHistory.push({
+      id: player.id,
+      name: player.name,
+      cleanName: getCleanName(player),
+      team: player.team,
+    });
+    if (state.touchHistory.length > 20) state.touchHistory.shift();
   }
+}
+
+function goalAttribution(state, team) {
+  const history = state.touchHistory || [];
+  const scorerIndex = (() => {
+    for (let i = history.length - 1; i >= 0; i--) {
+      if (history[i].team === team) return i;
+    }
+    return -1;
+  })();
+
+  if (scorerIndex === -1) {
+    return {
+      scorer: null,
+      assister: null,
+      ownGoalPlayer: state.lastTouchPlayer && state.lastTouchPlayer.team !== team ? state.lastTouchPlayer : null,
+    };
+  }
+
+  const scorer = history[scorerIndex];
+  let assister = null;
+  let assisterIndex = -1;
+
+  for (let i = scorerIndex - 1; i >= 0; i--) {
+    const touch = history[i];
+    if (touch.team !== team) break;
+    if (touch.id !== scorer.id) {
+      assister = touch;
+      assisterIndex = i;
+      break;
+    }
+  }
+
+  if (assister && history.slice(assisterIndex + 1).some((touch) => touch.team !== team)) {
+    assister = null;
+  }
+
+  return { scorer, assister, ownGoalPlayer: null };
 }
 
 function handleTeamGoal(room, state, team, { getTimestamp, sendMsg }) {
@@ -41,36 +88,36 @@ function handleTeamGoal(room, state, team, { getTimestamp, sendMsg }) {
   let announcement = '';
   let color = 0x55FF55;
 
-  if (state.lastTouchPlayer) {
-    if (state.lastTouchPlayer.team === team) {
-      let assistText = '';
+  const { scorer: goalScorer, assister: assistPlayer, ownGoalPlayer } = goalAttribution(state, team);
+
+  if (goalScorer) {
+    let assistText = '';
+
+    if (state.currentGame) {
+      let scorer = state.currentGame.players.find((p) => p.id === goalScorer.id);
+      if (!scorer) {
+        scorer = { id: goalScorer.id, cleanName: goalScorer.cleanName, team: goalScorer.team, goals: 0, assists: 0 };
+        state.currentGame.players.push(scorer);
+      }
+      scorer.goals = (scorer.goals || 0) + 1;
+    }
+
+    if (assistPlayer) {
+      assistText = ` (Asist: ${assistPlayer.name})`;
 
       if (state.currentGame) {
-        let scorer = state.currentGame.players.find((p) => p.id === state.lastTouchPlayer.id);
-        if (!scorer) {
-          scorer = { id: state.lastTouchPlayer.id, cleanName: getCleanName(state.lastTouchPlayer), team: state.lastTouchPlayer.team, goals: 0, assists: 0 };
-          state.currentGame.players.push(scorer);
+        let assister = state.currentGame.players.find((p) => p.id === assistPlayer.id);
+        if (!assister) {
+          assister = { id: assistPlayer.id, cleanName: assistPlayer.cleanName, team: assistPlayer.team, goals: 0, assists: 0 };
+          state.currentGame.players.push(assister);
         }
-        scorer.goals = (scorer.goals || 0) + 1;
+        assister.assists = (assister.assists || 0) + 1;
       }
-
-      if (state.secondLastTouchPlayer && state.secondLastTouchPlayer.team === team && state.secondLastTouchPlayer.id !== state.lastTouchPlayer.id) {
-        assistText = ` (Asist: ${state.secondLastTouchPlayer.name})`;
-
-        if (state.currentGame) {
-          let assister = state.currentGame.players.find((p) => p.id === state.secondLastTouchPlayer.id);
-          if (!assister) {
-            assister = { id: state.secondLastTouchPlayer.id, cleanName: getCleanName(state.secondLastTouchPlayer), team: state.secondLastTouchPlayer.team, goals: 0, assists: 0 };
-            state.currentGame.players.push(assister);
-          }
-          assister.assists = (assister.assists || 0) + 1;
-        }
-      }
-      announcement = `⚽ GOL! ${state.lastTouchPlayer.name}${assistText} [${timeStr}] | KIRMIZI ${scores.red} - ${scores.blue} MAVİ`;
-    } else {
-      color = 0xFF5555;
-      announcement = `🤡 KENDİ KALESİNE GOL! ${state.lastTouchPlayer.name} topu kendi ağlarına gönderdi [${timeStr}] | KIRMIZI ${scores.red} - ${scores.blue} MAVİ`;
     }
+    announcement = `⚽ GOL! ${goalScorer.name}${assistText} [${timeStr}] | KIRMIZI ${scores.red} - ${scores.blue} MAVİ`;
+  } else if (ownGoalPlayer) {
+    color = 0xFF5555;
+    announcement = `🤡 KENDİ KALESİNE GOL! ${ownGoalPlayer.name} topu kendi ağlarına gönderdi [${timeStr}] | KIRMIZI ${scores.red} - ${scores.blue} MAVİ`;
   } else {
     announcement = `⚽ GOL! ${team === 1 ? 'Kırmızı' : 'Mavi'} Takım gol attı [${timeStr}] | KIRMIZI ${scores.red} - ${scores.blue} MAVİ`;
   }
@@ -80,6 +127,7 @@ function handleTeamGoal(room, state, team, { getTimestamp, sendMsg }) {
 
   state.lastTouchPlayer = null;
   state.secondLastTouchPlayer = null;
+  state.touchHistory = [];
 }
 
 function handleGameStart(room, state, { sendMsg }) {
@@ -87,6 +135,7 @@ function handleGameStart(room, state, { sendMsg }) {
 
   state.lastTouchPlayer = null;
   state.secondLastTouchPlayer = null;
+  state.touchHistory = [];
 
   state.currentGame = {
     started_at: new Date().toISOString(),
