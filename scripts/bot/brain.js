@@ -37,14 +37,18 @@ const DEFAULTS = {
 
   // --- Sürüş ---
   cruiseSpeed: 10, // pozisyon alırken hedeflenen azami hız
-  strikeSpeed: 12, // hücumda tavan hız
+  strikeSpeed: 14, // hücumda tavan hız
   // Topa VARIŞ hızı hedefi - "ne kadar atak" ayarının asıl düğmesi.
   // Ölçüm (600 birim yaklaşma): varış hızı / topu aşma mesafesi
   //   0   -> 1.06 /  29  (eski sürüm: topa sürünüyor)
   //   2   -> 3.47 / 103  (denge noktası)
   //   5.5 -> 5.45 / 227  (savruk sürüm: topu aşıp gidiyor)
   // Yaklaşma sırasında fren aç/kapa sayısı hepsinde 0 - spam yok.
-  strikeImpactSpeed: 2,
+  strikeImpactSpeed: 2.8,
+  strikeGoodAngleImpactSpeed: 4.2, // doğru açıdaysa topa daha sert gir
+  strikeBadAngleImpactSpeed: 1.6, // kötü açıdaysa önce kontrolü toparla
+  strikeDriveThroughRange: 170, // iyi açı + bu mesafe içinde topun içinden sür
+  strikeSetupDistance: 42, // kötü açıdaysa topun arkasında kurulacağı mesafe
   steerDeadzone: 0.05, // bu kadar küçük hız farkını yok say (titreme önler)
   minBrakeSpeed: 0.5, // bu hızın altında frene gerek yok
   brakeMargin: 1.1, // fren mesafesi payı
@@ -65,20 +69,20 @@ const DEFAULTS = {
   //  - Kaleye yakınsak gerçek isabet kontrolü yap (goalMargin)
   //  - Uzaktaysak nişan arama, ileri doğru vur (clearConeCos)
   //  - Hiçbir durumda kendi kalemize doğru vurma (ownGoalGuard)
-  shootingRange: 900, // kaleye bu mesafeden yakınsa "şut bölgesi"
+  shootingRange: 1050, // kaleye bu mesafeden yakınsa "şut bölgesi"
   preciseAimRange: 750, // bu mesafeden yakında direk seçimine geç
-  clearConeCos: -0.1, // şut bölgesi dışında yeterli olan "ileriye dönüklük"
+  clearConeCos: -0.2, // şut bölgesi dışında yeterli olan "ileriye dönüklük"
   ownGoalGuard: -0.25, // bu değerin altındaki yön = kendi kalemize, asla vurma
 
   // Şut bölgesinde artık sabit bir açı konisi yerine GERÇEK isabet kontrolü
   // yapılıyor: topun gideceği yön kale ağzını kesiyor mu? goalMargin, kale
   // ağzının iki ucundan içeride bırakılan güvenlik payı (0-0.5 arası oran).
-  goalMargin: 0.12,
+  goalMargin: 0.09,
   kickStrength: 5, // Haxball varsayılanı; haritada tanımlıysa oradan okunur
 
   // --- Konumlanma ---
   predictTicks: 90, // topu kaç tick ileri tahmin edelim
-  supportSpread: 220, // destek oyuncusunun yanal açılma mesafesi
+  supportSpread: 240, // destek oyuncusunun yanal açılma mesafesi
   botOnlyStuckTicks: 80, // sadece botlar varken yatay kilidi kaç tick sonra kır
   botOnlyNudge: 90, // kilit açmak için hedefe eklenecek küçük dikey sapma
 
@@ -88,7 +92,7 @@ const DEFAULTS = {
   //   top kendi kalemize yakın  -> defenderNear (temkinli ama çizgi değil)
   //   takım hücumda, top uzakta -> defenderFar  (orta sahaya kadar çık)
   defenderNear: 0.45,
-  defenderFar: 0.7,
+  defenderFar: 0.75,
   clearThird: 0.33, // sahanın bu kadarlık dilimi "kendi bölgemiz" sayılır
 };
 
@@ -526,11 +530,49 @@ function supportTarget(view, cfg, slot) {
   const ballDepth = dot(sub(view.ball.pos, ownCenter), upfield) / pitchLength;
 
   // Kendi yarımızdaysak topun biraz gerisinde, hücumdaysak ilerisinde dur
-  const along = ballDepth < 0.5 ? -cfg.supportSpread * 0.6 : cfg.supportSpread;
+  const along = ballDepth < 0.5 ? -cfg.supportSpread * 0.35 : cfg.supportSpread * 1.1;
 
   return {
     x: clamp(view.ball.pos.x + upfield.x * along, f.minX * 0.95, f.maxX * 0.95),
     y: clamp(view.ball.pos.y + slot * cfg.supportSpread, f.minY * 0.85, f.maxY * 0.85),
+  };
+}
+
+function attackerTarget(view, intercept, ballToAim, cfg) {
+  const f = fieldOf(view);
+  const ballPoint = intercept.point;
+  const toPredictedBall = sub(ballPoint, view.self.pos);
+  const distToBall = len(toPredictedBall);
+  const approach = normalize(toPredictedBall);
+  const approachAlignment = dot(approach, ballToAim);
+
+  const radiusGap = (view.self.radius || 15) + (view.ball.radius || 10);
+  const setupDistance = Math.max(radiusGap * 0.9, cfg.strikeSetupDistance);
+  const setupPoint = sub(ballPoint, scale(ballToAim, setupDistance));
+
+  // Açı kötüyse topun arkasına kurul. Açı iyileşip mesafe kısalınca hedefi
+  // topun ötesine taşı; bot temas anında durmak yerine topu ileri taşır.
+  const driveRatio = clamp(
+    (approachAlignment - 0.45) / 0.45,
+    0,
+    1
+  ) * clamp(
+    1 - distToBall / cfg.strikeDriveThroughRange,
+    0,
+    1
+  );
+
+  const drivePoint = add(ballPoint, scale(ballToAim, radiusGap * 1.4));
+
+  return {
+    target: {
+      x: clamp(setupPoint.x + (drivePoint.x - setupPoint.x) * driveRatio, f.minX * 0.98, f.maxX * 0.98),
+      y: clamp(setupPoint.y + (drivePoint.y - setupPoint.y) * driveRatio, f.minY * 0.9, f.maxY * 0.9),
+    },
+    control: {
+      impactSpeed: cfg.strikeBadAngleImpactSpeed
+        + (cfg.strikeGoodAngleImpactSpeed - cfg.strikeBadAngleImpactSpeed) * driveRatio,
+    },
   };
 }
 
@@ -591,7 +633,7 @@ function navigate(self, target, cfg, memory = {}, opts = {}) {
   // Böylece uzakta hızlanır, yaklaşırken fazlalığı frenleyip topa kontrollü
   // bir hızla girer.
   const desiredSpeed = opts.strike
-    ? Math.min(cfg.strikeSpeed, cfg.strikeImpactSpeed + shedable)
+    ? Math.min(cfg.strikeSpeed, (opts.impactSpeed || cfg.strikeImpactSpeed) + shedable)
     : Math.min(cfg.cruiseSpeed, shedable);
 
   const desiredVel = scale(dir, desiredSpeed);
@@ -672,10 +714,11 @@ function decide(view, memory, config) {
   const ballToAim = aimKickDirection(toAim, view.ball.speed, activeCfg.kickStrength);
 
   let target;
+  let navControl = {};
   if (role === 'attacker') {
-    // Topun arkasına geç: vuruş yönü hedefe baksın
-    const standOff = (view.self.radius || 15) + (view.ball.radius || 10);
-    target = sub(intercept.point, scale(ballToAim, standOff * 0.95));
+    const attack = attackerTarget(view, intercept, ballToAim, activeCfg);
+    target = attack.target;
+    navControl = attack.control;
   } else if (role === 'defender') {
     target = defenderTarget(view, activeCfg);
   } else {
@@ -685,7 +728,10 @@ function decide(view, memory, config) {
   target = botOnlyNudgeTarget(view, target, activeCfg, memory);
 
   // Hücumcuysak topa hızla dalıyoruz; destekçiysek pozisyonda durmak istiyoruz.
-  const nav = navigate(view.self, target, activeCfg, memory, { strike: role === 'attacker' });
+  const nav = navigate(view.self, target, activeCfg, memory, {
+    strike: role === 'attacker',
+    impactSpeed: navControl.impactSpeed,
+  });
 
   // --- Vuruş kararı ---
   const toBall = sub(view.ball.pos, view.self.pos);
