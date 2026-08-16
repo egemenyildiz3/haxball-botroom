@@ -165,6 +165,7 @@ function handlePlayerChat(room, player, msg, deps) {
     CONFIG_ADMIN_CAN_GIVE_ADMIN = 0,
     botManager = null,
     autoManager = null,
+    chatFilter = null,
   } = deps;
 
   const text = String(msg || '').trim();
@@ -181,7 +182,20 @@ function handlePlayerChat(room, player, msg, deps) {
 
   console.log(`[CHAT] ${displayName} : ${text}`);
 
+  if (text.startsWith('/')) {
+    return true;
+  }
+
   if (!text.startsWith('!')) {
+    if (chatFilter && typeof chatFilter.check === 'function') {
+      const filterResult = chatFilter.check(player, text, { loggedInPlayers });
+      if (!filterResult.allowed) {
+        sendMsg(room, filterResult.message, player.id, filterResult.color || 0xFFCC00, 'bold');
+        console.log(`[CHAT-FILTER] ${displayName} engellendi: ${filterResult.reason}`);
+        return false;
+      }
+    }
+
     sendMsg(room, `💬 ${displayName}: ${text}`, null, 0xFFFFFF, 'normal');
     return false;
   }

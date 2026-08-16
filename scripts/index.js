@@ -27,6 +27,7 @@ const CONFIG_ALLOW_MULTIPLE_JOIN = Number(process.env.CONFIG_ALLOW_MULTIPLE_JOIN
 const BOT_NAME = process.env.HAXBALL_BOT_NAME || 'SpaceBot';
 const BOT_MAX = Number(process.env.HAXBALL_BOT_MAX || 4);
 const BOT_AVATAR = process.env.HAXBALL_BOT_AVATAR || '🤖';
+const BOT_AUTOSTART = Number(process.env.HAXBALL_BOT_AUTOSTART ?? 3);
 
 let SQL = null;
 let db = null;
@@ -114,4 +115,15 @@ async function startRoom() {
     CONFIG_ALLOW_MULTIPLE_JOIN,
     botManager,
   });
+
+  if (BOT_AUTOSTART > 0) {
+    const autoStartBots = setInterval(() => {
+      if (!botManager.isReady()) return;
+
+      clearInterval(autoStartBots);
+      const result = botManager.start(BOT_AUTOSTART);
+      const status = result.ok ? 'başlatıldı' : 'başlatılamadı';
+      console.log(`${getTimestamp()} 🤖 Otomatik bot başlatma ${status}: ${result.message}`);
+    }, 250);
+  }
 }

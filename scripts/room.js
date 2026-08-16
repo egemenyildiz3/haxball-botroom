@@ -2,6 +2,7 @@ const readline = require('readline');
 const { getCleanName } = require('./util');
 const { saveGameResult, logVisitedUser, isUserBlacklisted } = require('./db');
 const { sendMsg, checkDuplicateLogin, handleAutoLogin, handlePlayerChat } = require('./commands');
+const { createChatFilter } = require('./chatFilter');
 
 let lastTouchPlayer = null;
 let secondLastTouchPlayer = null;
@@ -34,6 +35,8 @@ let isRebalancing = false;
 // Otomatik yönetim: takım dağıtımı, maç başlatma ve maç sonu rotasyonu.
 // !oto kapat ile kapatılır; kapalıyken oda tamamen elle yönetilir.
 let autoManageEnabled = true;
+
+const chatFilter = createChatFilter();
 
 // BOTUN SESSİZCE KAPANMASINI ENGELLER (Global Hata Yakalayıcılar)
 process.on('uncaughtException', (err) => {
@@ -174,6 +177,7 @@ async function createRoom(room, deps) {
         CONFIG_ADMIN_CAN_GIVE_ADMIN,
         botManager,
         autoManager,
+        chatFilter,
       });
       return;
     }
@@ -414,6 +418,7 @@ async function createRoom(room, deps) {
       CONFIG_ADMIN_CAN_GIVE_ADMIN,
       botManager,
       autoManager,
+      chatFilter,
     });
   };
 
@@ -580,6 +585,7 @@ function handlePlayerLeave(room, player, { playerAssignments, playerJoinOrder, l
     afkPlayers.delete(player.id);
     manualPlacements.delete(player.id);
     playerAuths.delete(String(player.id));
+    chatFilter.forget(player.id);
   }
 
   if (typeof room.getPlayerList !== 'function') return;
