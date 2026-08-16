@@ -51,6 +51,8 @@ const PROFANITY_PATTERNS = [
 const COMPACT_PROFANITY = [
   'amk',
   'aq',
+  'ananı',
+  'yarram',
   'amq',
   'siktir',
   'sikerim',

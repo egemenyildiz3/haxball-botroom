@@ -15,8 +15,9 @@ function attachTerminalInput(room, state, deps, autoManager) {
     if (!text) return;
 
     if (text.startsWith('/')) {
-      const cmd = text.toLowerCase();
-      if (cmd === '/clear_bans' || cmd === '/clearbans') {
+      const [cmd] = text.split(/\s+/, 1);
+      const command = cmd.toLowerCase();
+      if (command === '/clear_bans' || command === '/clearbans') {
         try {
           if (typeof room.clearBans === 'function') {
             room.clearBans();
@@ -27,19 +28,47 @@ function attachTerminalInput(room, state, deps, autoManager) {
         } catch (e) {
           console.warn('Banlar kaldırılamadı:', e.message);
         }
-      } else if (cmd === '/start') {
+      } else if (command === '/start') {
         try {
           room.startGame();
           console.log('⚡ [CONSOLE]: Oyun başlatıldı.');
         } catch (e) {
           console.warn('Oyun başlatılamadı:', e.message);
         }
-      } else if (cmd === '/stop') {
+      } else if (command === '/stop') {
         try {
           room.stopGame();
           console.log('⚡ [CONSOLE]: Oyun durduruldu.');
         } catch (e) {
           console.warn('Oyun durdurulamadı:', e.message);
+        }
+      } else if (command === '/set_password') {
+        const password = text.slice(cmd.length).trim();
+        if (!password) {
+          console.warn('⚡ [CONSOLE]: Kullanım: /set_password <şifre>');
+          return;
+        }
+
+        try {
+          if (typeof room.setPassword === 'function') {
+            room.setPassword(password);
+            console.log('⚡ [CONSOLE]: Oda şifresi ayarlandı.');
+          } else {
+            console.warn('⚡ [CONSOLE]: room.setPassword() metodu bulunamadı.');
+          }
+        } catch (e) {
+          console.warn('Oda şifresi ayarlanamadı:', e.message);
+        }
+      } else if (command === '/clear_password') {
+        try {
+          if (typeof room.setPassword === 'function') {
+            room.setPassword(null);
+            console.log('⚡ [CONSOLE]: Oda şifresi kaldırıldı.');
+          } else {
+            console.warn('⚡ [CONSOLE]: room.setPassword() metodu bulunamadı.');
+          }
+        } catch (e) {
+          console.warn('Oda şifresi kaldırılamadı:', e.message);
         }
       } else {
         console.log(`⚠️ Bilinmeyen konsol komutu: ${text}`);
