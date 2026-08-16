@@ -13,6 +13,8 @@
 const { decide, configFromPhysics, makePersonality, describePersonality } = require('./brain');
 
 const FIRST_BOT_ID = 500; // gerçek oyuncu id'leriyle çakışmasın diye yüksek başlıyoruz
+const BOT_CONN_PREFIX = 'bot-conn-';
+const BOT_AUTH_PREFIX = 'bot-auth-';
 
 const boundsCache = new WeakMap();
 
@@ -93,6 +95,19 @@ function createBotManager(options = {}) {
       if (bot.id === playerId) return true;
     }
     return false;
+  }
+
+  function isBotAuth(value) {
+    return typeof value === 'string' && value.startsWith(BOT_AUTH_PREFIX);
+  }
+
+  function isBotConn(value) {
+    return typeof value === 'string' && value.startsWith(BOT_CONN_PREFIX);
+  }
+
+  function isProtectedBotIdentity(player) {
+    if (!player) return false;
+    return isBotPlayer(player.id) || isBotAuth(player.auth) || isBotConn(player.conn);
   }
 
   /** Ham oda durumundan brain.js'in beklediği görünümü kurar. */
@@ -206,7 +221,7 @@ function createBotManager(options = {}) {
 
     try {
       // conn/auth benzersiz olsun ki host'un çift giriş kontrolüne takılmasın
-      raw.fakePlayerJoin(id, name, 'tr', avatar, `bot-conn-${id}`, `bot-auth-${id}`);
+      raw.fakePlayerJoin(id, name, 'tr', avatar, `${BOT_CONN_PREFIX}${id}`, `${BOT_AUTH_PREFIX}${id}`);
     } catch (err) {
       log(`🤖 [BOT] ${name} eklenemedi: ${err.message}`);
       return false;
@@ -247,6 +262,9 @@ function createBotManager(options = {}) {
 
     isExpectedBotName,
     isBotPlayer,
+    isBotAuth,
+    isBotConn,
+    isProtectedBotIdentity,
 
     count() {
       return bots.size;
@@ -283,6 +301,14 @@ function createBotManager(options = {}) {
       const stopped = bots.size;
       for (const bot of [...bots.values()]) removeOne(bot);
       return { ok: true, message: `🤖 ${stopped} bot sahadan çıkarıldı.` };
+    },
+
+    stopLast() {
+      if (bots.size === 0) return { ok: false, message: 'Şu anda sahada bot yok.' };
+
+      const bot = [...bots.values()].at(-1);
+      removeOne(bot);
+      return { ok: true, message: `🤖 ${bot.name} sahadan çıkarıldı. (toplam ${bots.size})` };
     },
 
     status() {

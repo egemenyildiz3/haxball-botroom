@@ -1,0 +1,195 @@
+const { sendMsg } = require('./helpers');
+
+function handleAutoLogin(room, player, { db, DB_FILE, loggedInPlayers, persistDatabase }) {
+  if (!player || typeof player.id === 'undefined') return;
+
+  const cleanedName = player.name ? player.name.replace(/^\[\d{3}\]\s*/, '').trim() : '';
+  const playerToken = player.auth || player.conn || '';
+
+  console.log(`[BACKEND-DB] AutoLogin sorgusu başlatıldı -> Kullanıcı: "${cleanedName}" | Token: "${playerToken || 'YOK'}"`);
+
+  try {
+    const stmt = db.prepare('SELECT username, password, auth_key, isadmin FROM users WHERE username = ?');
+    stmt.bind([cleanedName]);
+
+    if (stmt.step()) {
+      const row = stmt.getAsObject();
+      const dbAuth = row.auth_key || '';
+
+      if ((playerToken && dbAuth && playerToken === dbAuth) || dbAuth === '' || !dbAuth) {
+        loggedInPlayers.set(player.id, { username: cleanedName, isadmin: row.isadmin });
+
+        if (playerToken && playerToken !== dbAuth) {
+          console.log(`[BACKEND-DB] Auth Key güncellemesi yapılıyor -> Kullanıcı: "${cleanedName}" | Yeni Token: "${playerToken}"`);
+          db.run('UPDATE users SET auth_key = ? WHERE username = ?', [playerToken, cleanedName]);
+          persistDatabase(db, DB_FILE);
+          console.log(`[BACKEND-DB] Auth Key veritabanına başarıyla işlendi -> "${cleanedName}"`);
+        } else {
+          console.log(`[BACKEND-DB] Otomatik giriş doğrulandı -> Kullanıcı: "${cleanedName}"`);
+        }
+
+        if (row.isadmin === 1 && typeof room.setPlayerAdmin === 'function') {
+          room.setPlayerAdmin(player.id, true);
+          console.log(`[BACKEND-DB] Admin yetkisi atandı -> Kullanıcı: "${cleanedName}"`);
+        }
+
+        sendMsg(room, `🟢 Otomatik giriş yapıldı! Hoş geldin, ${cleanedName}.`, player.id, 0x00FF7F, 'bold');
+      } else {
+        console.log(`[BACKEND-DB] Token eşleşmedi (Sadece şifre ile giriş yapabilir) -> Kullanıcı: "${cleanedName}"`);
+        sendMsg(room, `🟡 Kayıtlı hesap tespit edildi. Giriş yapmak için: !giriş / !giris <şifre>`, player.id, 0xFFCC00, 'normal');
+      }
+    } else {
+      console.log(`[BACKEND-DB] Kayıtsız kullanıcı tespit edildi -> Kullanıcı: "${cleanedName}"`);
+      sendMsg(room, `ℹ️ Odaya hoş geldiniz ${cleanedName}! Kayıt olmak için: !kaydol <şifre>`, player.id, 0x00BFFF, 'normal');
+    }
+    stmt.free();
+  } catch (err) {
+    console.warn('[BACKEND-DB] Veritabanı hatası (AutoLogin):', err.message);
+    sendMsg(room, `❌ Veritabanı hatası oluştu. Lütfen yöneticiye bildirin.`, player.id, 0xFF5555, 'bold');
+  }
+}
+
+function handleStats(ctx) {
+  const { room, player, cleanedName, loggedInPlayers, db } = ctx;
+  if (!loggedInPlayers.has(player.id)) {
+    sendMsg(room, '⚠️ İstatistiklerinizi görmek için önce giriş yapmalısınız! (!kaydol <şifre> veya !giris <şifre>)', player.id, 0xFFCC00, 'bold');
+    return false;
+  }
+
+  try {
+    const stmt = db.prepare('SELECT goals, assists, wins, losses FROM users WHERE username = ?');
+    stmt.bind([cleanedName]);
+
+    if (stmt.step()) {
+      const row = stmt.getAsObject();
+      const goals = row.goals || 0;
+      const assists = row.assists || 0;
+      const wins = row.wins || 0;
+      const losses = row.losses || 0;
+      const totalGames = wins + losses;
+      const winRate = totalGames > 0 ? ((wins / totalGames) * 100).toFixed(1) : '0.0';
+
+      sendMsg(
+        room,
+        `📊 [${cleanedName}] İstatistikler | ⚽ Gol: ${goals} | 🅰️ Asist: ${assists} | 🏆 Galibiyet: ${wins} | ❌ Mağlubiyet: ${losses} | 📈 Win %: %${winRate}`,
+        player.id,
+        0x00BFFF,
+        'bold'
+      );
+    } else {
+      sendMsg(room, '❌ İstatistikleriniz bulunamadı.', player.id, 0xFF5555, 'bold');
+    }
+    stmt.free();
+  } catch (err) {
+    console.warn('[BACKEND-DB] Stats sorgu hatası:', err.message);
+    sendMsg(room, '❌ İstatistikler yüklenirken bir hata oluştu.', player.id, 0xFF5555, 'bold');
+  }
+  return false;
+}
+
+function handleRegister(ctx) {
+  const { room, player, args, cleanedName, playerToken, loggedInPlayers, db, DB_FILE, persistDatabase } = ctx;
+  if (loggedInPlayers.has(player.id)) {
+    sendMsg(room, '🟢 Zaten oturum açmış durumdasınız!', player.id, 0x00FF7F, 'bold');
+    return false;
+  }
+
+  const password = args[1];
+  if (!password) {
+    sendMsg(room, '❌ Kullanım: !kaydol <şifre>', player.id, 0xFF5555, 'bold');
+    return false;
+  }
+
+  try {
+    console.log(`[BACKEND-DB] Kullanıcı kayıt kontrolü yapılıyor -> Kullanıcı: "${cleanedName}"`);
+    const stmt = db.prepare('SELECT username FROM users WHERE username = ?');
+    stmt.bind([cleanedName]);
+
+    if (stmt.step()) {
+      console.log(`[BACKEND-DB] Kayıt engellendi (Kullanıcı zaten mevcut) -> "${cleanedName}"`);
+      sendMsg(room, '⚠️ Bu kullanıcı adı zaten kayıtlı. Giriş yapmak için: !giriş / !giris <şifre>', player.id, 0xFFCC00, 'bold');
+      stmt.free();
+    } else {
+      stmt.free();
+      const playerIp = player.ip || '';
+      console.log(`[BACKEND-DB] Yeni kullanıcı ekleniyor -> Kullanıcı: "${cleanedName}" | Token: "${playerToken}"`);
+
+      db.run(
+        'INSERT INTO users (username, password, auth_key, registered_at, last_ip, isadmin, goals, assists, wins, losses) VALUES (?, ?, ?, ?, ?, 0, 0, 0, 0, 0)',
+        [cleanedName, password, playerToken, new Date().toISOString(), playerIp]
+      );
+
+      persistDatabase(db, DB_FILE);
+      loggedInPlayers.set(player.id, { username: cleanedName, isadmin: 0 });
+
+      console.log(`[BACKEND-DB] Yeni kullanıcı başarıyla kaydedildi ve dosyaya yazıldı -> "${cleanedName}"`);
+      sendMsg(room, `🎉 Hesabınız oluşturuldu ve giriş yapıldı!`, player.id, 0x00FF7F, 'bold');
+    }
+  } catch (err) {
+    console.warn('[BACKEND-DB] Kayıt hatası:', err.message);
+    sendMsg(room, '❌ Hesap kaydedilirken bir hata oluştu.', player.id, 0xFF5555, 'bold');
+  }
+  return false;
+}
+
+function handleLogin(ctx) {
+  const { room, player, args, cleanedName, playerToken, loggedInPlayers, db, DB_FILE, persistDatabase } = ctx;
+  if (loggedInPlayers.has(player.id)) {
+    sendMsg(room, '🟢 Zaten giriş yapmış durumdasınız!', player.id, 0x00FF7F, 'bold');
+    return false;
+  }
+
+  const password = args[1];
+  if (!password) {
+    sendMsg(room, '❌ Kullanım: !giriş / !giris <şifre>', player.id, 0xFF5555, 'bold');
+    return false;
+  }
+
+  try {
+    console.log(`[BACKEND-DB] Manuel giriş kontrolü -> Kullanıcı: "${cleanedName}"`);
+    const stmt = db.prepare('SELECT password, isadmin FROM users WHERE username = ?');
+    stmt.bind([cleanedName]);
+
+    if (stmt.step()) {
+      const row = stmt.getAsObject();
+      if (row.password === password) {
+        console.log(`[BACKEND-DB] Şifre doğru. Auth key güncelleniyor -> "${cleanedName}"`);
+        db.run('UPDATE users SET auth_key = ? WHERE username = ?', [playerToken || null, cleanedName]);
+        persistDatabase(db, DB_FILE);
+
+        loggedInPlayers.set(player.id, { username: cleanedName, isadmin: row.isadmin });
+
+        if (row.isadmin === 1 && typeof room.setPlayerAdmin === 'function') {
+          room.setPlayerAdmin(player.id, true);
+          console.log(`[BACKEND-DB] Admin yetkisi aktifleştirildi -> "${cleanedName}"`);
+        }
+
+        console.log(`[BACKEND-DB] Manuel giriş başarılı -> "${cleanedName}"`);
+        sendMsg(room, `🔓 Giriş başarılı! Hoş geldin, ${cleanedName}.`, player.id, 0x00FF7F, 'bold');
+      } else {
+        console.log(`[BACKEND-DB] Manuel giriş başarısız (Hatalı Şifre) -> "${cleanedName}"`);
+        sendMsg(room, '❌ Hatalı şifre.', player.id, 0xFF5555, 'bold');
+      }
+    } else {
+      console.log(`[BACKEND-DB] Manuel giriş başarısız (Kullanıcı Bulunamadı) -> "${cleanedName}"`);
+      sendMsg(room, '⚠️ Hesap bulunamadı. Kayıt olmak için: !kaydol <şifre>', player.id, 0xFFCC00, 'bold');
+    }
+    stmt.free();
+  } catch (err) {
+    console.warn('[BACKEND-DB] Giriş hatası:', err.message);
+    sendMsg(room, '❌ Giriş yapılırken veritabanı hatası oluştu.', player.id, 0xFF5555, 'bold');
+  }
+  return false;
+}
+
+function routeAccountCommand(ctx) {
+  if (ctx.command === '!s' || ctx.command === '!stats' || ctx.command === '!istatistik') return handleStats(ctx);
+  if (ctx.command === '!kaydol' || ctx.command === '!kayit') return handleRegister(ctx);
+  if (ctx.command === '!giris') return handleLogin(ctx);
+  return null;
+}
+
+module.exports = {
+  handleAutoLogin,
+  routeAccountCommand,
+};

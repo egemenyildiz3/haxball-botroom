@@ -1,5 +1,3 @@
-const path = require('path');
-
 function getTimestamp() {
   if (typeof Temporal !== 'undefined' && typeof Temporal.Now !== 'undefined') {
     return Temporal.Now.zonedDateTimeISO('Europe/Amsterdam').toString({ fractionalSecondDigits: 3, timeZoneName: 'never' });
