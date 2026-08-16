@@ -50,6 +50,7 @@ async function createRoom(room, deps) {
     playerJoinOrder,
     leavingIntentions,
     persistDatabase,
+    sendMsg,
     ADMIN_PASSWORD,
     getTimestamp,
     sleep,
@@ -162,7 +163,8 @@ async function createRoom(room, deps) {
   };
 
   room.onGameStop = function () {
-    handleGameStop(room, state, roomDeps);
+    handleGameStop(room, state, roomDeps)
+      .catch((err) => console.warn('[GAME STOP] Maç sonu işlemleri başarısız:', err.message));
   };
 
   await sleep(600);

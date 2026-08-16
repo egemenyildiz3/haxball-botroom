@@ -3,6 +3,8 @@ const { desiredBotCount, isBotPlayer } = require('./botPolicy');
 const REBALANCE_START_DELAY_MS = 700;
 const REBALANCE_MOVE_DELAY_MS = 350;
 const REBALANCE_END_DELAY_MS = 500;
+const START_RETRY_DELAY_MS = 1000;
+const START_RETRY_COUNT = 5;
 
 const fallbackSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -15,25 +17,36 @@ function lockTeams(room) {
 function checkAndStartGame(room, state) {
   if (!state.autoManageEnabled) return;
   if (typeof room.getPlayerList !== 'function') return;
+  if (state.startGamePending) return;
 
+  state.startGamePending = true;
+  tryStartGame(room, state, START_RETRY_COUNT);
+}
+
+function tryStartGame(room, state, retriesLeft) {
   const activePlayers = room.getPlayerList().filter((p) => p.id !== 0 && (p.team === 1 || p.team === 2));
 
   if (activePlayers.length >= 1 && !state.currentGame && typeof room.startGame === 'function') {
     try {
       room.startGame();
+      state.startGamePending = false;
+      return;
     } catch (e) {
-      console.warn('Oyun hemen başlatılamadı, 1.5 saniye sonra tekrar deneniyor:', e.message);
-      setTimeout(() => {
-        try {
-          if (!state.currentGame && typeof room.startGame === 'function') {
-            room.startGame();
-          }
-        } catch (err) {
-          console.warn('Yeniden deneme başarısız oldu:', err.message);
-        }
-      }, 1500);
+      if (retriesLeft <= 0) {
+        state.startGamePending = false;
+        console.warn('Oyun başlatılamadı, yeniden deneme hakkı bitti:', e.message);
+        return;
+      }
+      console.warn(`Oyun başlatılamadı, tekrar denenecek (${retriesLeft}):`, e.message);
     }
   }
+
+  if (retriesLeft <= 0 || state.currentGame || activePlayers.length === 0) {
+    state.startGamePending = false;
+    return;
+  }
+
+  setTimeout(() => tryStartGame(room, state, retriesLeft - 1), START_RETRY_DELAY_MS);
 }
 
 async function rebalanceTeams(room, state, { playerJoinOrder, botManager, sleep = fallbackSleep }) {

@@ -12,6 +12,7 @@ function createRoomState() {
     manualPlacements: new Map(),
     isRebalancing: false,
     rebalanceRequested: false,
+    startGamePending: false,
     autoManageEnabled: true,
     chatFilter: createChatFilter(),
   };
