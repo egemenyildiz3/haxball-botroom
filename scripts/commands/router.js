@@ -37,7 +37,9 @@ function handlePlayerChat(room, player, msg, deps) {
     if (deps.chatFilter && typeof deps.chatFilter.check === 'function') {
       const filterResult = deps.chatFilter.check(player, text, { loggedInPlayers: deps.loggedInPlayers });
       if (!filterResult.allowed) {
-        sendMsg(room, filterResult.message, player.id, filterResult.color || 0xFFCC00, 'bold');
+        if (!filterResult.silent) {
+          sendMsg(room, filterResult.message, player.id, filterResult.color || 0xFFCC00, 'bold');
+        }
         console.log(`[CHAT-FILTER] ${displayName} engellendi: ${filterResult.reason}`);
         return false;
       }

@@ -114,6 +114,8 @@ function containsProfanity(text) {
 
 function createChatFilter({ cooldownMs = CHAT_COOLDOWN_MS } = {}) {
   const lastMessageAt = new Map();
+  const lastCooldownWarningAt = new Map();
+  const lastProfanityWarningAt = new Map();
 
   function check(player, text, { loggedInPlayers, now = Date.now() } = {}) {
     if (!player || typeof player.id === 'undefined') return { allowed: true };
@@ -130,6 +132,16 @@ function createChatFilter({ cooldownMs = CHAT_COOLDOWN_MS } = {}) {
     }
 
     if (containsProfanity(text)) {
+      const lastWarning = lastProfanityWarningAt.get(player.id);
+      if (Number.isFinite(lastWarning) && now - lastWarning < cooldownMs) {
+        return {
+          allowed: false,
+          reason: 'profanity-silent',
+          silent: true,
+        };
+      }
+
+      lastProfanityWarningAt.set(player.id, now);
       return {
         allowed: false,
         reason: 'profanity',
@@ -146,6 +158,16 @@ function createChatFilter({ cooldownMs = CHAT_COOLDOWN_MS } = {}) {
 
     const remainingMs = cooldownMs - (now - last);
     if (remainingMs > 0) {
+      const lastWarning = lastCooldownWarningAt.get(player.id);
+      if (Number.isFinite(lastWarning) && now - lastWarning < cooldownMs) {
+        return {
+          allowed: false,
+          reason: 'cooldown-silent',
+          silent: true,
+        };
+      }
+
+      lastCooldownWarningAt.set(player.id, now);
       return {
         allowed: false,
         reason: 'cooldown',
@@ -155,11 +177,15 @@ function createChatFilter({ cooldownMs = CHAT_COOLDOWN_MS } = {}) {
     }
 
     lastMessageAt.set(player.id, now);
+    lastCooldownWarningAt.delete(player.id);
+    lastProfanityWarningAt.delete(player.id);
     return { allowed: true };
   }
 
   function forget(playerId) {
     lastMessageAt.delete(playerId);
+    lastCooldownWarningAt.delete(playerId);
+    lastProfanityWarningAt.delete(playerId);
   }
 
   return { check, forget };

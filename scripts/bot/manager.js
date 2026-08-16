@@ -137,7 +137,9 @@ function createBotManager(options = {}) {
       radius: p.disc.radius,
     });
 
-    const others = raw.players.filter((p) => p.disc && p.team && p.id !== bot.id);
+    const onPitch = raw.players.filter((p) => p.disc && p.team && (p.team.id === 1 || p.team.id === 2));
+    const others = onPitch.filter((p) => p.id !== bot.id);
+    const botOnly = onPitch.length > 0 && onPitch.every((p) => isBotPlayer(p.id));
 
     // Saha uzunluğu = kaleler arası mesafe. stadium.width/height KAMERA
     // ölçüsüdür (Spacebounce'ta 1500x1000) ama gerçek saha 2600x1500.
@@ -159,6 +161,7 @@ function createBotManager(options = {}) {
       oppGoal: { p0: oppGoal.p0, p1: oppGoal.p1 },
       stadium: { width, height },
       field,
+      botOnly,
     };
   }
 

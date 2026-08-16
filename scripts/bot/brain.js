@@ -79,6 +79,8 @@ const DEFAULTS = {
   // --- Konumlanma ---
   predictTicks: 90, // topu kaç tick ileri tahmin edelim
   supportSpread: 220, // destek oyuncusunun yanal açılma mesafesi
+  botOnlyStuckTicks: 80, // sadece botlar varken yatay kilidi kaç tick sonra kır
+  botOnlyNudge: 90, // kilit açmak için hedefe eklenecek küçük dikey sapma
 
   // Savunmacının kale-top ekseninde nerede duracağı (0 = kalede, 1 = topun üstünde).
   // Defans oyuncusu kaleci gibi çizgide beklemesin; tehlikede geri gelsin ama
@@ -532,6 +534,38 @@ function supportTarget(view, cfg, slot) {
   };
 }
 
+function botOnlyNudgeTarget(view, target, cfg, memory) {
+  if (!view.botOnly) {
+    memory.botOnlyFlatTicks = 0;
+    memory.botOnlyNudgeSide = 0;
+    return target;
+  }
+
+  const ballSpeed = len(view.ball.speed || { x: 0, y: 0 });
+  const flatBall = Math.abs((view.ball.speed || {}).y || 0) < 0.08;
+  const flatSelf = Math.abs((view.self.speed || {}).y || 0) < 0.08;
+  const flatTarget = Math.abs(target.y - view.self.pos.y) < 12;
+  const ballNearMiddle = Math.abs(view.ball.pos.y) < (fieldOf(view).maxY || 750) * 0.35;
+
+  if (ballSpeed < 1.2 && flatBall && flatSelf && flatTarget && ballNearMiddle) {
+    memory.botOnlyFlatTicks = (memory.botOnlyFlatTicks || 0) + 1;
+  } else {
+    memory.botOnlyFlatTicks = 0;
+  }
+
+  if (memory.botOnlyFlatTicks < cfg.botOnlyStuckTicks) return target;
+
+  if (!memory.botOnlyNudgeSide) {
+    memory.botOnlyNudgeSide = view.self.id % 2 === 0 ? 1 : -1;
+  }
+
+  const f = fieldOf(view);
+  return {
+    x: target.x,
+    y: clamp(target.y + memory.botOnlyNudgeSide * cfg.botOnlyNudge, f.minY * 0.85, f.maxY * 0.85),
+  };
+}
+
 // --- Sürüş kontrolü ------------------------------------------------------
 
 /**
@@ -647,6 +681,8 @@ function decide(view, memory, config) {
   } else {
     target = supportTarget(view, activeCfg, slot);
   }
+
+  target = botOnlyNudgeTarget(view, target, activeCfg, memory);
 
   // Hücumcuysak topa hızla dalıyoruz; destekçiysek pozisyonda durmak istiyoruz.
   const nav = navigate(view.self, target, activeCfg, memory, { strike: role === 'attacker' });
