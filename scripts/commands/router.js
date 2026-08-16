@@ -34,8 +34,10 @@ function handlePlayerChat(room, player, msg, deps) {
   }
 
   if (!text.startsWith('!')) {
+    const chatText = text.toLocaleLowerCase('tr-TR');
+
     if (deps.chatFilter && typeof deps.chatFilter.check === 'function') {
-      const filterResult = deps.chatFilter.check(player, text, { loggedInPlayers: deps.loggedInPlayers });
+      const filterResult = deps.chatFilter.check(player, chatText, { loggedInPlayers: deps.loggedInPlayers });
       if (!filterResult.allowed) {
         if (!filterResult.silent) {
           sendMsg(room, filterResult.message, player.id, filterResult.color || 0xFFCC00, 'bold');
@@ -45,7 +47,7 @@ function handlePlayerChat(room, player, msg, deps) {
       }
     }
 
-    sendMsg(room, `💬 ${displayName}: ${text}`, null, 0xFFFFFF, 'normal');
+    sendMsg(room, `💬 ${displayName}: ${chatText}`, null, 0xFFFFFF, 'normal');
     return false;
   }
 

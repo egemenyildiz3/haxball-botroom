@@ -64,7 +64,12 @@ db-visited_users:
 db-blacklist:
 	docker exec -it $(CONTAINER) node -e "const fs = require('fs'); const initSqlJs = require('sql.js'); initSqlJs().then(SQL => { const db = new SQL.Database(fs.readFileSync('./db/haxball-results.sqlite')); const stmt = db.prepare('SELECT * FROM blacklisted_users'); const rows = []; while (stmt.step()) rows.push(stmt.getAsObject()); stmt.free(); console.table(rows); });"
 
+db-users-today:
+	docker exec -it $(CONTAINER) node -e "const fs = require('fs'); const initSqlJs = require('sql.js'); initSqlJs().then(SQL => { const db = new SQL.Database(fs.readFileSync('./db/haxball-results.sqlite')); const stmt = db.prepare(\"SELECT * FROM users WHERE date(last_visited_at) = date('now')\"); const rows = []; while (stmt.step()) rows.push(stmt.getAsObject()); stmt.free(); console.table(rows); });"
 
+db-visited_users-today:
+	docker exec -it $(CONTAINER) node -e "const fs = require('fs'); const initSqlJs = require('sql.js'); initSqlJs().then(SQL => { const db = new SQL.Database(fs.readFileSync('./db/haxball-results.sqlite')); const stmt = db.prepare(\"SELECT * FROM visited_users WHERE date(last_visited_at) = date('now')\"); const rows = []; while (stmt.step()) rows.push(stmt.getAsObject()); stmt.free(); console.table(rows); });"
+	
 # --- DANGER ZONE ---
 
 db-make_admin: #USERNAME=player1
