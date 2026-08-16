@@ -1,4 +1,5 @@
 const CHAT_COOLDOWN_MS = 3000;
+const CHAT_MAX_LENGTH = 60;
 
 const PROFANITY_PATTERNS = [
   /\bamk\b/,
@@ -119,6 +120,15 @@ function createChatFilter({ cooldownMs = CHAT_COOLDOWN_MS } = {}) {
     if (isPrivileged(player, loggedInPlayers)) return { allowed: true };
     if (isCommand(text)) return { allowed: true };
 
+    if (String(text || '').length > CHAT_MAX_LENGTH) {
+      return {
+        allowed: false,
+        reason: 'length',
+        message: `⚠️ Mesaj çok uzun. En fazla ${CHAT_MAX_LENGTH} karakter yazabilirsin.`,
+        color: 0xFFCC00,
+      };
+    }
+
     if (containsProfanity(text)) {
       return {
         allowed: false,
@@ -157,6 +167,7 @@ function createChatFilter({ cooldownMs = CHAT_COOLDOWN_MS } = {}) {
 
 module.exports = {
   CHAT_COOLDOWN_MS,
+  CHAT_MAX_LENGTH,
   createChatFilter,
   containsProfanity,
   isCommand,
