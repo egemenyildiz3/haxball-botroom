@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "haxball.js": "^5.0.7",
+    "node-haxball": "^2.3.1",
     "sql.js": "^1.14.1"
   },
   "engines": {

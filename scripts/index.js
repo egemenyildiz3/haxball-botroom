@@ -1,10 +1,11 @@
 const fs = require('fs');
 const path = require('path');
-const HaxballJS = require('haxball.js').default;
+const { createHostRoom } = require('./bot/hostRoom');
 
 const { getTimestamp, sanitizeStadiumFileContents, sleep } = require('./util');
 const { loadOrCreateDatabase, persistDatabase, initDatabase } = require('./db');
 const { createRoom } = require('./room');
+const { createBotManager } = require('./bot/manager');
 
 const MAP_FILE = path.join(__dirname, '..', 'maps', 'Spacebounce.hbs');
 const DB_FILE = path.join(__dirname, '..', 'db', 'haxball-results.sqlite');
@@ -21,6 +22,11 @@ const ADMIN_PASSWORD = process.env.HAXBALL_ADMIN_PASSWORD;
 const CONFIG_ADMIN_CAN_BAN = Number(process.env.CONFIG_ADMIN_CAN_BAN ?? 1);
 const CONFIG_ADMIN_CAN_GIVE_ADMIN = Number(process.env.CONFIG_ADMIN_CAN_GIVE_ADMIN ?? 0);
 const CONFIG_ALLOW_MULTIPLE_JOIN = Number(process.env.CONFIG_ALLOW_MULTIPLE_JOIN ?? 0);
+
+// Yapay zeka bot ayarları
+const BOT_NAME = process.env.HAXBALL_BOT_NAME || 'SpaceBot';
+const BOT_MAX = Number(process.env.HAXBALL_BOT_MAX || 4);
+const BOT_AVATAR = process.env.HAXBALL_BOT_AVATAR || '🤖';
 
 let SQL = null;
 let db = null;
@@ -55,8 +61,17 @@ async function startRoom() {
   initDatabase(db);
   persistDatabase(db, DB_FILE);
 
-  const HBInit = await HaxballJS();
-  const room = HBInit({
+  const botManager = createBotManager({ botName: BOT_NAME, maxBots: BOT_MAX, avatar: BOT_AVATAR });
+
+  // Host kapanırken bot process'leri ortada kalmasın
+  const cleanupBots = () => botManager.stopAll();
+  process.on('exit', cleanupBots);
+  process.on('SIGTERM', () => { cleanupBots(); process.exit(0); });
+  process.on('SIGINT', () => { cleanupBots(); process.exit(0); });
+
+  // Oda node-haxball ile açılıyor (arayüz haxball.js ile aynı). Sebebi:
+  // bellek içi bot oyuncuları sadece bu kütüphanenin host modunda mümkün.
+  const host = createHostRoom({
     roomName: ROOM_NAME,
     playerName: 'Host-admin',
     maxPlayers: MAX_PLAYERS,
@@ -65,6 +80,18 @@ async function startRoom() {
     token: TOKEN,
     geo: { code: 'tr', lat: 37.0208, lon: 30.8541 },
   });
+
+  const room = host.room;
+
+  // Ham oda nesnesi onOpen ile geliyor; hazır olunca botları bağla.
+  const waitForRaw = setInterval(() => {
+    const raw = host.getRaw();
+    if (raw) {
+      clearInterval(waitForRaw);
+      botManager.attach(raw, host.api);
+      console.log(`${getTimestamp()} 🤖 Bot motoru hazır (!bot aç ile kullanılabilir).`);
+    }
+  }, 250);
 
   await createRoom(room, {
     ROOM_NAME,
@@ -85,5 +112,6 @@ async function startRoom() {
     CONFIG_ADMIN_CAN_BAN,
     CONFIG_ADMIN_CAN_GIVE_ADMIN,
     CONFIG_ALLOW_MULTIPLE_JOIN,
+    botManager,
   });
 }

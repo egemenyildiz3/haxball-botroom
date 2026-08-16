@@ -163,6 +163,8 @@ function handlePlayerChat(room, player, msg, deps) {
     rebalanceTeams,
     CONFIG_ADMIN_CAN_BAN = 1,
     CONFIG_ADMIN_CAN_GIVE_ADMIN = 0,
+    botManager = null,
+    autoManager = null,
   } = deps;
 
   const text = String(msg || '').trim();
@@ -486,6 +488,76 @@ function handlePlayerChat(room, player, msg, deps) {
     } catch (err) {
       sendMsg(room, `❌ Oyuncu atılamadı: ${err.message}`, player.id, 0xFF5555, 'bold');
     }
+  } else if (command === '!oto' || command === '!otomatik' || command === '!auto') {
+    if (!player.admin && !isSuperAdmin) {
+      sendMsg(room, '❌ Bu komutu kullanmak için yönetici olmalısın.', player.id, 0xFF5555, 'bold');
+      return false;
+    }
+
+    if (!autoManager) {
+      sendMsg(room, '❌ Otomatik yönetim denetimi bu odada aktif değil.', player.id, 0xFF5555, 'bold');
+      return false;
+    }
+
+    const sub = normalizeCmd(args[1] || 'durum');
+
+    if (sub === 'kapat' || sub === 'off' || sub === 'kapali') {
+      if (!autoManager.isEnabled()) {
+        sendMsg(room, 'ℹ️ Otomatik yönetim zaten kapalı.', player.id, 0xFFCC00, 'normal');
+        return false;
+      }
+      autoManager.disable();
+      sendMsg(
+        room,
+        `🔒 Otomatik yönetim KAPATILDI (${displayName}). Artık takım dağıtımı, otomatik maç başlatma ve maç sonu rotasyonu yapılmayacak.`,
+        null,
+        0xFFCC00,
+        'bold'
+      );
+      console.log(`[AUTO] Otomatik yönetim kapatıldı -> ${cleanedName}`);
+    } else if (sub === 'ac' || sub === 'on' || sub === 'acik') {
+      if (autoManager.isEnabled()) {
+        sendMsg(room, 'ℹ️ Otomatik yönetim zaten açık.', player.id, 0xFFCC00, 'normal');
+        return false;
+      }
+      autoManager.enable();
+      sendMsg(
+        room,
+        `🔓 Otomatik yönetim AÇILDI (${displayName}). Takım dağıtımı ve otomatik maç başlatma yeniden devrede.`,
+        null,
+        0x00FF7F,
+        'bold'
+      );
+      console.log(`[AUTO] Otomatik yönetim açıldı -> ${cleanedName}`);
+    } else if (sub === 'durum' || sub === 'status') {
+      sendMsg(room, autoManager.status(), player.id, 0x00BFFF, 'normal');
+    } else {
+      sendMsg(room, '❌ Kullanım: !oto aç | !oto kapat | !oto durum', player.id, 0xFF5555, 'bold');
+    }
+  } else if (command === '!bot') {
+    if (!player.admin && !isSuperAdmin) {
+      sendMsg(room, '❌ Bot kontrolü için yönetici olmalısın.', player.id, 0xFF5555, 'bold');
+      return false;
+    }
+
+    if (!botManager) {
+      sendMsg(room, '❌ Bot yöneticisi bu odada aktif değil.', player.id, 0xFF5555, 'bold');
+      return false;
+    }
+
+    const sub = normalizeCmd(args[1] || 'durum');
+
+    if (sub === 'ac' || sub === 'on' || sub === 'baslat') {
+      const result = botManager.start(args[2] || 1);
+      sendMsg(room, result.message, null, result.ok ? 0x00FF7F : 0xFF5555, 'bold');
+    } else if (sub === 'kapat' || sub === 'off' || sub === 'durdur') {
+      const result = botManager.stop();
+      sendMsg(room, result.message, null, result.ok ? 0x00FF7F : 0xFF5555, 'bold');
+    } else if (sub === 'durum' || sub === 'status') {
+      sendMsg(room, botManager.status(), player.id, 0x00BFFF, 'normal');
+    } else {
+      sendMsg(room, '❌ Kullanım: !bot aç [adet] | !bot kapat | !bot durum', player.id, 0xFF5555, 'bold');
+    }
   } else if (command === '!yardim' || command === '!yardım' || command === '!help') {
     const helpText = [
       '📖 Spacebounce 4v4 - Komut listesi:',
@@ -494,6 +566,8 @@ function handlePlayerChat(room, player, msg, deps) {
       '• !afk — AFK modunu açar/kapatır',
       '• !kaydol <şifre> — Hesap oluşturur ve oturum açar',
       '• !giris <şifre> — Mevcut hesabınıza giriş yapar',
+      player.admin || isSuperAdmin ? '• !bot aç [adet] / !bot kapat / !bot durum — Yapay zeka botunu sahaya sürer (Yönetici)' : '',
+      player.admin || isSuperAdmin ? '• !oto aç / !oto kapat / !oto durum — Otomatik takım dağıtımı ve maç başlatmayı açar/kapatır (Yönetici)' : '',
       isSuperAdmin ? '• !blacklist <id/isim> [sebep] — Oyuncuyu veritabanı kara listesine ekler (Super-Admin)' : '',
       isSuperAdmin ? '• !clearbans — Tüm banları temizler (Super-Admin)' : '',
     ]

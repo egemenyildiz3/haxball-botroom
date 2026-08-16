@@ -9,14 +9,31 @@ let currentGame = null;
 let nextJoinNumber = 100;
 let nextJoinOrder = 1;
 
+// Spacebounce V4 Haritasına Özel Saha ve Duvar Sınırları
+const MAP_BOUNDS = {
+  minX: -1200,
+  maxX: 1200,
+  minY: -600,
+  maxY: 600,
+  goalMinY: -110, // Kalelerin Y eksenindeki alt ve üst direk sınırları
+  goalMaxY: 110
+};
+
 // Oyuncuların katılırken sahip olduğu auth kodlarını hafızada tutan harita
 const playerAuths = new Map();
 
 // AFK olan oyuncuların ID'lerini tutan küme (Host player ID 0 permanently stays here)
 const afkPlayers = new Set([0]);
 
+// Admin tarafından elle yerleştirilen oyuncular (id -> takım). Maç bitene kadar otomatik dağıtımdan muaftır.
+const manualPlacements = new Map();
+
 // Takım dengeleme işlemleri sırasında sonsuz olay döngüsünü engellemek için bayrak
 let isRebalancing = false;
+
+// Otomatik yönetim: takım dağıtımı, maç başlatma ve maç sonu rotasyonu.
+// !oto kapat ile kapatılır; kapalıyken oda tamamen elle yönetilir.
+let autoManageEnabled = true;
 
 // BOTUN SESSİZCE KAPANMASINI ENGELLER (Global Hata Yakalayıcılar)
 process.on('uncaughtException', (err) => {
@@ -68,6 +85,7 @@ async function createRoom(room, deps) {
     CONFIG_ADMIN_CAN_BAN = 1,
     CONFIG_ADMIN_CAN_GIVE_ADMIN = 0,
     CONFIG_ALLOW_MULTIPLE_JOIN = 0,
+    botManager = null,
   } = deps;
 
   // ---------------------------------------------------------------------
@@ -79,6 +97,28 @@ async function createRoom(room, deps) {
   });
 
   const hostPlayer = { id: 0, name: 'Host-admin', admin: true, team: 0 };
+
+  // !oto komutunun kullandığı denetleyici
+  const autoManager = {
+    isEnabled: () => autoManageEnabled,
+
+    enable() {
+      autoManageEnabled = true;
+      // Normale dönerken takımları hemen toparla ve gerekiyorsa maçı başlat
+      rebalanceTeams(room, { playerAssignments, playerJoinOrder, loggedInPlayers });
+      checkAndStartGame(room, { playerAssignments, playerJoinOrder, loggedInPlayers, sleep });
+    },
+
+    disable() {
+      autoManageEnabled = false;
+    },
+
+    status() {
+      return autoManageEnabled
+        ? '⚙️ Otomatik yönetim AÇIK: takım dağıtımı, maç başlatma ve maç sonu rotasyonu çalışıyor.'
+        : '⚙️ Otomatik yönetim KAPALI: takımlar ve maç tamamen elle yönetiliyor.';
+    },
+  };
 
   rl.on('line', (line) => {
     const text = line.trim();
@@ -132,6 +172,8 @@ async function createRoom(room, deps) {
         rebalanceTeams: () => rebalanceTeams(room, { playerAssignments, playerJoinOrder, loggedInPlayers }),
         CONFIG_ADMIN_CAN_BAN,
         CONFIG_ADMIN_CAN_GIVE_ADMIN,
+        botManager,
+        autoManager,
       });
       return;
     }
@@ -155,6 +197,56 @@ async function createRoom(room, deps) {
     console.log('\n========================================');
     console.log('🔗 Oda Bağlantısı:', link);
     console.log('========================================\n');
+  };
+
+  // ---------------------------------------------------------------------
+  // SPACEBOUNCE V4 TOP SIZMASINI/BUGDA KALMASINI ENGELLEME (TICK ENTEGRASYONU)
+  // ---------------------------------------------------------------------
+  room.onGameTick = function() {
+    if (typeof room.getBallPosition !== 'function') return;
+
+    const ballPosition = room.getBallPosition();
+    if (!ballPosition) return;
+
+    let isOutOfBounds = false;
+    let newX = ballPosition.x;
+    let newY = ballPosition.y;
+
+    // 1. Üst ve Alt Duvar Kontrolü (Y Ekseni)
+    if (ballPosition.y < MAP_BOUNDS.minY) {
+      newY = MAP_BOUNDS.minY + 20;
+      isOutOfBounds = true;
+    } else if (ballPosition.y > MAP_BOUNDS.maxY) {
+      newY = MAP_BOUNDS.maxY - 20;
+      isOutOfBounds = true;
+    }
+
+    // 2. Sol ve Sağ Duvar Kontrolü (X Ekseni)
+    // Kalenin içi Y direk sınırları arasında olduğu için kale içi golleri engellenmez
+    const isInsideGoalY = ballPosition.y > MAP_BOUNDS.goalMinY && ballPosition.y < MAP_BOUNDS.goalMaxY;
+
+    if (!isInsideGoalY) {
+      if (ballPosition.x < MAP_BOUNDS.minX) {
+        newX = MAP_BOUNDS.minX + 20;
+        isOutOfBounds = true;
+      } else if (ballPosition.x > MAP_BOUNDS.maxX) {
+        newX = MAP_BOUNDS.maxX - 20;
+        isOutOfBounds = true;
+      }
+    }
+
+    // 3. Eğer top sınırların dışına taşmışsa içeri al ve hızını sıfırla
+    if (isOutOfBounds) {
+      if (typeof room.setDiscProperties === 'function') {
+        room.setDiscProperties(0, {
+          x: newX,
+          y: newY,
+          xspeed: 0,
+          yspeed: 0
+        });
+      }
+      sendMsg(room, '⚠️ Dışarı çıkan top içeri çekildi.', null, 0xFFCC00, 'bold');
+    }
   };
 
   // ---------------------------------------------------------------------
@@ -227,6 +319,9 @@ async function createRoom(room, deps) {
         }
       }
     }
+
+    // Yetki alındıysa ve odada yönetici kalmadıysa otomatik yönetimi geri aç
+    restoreAutoManageIfNoAdmins(room, { playerAssignments, playerJoinOrder, loggedInPlayers });
   };
 
   // ---------------------------------------------------------------------
@@ -244,6 +339,13 @@ async function createRoom(room, deps) {
           sendMsg(room, '💤 AFK modundasınız. Sahaya girmek için sohbetten !afk yazmalısınız.', safePlayer.id, 0xFF5555, 'bold');
         }
       } catch (e) {}
+      return;
+    }
+
+    if (byPlayer && byPlayer.id !== 0) {
+      manualPlacements.set(safePlayer.id, safePlayer.team);
+      console.log(`${getTimestamp()} [MANUAL] ${getCleanName(sanitizePlayer(room, byPlayer))}, ${getCleanName(safePlayer)} oyuncusunu elle taşıdı (takım: ${safePlayer.team}). Otomatik dağıtım bu oyuncuya dokunmayacak.`);
+      return;
     }
 
     rebalanceTeams(room, { playerAssignments, playerJoinOrder, loggedInPlayers });
@@ -259,6 +361,18 @@ async function createRoom(room, deps) {
     const safePlayer = sanitizePlayer(room, player);
     const cleanedName = getCleanName(safePlayer);
 
+    // Kendi başlattığımız bot mu? Bot aynı makineden bağlandığı için
+    // çift-giriş ve karaliste kontrollerine takılmamalı.
+    const isOwnBot = !!(botManager && botManager.isExpectedBotName(cleanedName));
+
+    if (isOwnBot) {
+      console.log(`${getTimestamp()} [BOT] Bot oyuncu olarak tanındı: ${cleanedName} (ID: ${safePlayer.id})`);
+      assignPlayerInternal(room, safePlayer, { playerAssignments, playerJoinOrder, getTimestamp });
+      await sleep(800);
+      await handlePlayerJoin(room, sanitizePlayer(room, safePlayer), { playerAssignments, playerJoinOrder, loggedInPlayers, db, DB_FILE, persistDatabase, getTimestamp, sleep });
+      return;
+    }
+
     // BLACKLIST KONTROLÜ
     if (isUserBlacklisted(db, cleanedName, safePlayer.auth)) {
       console.log(`${getTimestamp()} [BLACKLIST] Karlistedeki oyuncu engellendi: ${cleanedName} (ID: ${safePlayer.id}, Auth: ${safePlayer.auth || 'YOK'})`);
@@ -267,37 +381,6 @@ async function createRoom(room, deps) {
       } catch (e) {
         console.warn('Blacklist banlama hatası:', e.message);
       }
-      return;
-    }
-
-    // Çift Giriş Kontrolü
-    if (Number(CONFIG_ALLOW_MULTIPLE_JOIN) !== 1) {
-      const existingPlayers = typeof room.getPlayerList === 'function' ? room.getPlayerList() : [];
-      const isDuplicate = existingPlayers.some((p) => {
-        if (p.id === safePlayer.id) return false;
-
-        const pClean = getCleanName(p);
-        const pAuth = p.auth || playerAuths.get(String(p.id)) || playerAuths.get(Number(p.id)) || '';
-        const pConn = p.conn || '';
-
-        const nameMatch = pClean.toLowerCase() === cleanedName.toLowerCase();
-        const authMatch = safePlayer.auth && pAuth && safePlayer.auth === pAuth;
-        const connMatch = safePlayer.conn && pConn && safePlayer.conn === pConn;
-
-        return nameMatch || authMatch || connMatch;
-      });
-
-      if (isDuplicate) {
-        console.log(`${getTimestamp()} [DUPLICATE] Çift giriş tespit edildi, atılıyor: id=${safePlayer.id}, isim=${cleanedName}`);
-        try {
-          sendMsg(room, `⚠️ ${cleanedName}, zaten odada bir oturumunuz açık!`, safePlayer.id, 0xFF5555, 'bold');
-          room.kickPlayer(safePlayer.id, "Zaten odadasınız! (Duplicate join)", false);
-        } catch (e) {}
-        return;
-      }
-    }
-
-    if (checkDuplicateLogin(room, safePlayer, { loggedInPlayers, CONFIG_ALLOW_MULTIPLE_JOIN })) {
       return;
     }
 
@@ -329,6 +412,8 @@ async function createRoom(room, deps) {
       rebalanceTeams: () => rebalanceTeams(room, { playerAssignments, playerJoinOrder, loggedInPlayers }),
       CONFIG_ADMIN_CAN_BAN,
       CONFIG_ADMIN_CAN_GIVE_ADMIN,
+      botManager,
+      autoManager,
     });
   };
 
@@ -369,6 +454,9 @@ async function createRoom(room, deps) {
       if (realHumanPlayers.length > 0) {
         console.log(`${getTimestamp()} [STATUS] Odada şu an aktif ${realHumanPlayers.length} oyuncu bulunuyor.`);
       }
+
+      // Emniyet ağı: olaylardan biri kaçarsa bile oda elle modda kilitli kalmasın
+      restoreAutoManageIfNoAdmins(room, { playerAssignments, playerJoinOrder, loggedInPlayers });
     }
   }, 2 * 60 * 1000);
 
@@ -388,9 +476,9 @@ function assignPlayerInternal(room, player, { playerAssignments, playerJoinOrder
     try { room.setPlayerTeam(player.id, 0); } catch (e) {}
   }
 
-  if (typeof room.setPlayerAvatar === 'function') {
-    try { room.setPlayerAvatar(player.id, 11); } catch (e) {}
-  }
+  // if (typeof room.setPlayerAvatar === 'function') {
+  //   try { room.setPlayerAvatar(player.id, 11); } catch (e) {}
+  // }
 
   console.log(`${getTimestamp()} [JOIN] Oyuncu katıldı: id=${player.id}, isim=${cleanedName} (Atanan Etiket: ${taggedName})`);
 }
@@ -490,10 +578,14 @@ function handlePlayerLeave(room, player, { playerAssignments, playerJoinOrder, l
     playerJoinOrder.delete(player.id);
     loggedInPlayers.delete(player.id);
     afkPlayers.delete(player.id);
+    manualPlacements.delete(player.id);
     playerAuths.delete(String(player.id));
   }
 
   if (typeof room.getPlayerList !== 'function') return;
+
+  // Çıkan kişi son yönetici idiyse otomatik yönetimi geri aç
+  restoreAutoManageIfNoAdmins(room, { playerAssignments, playerJoinOrder, loggedInPlayers }, player && player.id);
 
   const activePlayers = room.getPlayerList().filter((p) => p.id !== 0 && (p.team === 1 || p.team === 2));
 
@@ -506,7 +598,43 @@ function handlePlayerLeave(room, player, { playerAssignments, playerJoinOrder, l
   rebalanceTeams(room, { playerAssignments, playerJoinOrder, loggedInPlayers });
 }
 
+/**
+ * Odada hiç yönetici kalmadıysa otomatik yönetimi tekrar açar.
+ *
+ * Gerekçe: !oto kapat yapan admin odadan çıkarsa (ya da yetkisi alınırsa)
+ * oda sonsuza kadar elle yönetim modunda kilitli kalır; kimse takıma
+ * atanmaz, maç başlamaz. Bu güvenlik ağı o durumu engelliyor.
+ *
+ * @param {number} [excludeId] Ayrılmakta olan oyuncu (listede hâlâ görünebilir)
+ */
+function restoreAutoManageIfNoAdmins(room, deps, excludeId) {
+  if (autoManageEnabled) return false;
+  if (typeof room.getPlayerList !== 'function') return false;
+
+  const { loggedInPlayers } = deps;
+
+  const hasAdmin = room.getPlayerList().some((p) => {
+    if (p.id === 0) return false; // host botu yönetici sayılmaz
+    if (excludeId !== undefined && p.id === excludeId) return false;
+    if (p.admin) return true;
+
+    const user = loggedInPlayers && loggedInPlayers.get(p.id);
+    return !!(user && user.isadmin === 1);
+  });
+
+  if (hasAdmin) return false;
+
+  autoManageEnabled = true;
+  console.log('[AUTO] Odada yönetici kalmadı - otomatik yönetim tekrar açıldı.');
+  sendMsg(room, '🔓 Odada yönetici kalmadığı için otomatik yönetim tekrar açıldı.', null, 0x00FF7F, 'bold');
+
+  rebalanceTeams(room, deps);
+  checkAndStartGame(room, deps);
+  return true;
+}
+
 function checkAndStartGame(room, deps) {
+  if (!autoManageEnabled) return; // elle yönetim modunda maç otomatik başlamaz
   if (typeof room.getPlayerList !== 'function') return;
 
   // Sahada (Kırmızı veya Mavi) olan oyuncuları bul
@@ -532,6 +660,7 @@ function checkAndStartGame(room, deps) {
 }
 
 function rebalanceTeams(room, { playerAssignments, playerJoinOrder, loggedInPlayers }) {
+  if (!autoManageEnabled) return; // elle yönetim modunda kimse otomatik takıma atanmaz
   if (isRebalancing) return;
   if (typeof room.getPlayerList !== 'function' || typeof room.setPlayerTeam !== 'function') return;
 
@@ -548,7 +677,7 @@ function rebalanceTeams(room, { playerAssignments, playerJoinOrder, loggedInPlay
     let redPlayers = players.filter((p) => p.id !== 0 && p.team === 1 && !afkPlayers.has(p.id));
     let bluePlayers = players.filter((p) => p.id !== 0 && p.team === 2 && !afkPlayers.has(p.id));
     let spectators = players
-      .filter((p) => p.id !== 0 && p.team === 0 && !afkPlayers.has(p.id))
+      .filter((p) => p.id !== 0 && p.team === 0 && !afkPlayers.has(p.id) && !manualPlacements.has(p.id))
       .sort((a, b) => (playerJoinOrder.get(a.id) ?? 0) - (playerJoinOrder.get(b.id) ?? 0));
 
     const activeNonAfkCount = players.filter((p) => p.id !== 0 && !afkPlayers.has(p.id)).length;
@@ -592,11 +721,15 @@ function rebalanceTeams(room, { playerAssignments, playerJoinOrder, loggedInPlay
     redCount = redPlayers.length;
     blueCount = bluePlayers.length;
 
+    // Elle yerleştirilen oyuncular yerinde kalır, denge için sadece diğerleri taşınır
+    const movableRed = redPlayers.filter((p) => !manualPlacements.has(p.id));
+    const movableBlue = bluePlayers.filter((p) => !manualPlacements.has(p.id));
+
     // Eğer en az 2 kişi varsa ve dengesizlik varsa eşitle (Tek kişiyken dokunmaz)
     if (activeNonAfkCount >= 2) {
       while (Math.abs(redCount - blueCount) > 1) {
         if (redCount > blueCount) {
-          const movePlayer = redPlayers.pop();
+          const movePlayer = movableRed.pop();
           if (!movePlayer) break;
           try {
             room.setPlayerTeam(movePlayer.id, 2);
@@ -604,7 +737,7 @@ function rebalanceTeams(room, { playerAssignments, playerJoinOrder, loggedInPlay
             blueCount++;
           } catch (e) { break; }
         } else {
-          const movePlayer = bluePlayers.pop();
+          const movePlayer = movableBlue.pop();
           if (!movePlayer) break;
           try {
             room.setPlayerTeam(movePlayer.id, 1);
@@ -678,9 +811,17 @@ async function handleGameStop(room, deps) {
 
   currentGame = null;
 
+  // Elle yönetim modunda skor yine kaydedilir ama takımlara dokunulmaz:
+  // ne rotasyon, ne yeniden dağıtım, ne otomatik yeni maç.
+  if (!autoManageEnabled) {
+    console.log('[MATCH ROTATION] Otomatik yönetim kapalı - takım dağıtımı ve yeni maç atlandı.');
+    return;
+  }
+
   await sleep(2000);
 
   isRebalancing = true;
+  manualPlacements.clear();
 
   try {
     const allPlayers = room.getPlayerList();
