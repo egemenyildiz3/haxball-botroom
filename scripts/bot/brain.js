@@ -234,7 +234,7 @@ function mulberry32(seed) {
  * @returns {object} base üzerine yazılacak ayarlar
  */
 function makePersonality(seed, base) {
-  const cfg = base || DEFAULTS;
+  const cfg = { ...DEFAULTS, ...(base || {}) };
   const rnd = mulberry32(seed);
   const traits = {};
 
@@ -267,7 +267,7 @@ function makePersonality(seed, base) {
 
 /** Kişiliği kısa, okunur bir etikete çevirir (log ve !bot durum için). */
 function describePersonality(traits, base) {
-  const cfg = base || DEFAULTS;
+  const cfg = { ...DEFAULTS, ...(base || {}) };
   const impact = traits.strikeImpactSpeed ?? cfg.strikeImpactSpeed;
   const ratio = impact / cfg.strikeImpactSpeed;
 
