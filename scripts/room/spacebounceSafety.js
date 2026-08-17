@@ -7,40 +7,47 @@ const MAP_BOUNDS = {
   goalMaxY: 110,
 };
 
+const SAFE_MARGIN = 80;
+
+function nearestSafeCorner(pos) {
+  const left = {
+    x: MAP_BOUNDS.minX + SAFE_MARGIN,
+    y: pos.y < 0 ? MAP_BOUNDS.minY + SAFE_MARGIN : MAP_BOUNDS.maxY - SAFE_MARGIN,
+  };
+  const right = {
+    x: MAP_BOUNDS.maxX - SAFE_MARGIN,
+    y: pos.y < 0 ? MAP_BOUNDS.minY + SAFE_MARGIN : MAP_BOUNDS.maxY - SAFE_MARGIN,
+  };
+
+  if (pos.x < MAP_BOUNDS.minX) return left;
+  if (pos.x > MAP_BOUNDS.maxX) return right;
+
+  return {
+    x: pos.x < 0 ? left.x : right.x,
+    y: pos.y < 0 ? MAP_BOUNDS.minY + SAFE_MARGIN : MAP_BOUNDS.maxY - SAFE_MARGIN,
+  };
+}
+
 function repairOutOfBoundsBall(room, sendMsg) {
   if (typeof room.getBallPosition !== 'function') return;
 
   const ballPosition = room.getBallPosition();
   if (!ballPosition) return;
 
-  let isOutOfBounds = false;
-  let newX = ballPosition.x;
-  let newY = ballPosition.y;
-
-  if (ballPosition.y < MAP_BOUNDS.minY) {
-    newY = MAP_BOUNDS.minY + 20;
-    isOutOfBounds = true;
-  } else if (ballPosition.y > MAP_BOUNDS.maxY) {
-    newY = MAP_BOUNDS.maxY - 20;
-    isOutOfBounds = true;
-  }
+  let isOutOfBounds = ballPosition.y < MAP_BOUNDS.minY || ballPosition.y > MAP_BOUNDS.maxY;
 
   const isInsideGoalY = ballPosition.y > MAP_BOUNDS.goalMinY && ballPosition.y < MAP_BOUNDS.goalMaxY;
 
   if (!isInsideGoalY) {
-    if (ballPosition.x < MAP_BOUNDS.minX) {
-      newX = MAP_BOUNDS.minX + 20;
-      isOutOfBounds = true;
-    } else if (ballPosition.x > MAP_BOUNDS.maxX) {
-      newX = MAP_BOUNDS.maxX - 20;
-      isOutOfBounds = true;
-    }
+    isOutOfBounds = isOutOfBounds || ballPosition.x < MAP_BOUNDS.minX || ballPosition.x > MAP_BOUNDS.maxX;
   }
 
   if (isOutOfBounds && typeof room.setDiscProperties === 'function') {
+    const { x, y } = nearestSafeCorner(ballPosition);
+
     room.setDiscProperties(0, {
-      x: newX,
-      y: newY,
+      x,
+      y,
       xspeed: 0,
       yspeed: 0,
     });
@@ -50,5 +57,7 @@ function repairOutOfBoundsBall(room, sendMsg) {
 
 module.exports = {
   MAP_BOUNDS,
+  SAFE_MARGIN,
+  nearestSafeCorner,
   repairOutOfBoundsBall,
 };
