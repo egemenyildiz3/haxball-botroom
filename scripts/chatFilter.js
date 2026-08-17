@@ -50,6 +50,8 @@ const PROFANITY_PATTERNS = [
 
 const COMPACT_PROFANITY = [
   'amk',
+  'oe',
+  'oc',
   'aq',
   'ananı',
   'yarram',
@@ -74,6 +76,9 @@ const COMPACT_PROFANITY = [
   'gotveren',
   'serefsiz',
   'pic',
+  'annen',
+  'anan',
+  'baci',
 ];
 
 function normalizeText(text) {
