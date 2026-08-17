@@ -7,6 +7,38 @@ const ROTATION_START_DELAY_MS = 700;
 const ROTATION_MOVE_DELAY_MS = 350;
 const ROTATION_END_DELAY_MS = 500;
 
+function shuffle(players) {
+  const result = [...players];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
+
+function mixedTeamAssignments(players, redCount, blueCount, isBot) {
+  const humans = shuffle(players.filter((p) => !isBot(p)));
+  const bots = shuffle(players.filter(isBot));
+  const mixed = [...humans, ...bots];
+  const red = [];
+  const blue = [];
+  let preferRed = Math.random() < 0.5;
+
+  for (const player of mixed) {
+    const target = preferRed
+      ? (red.length < redCount ? red : blue)
+      : (blue.length < blueCount ? blue : red);
+
+    target.push(player);
+    preferRed = !preferRed;
+  }
+
+  return [
+    ...red.map((player) => ({ player, team: 1 })),
+    ...blue.map((player) => ({ player, team: 2 })),
+  ];
+}
+
 function handlePlayerBallKick(state, player) {
   if (!Array.isArray(state.touchHistory)) state.touchHistory = [];
 
@@ -234,16 +266,10 @@ async function handleGameStop(room, state, deps) {
       const totalPlayers = availableSpecs.length;
       const redCount = Math.min(4, Math.ceil(totalPlayers / 2));
       const blueCount = Math.min(4, totalPlayers - redCount);
+      const assignments = mixedTeamAssignments(availableSpecs, redCount, blueCount, isBot);
 
-      for (let i = 0; i < availableSpecs.length; i++) {
-        const p = availableSpecs[i];
-        if (i < redCount) {
-          try { room.setPlayerTeam(p.id, 1); } catch (e) {}
-        } else if (i < redCount + blueCount) {
-          try { room.setPlayerTeam(p.id, 2); } catch (e) {}
-        } else {
-          try { room.setPlayerTeam(p.id, 0); } catch (e) {}
-        }
+      for (const { player: p, team: targetTeam } of assignments) {
+        try { room.setPlayerTeam(p.id, targetTeam); } catch (e) {}
         await sleep(ROTATION_MOVE_DELAY_MS);
       }
     } else {
