@@ -18,6 +18,9 @@ const TEAM_COLORS = {
 };
 const ADMIN_REQUEST_ANNOUNCE_MS = 5 * 60 * 1000;
 const ADMIN_REQUEST_ANNOUNCE_TEXT = '📮 İstek, talep veya şikayet için: !admin <açıklama>';
+const INACTIVITY_KICK_MS = 30 * 1000;
+const INACTIVITY_WARNING_MS = 25 * 1000;
+const INACTIVITY_CHECK_MS = 1000;
 
 process.on('uncaughtException', (err) => {
   console.error('❌ [CRITICAL ERROR] Yakalanmamış İstisna:', err.message, err.stack);
@@ -37,6 +40,79 @@ function applyTeamColors(room) {
       console.warn(`[COLORS] Takım forması uygulanamadı (team=${team}):`, err.message);
     }
   }
+}
+
+function isPlayableHuman(player, state, botManager) {
+  return !!(
+    player
+    && player.id !== 0
+    && (player.team === 1 || player.team === 2)
+    && !state.afkPlayers.has(player.id)
+    && !(botManager && typeof botManager.isBotPlayer === 'function' && botManager.isBotPlayer(player.id))
+  );
+}
+
+function markPlayerInput(state, player, botManager) {
+  if (!isPlayableHuman(player, state, botManager)) return;
+  state.lastInputAt.set(player.id, Date.now());
+  state.inactivityWarnings.delete(player.id);
+}
+
+function getRawPlayerInput(room, playerId) {
+  const rawRoom = room && room.nhInstance;
+  if (!rawRoom) return null;
+
+  const rawPlayer = typeof rawRoom.getPlayer === 'function'
+    ? rawRoom.getPlayer(playerId)
+    : (rawRoom.players || []).find((candidate) => candidate.id === playerId);
+
+  return rawPlayer && typeof rawPlayer.input === 'number' ? rawPlayer.input : null;
+}
+
+function attachInactivityKick(room, state, deps) {
+  const { botManager, sendMsg, getTimestamp } = deps;
+
+  room.onPlayerActivity = function (player) {
+    markPlayerInput(state, player, botManager);
+  };
+
+  setInterval(() => {
+    if (!state.currentGame || typeof room.getPlayerList !== 'function') return;
+
+    const now = Date.now();
+    for (const player of room.getPlayerList()) {
+      if (!isPlayableHuman(player, state, botManager)) continue;
+
+      const currentInput = getRawPlayerInput(room, player.id);
+      if (currentInput !== null && currentInput !== 0) {
+        state.lastInputAt.set(player.id, now);
+        state.inactivityWarnings.delete(player.id);
+        continue;
+      }
+
+      if (!state.lastInputAt.has(player.id)) {
+        state.lastInputAt.set(player.id, now);
+        continue;
+      }
+
+      const idleMs = now - state.lastInputAt.get(player.id);
+      if (idleMs >= INACTIVITY_KICK_MS) {
+        const name = getCleanName(player);
+        state.lastInputAt.delete(player.id);
+        state.inactivityWarnings.delete(player.id);
+
+        try {
+          room.kickPlayer(player.id, 'Uzun süre hareketsiz kaldınız.', false);
+          console.log(`${getTimestamp()} [INACTIVITY] ${name} input vermediği için kicklendi.`);
+        } catch (err) {
+          console.warn('[INACTIVITY] Oyuncu kicklenemedi:', err.message);
+        }
+      } else if (idleMs >= INACTIVITY_WARNING_MS && !state.inactivityWarnings.has(player.id)) {
+        state.inactivityWarnings.add(player.id);
+        sendMsg(room, '⚠️ 5 saniye daha hareketsiz kalırsanız atılacaksınız.', player.id, 0xFFCC00, 'bold');
+      }
+    }
+  }, INACTIVITY_CHECK_MS);
 }
 
 async function createRoom(room, deps) {
@@ -84,6 +160,7 @@ async function createRoom(room, deps) {
 
   const autoManager = createAutoManager(room, state, roomDeps);
   attachTerminalInput(room, state, roomDeps, autoManager);
+  attachInactivityKick(room, state, roomDeps);
 
   const originalKickPlayer = room.kickPlayer.bind(room);
   room.kickPlayer = function (id, reason, ban) {
@@ -110,7 +187,9 @@ async function createRoom(room, deps) {
   };
 
   room.onPlayerTeamChange = function (changedPlayer, byPlayer) {
-    handlePlayerTeamChange(room, state, changedPlayer, byPlayer, roomDeps, sanitizePlayer);
+    const safePlayer = sanitizePlayer(room, changedPlayer, state);
+    markPlayerInput(state, safePlayer, botManager);
+    handlePlayerTeamChange(room, state, safePlayer, byPlayer, roomDeps, sanitizePlayer);
   };
 
   room.onPlayerJoin = async function (player) {
@@ -189,6 +268,11 @@ async function createRoom(room, deps) {
   };
 
   room.onGameStart = function () {
+    if (typeof room.getPlayerList === 'function') {
+      for (const player of room.getPlayerList()) {
+        markPlayerInput(state, player, botManager);
+      }
+    }
     handleGameStart(room, state, { sendMsg, playerAssignments });
   };
 
@@ -259,6 +343,8 @@ function handlePlayerLeave(room, player, state, deps) {
     state.afkPlayers.delete(player.id);
     state.manualPlacements.delete(player.id);
     state.playerAuths.delete(String(player.id));
+    state.lastInputAt.delete(player.id);
+    state.inactivityWarnings.delete(player.id);
     state.chatFilter.forget(player.id);
   }
 

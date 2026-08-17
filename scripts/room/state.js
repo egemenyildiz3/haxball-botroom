@@ -19,6 +19,8 @@ function createRoomState() {
     autoManageEnabled: true,
     chatMuted: false,
     mutedPlayers: new Map(),
+    lastInputAt: new Map(),
+    inactivityWarnings: new Set(),
     chatFilter: createChatFilter(),
   };
 }
