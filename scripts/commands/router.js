@@ -14,6 +14,9 @@ const COMMAND_ROUTERS = [
   routeBotCommand,
 ];
 
+const NORMAL_CHAT_COLOR = 0xFFFFFF;
+const ADMIN_CHAT_COLOR = 0xFF6666;
+
 function handlePlayerChat(room, player, msg, deps) {
   const text = String(msg || '').trim();
 
@@ -47,7 +50,14 @@ function handlePlayerChat(room, player, msg, deps) {
       }
     }
 
-    sendMsg(room, `💬 ${displayName}: ${chatText}`, null, 0xFFFFFF, 'normal');
+    const isAdminChat = player.admin || isSuperAdmin;
+    sendMsg(
+      room,
+      `💬 ${displayName}: ${chatText}`,
+      null,
+      isAdminChat ? ADMIN_CHAT_COLOR : NORMAL_CHAT_COLOR,
+      isAdminChat ? 'bold' : 'normal'
+    );
     return false;
   }
 

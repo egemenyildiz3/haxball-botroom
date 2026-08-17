@@ -6,6 +6,7 @@ const { desiredBotCount, isBotPlayer, sortRealPlayersFirst } = require('./botPol
 const ROTATION_START_DELAY_MS = 700;
 const ROTATION_MOVE_DELAY_MS = 350;
 const ROTATION_END_DELAY_MS = 500;
+const GAME_START_LOCK_RETRY_MS = [250, 1000];
 
 function shuffle(players) {
   const result = [...players];
@@ -37,6 +38,14 @@ function mixedTeamAssignments(players, redCount, blueCount, isBot) {
     ...red.map((player) => ({ player, team: 1 })),
     ...blue.map((player) => ({ player, team: 2 })),
   ];
+}
+
+function keepTeamsLockedAfterStart(room) {
+  lockTeams(room);
+  for (const delay of GAME_START_LOCK_RETRY_MS) {
+    const timer = setTimeout(() => lockTeams(room), delay);
+    if (typeof timer.unref === 'function') timer.unref();
+  }
 }
 
 function handlePlayerBallKick(state, player) {
@@ -166,6 +175,7 @@ function handleGameStart(room, state, { sendMsg }) {
   if (typeof room.getPlayerList !== 'function') return;
 
   endTeamTransitionLock(room, state);
+  keepTeamsLockedAfterStart(room);
   state.lastTouchPlayer = null;
   state.secondLastTouchPlayer = null;
   state.touchHistory = [];
