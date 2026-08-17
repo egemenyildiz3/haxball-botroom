@@ -92,7 +92,7 @@ function handlePlayerTeamChange(room, state, changedPlayer, byPlayer, deps, sani
 
   if (state.isRebalancing && changedByHost) return;
 
-  if (state.teamChangesLocked && safePlayer.id !== 0) {
+  if (state.autoManageEnabled && state.teamChangesLocked && safePlayer.id !== 0) {
     const expectedTeam = state.lockedTeams.has(safePlayer.id) ? state.lockedTeams.get(safePlayer.id) : 0;
     if (safePlayer.team !== expectedTeam) {
       try {

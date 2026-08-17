@@ -18,6 +18,11 @@ function createAutoManager(room, state, deps) {
 
     disable() {
       state.autoManageEnabled = false;
+      state.isRebalancing = false;
+      state.rebalanceRequested = false;
+      state.startGamePending = false;
+      state.teamChangesLocked = false;
+      state.lockedTeams.clear();
     },
 
     status() {

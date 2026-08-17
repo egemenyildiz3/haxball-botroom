@@ -149,6 +149,7 @@ async function rebalanceTeams(room, state, { playerJoinOrder, botManager, sleep 
 
 async function runRebalanceOnce(room, state, { playerJoinOrder, botManager, sleep }) {
   await sleep(REBALANCE_START_DELAY_MS);
+  if (!state.autoManageEnabled) return;
 
   let players = room.getPlayerList();
 
@@ -169,6 +170,7 @@ async function runRebalanceOnce(room, state, { playerJoinOrder, botManager, slee
       .sort((a, b) => (playerJoinOrder.get(b.id) ?? 0) - (playerJoinOrder.get(a.id) ?? 0))
       .slice(0, activeBots.length - targetBotCount);
     for (const bot of extraBots) {
+      if (!state.autoManageEnabled) return;
       try { room.setPlayerTeam(bot.id, 0); } catch (e) {}
       await sleep(REBALANCE_MOVE_DELAY_MS);
     }
@@ -191,6 +193,7 @@ async function runRebalanceOnce(room, state, { playerJoinOrder, botManager, slee
   let blueCount = bluePlayers.length;
 
   if (redCount === 0 && blueCount === 0 && spectators.length > 0) {
+    if (!state.autoManageEnabled) return;
     const promote = spectators.shift();
     try {
       room.setPlayerTeam(promote.id, 1);
@@ -200,6 +203,7 @@ async function runRebalanceOnce(room, state, { playerJoinOrder, botManager, slee
   }
 
   while (spectators.length > 0 && (redCount < maxTeamSize || blueCount < maxTeamSize)) {
+    if (!state.autoManageEnabled) return;
     const targetTeam = redCount < maxTeamSize && blueCount < maxTeamSize
       ? (redCount <= blueCount ? 1 : 2)
       : (redCount < maxTeamSize ? 1 : 2);
@@ -226,6 +230,7 @@ async function runRebalanceOnce(room, state, { playerJoinOrder, botManager, slee
 
   if (desiredActiveCount >= 2) {
     while (Math.abs(redCount - blueCount) > 1) {
+      if (!state.autoManageEnabled) return;
       const fromRed = redCount > blueCount;
       const movePlayer = (fromRed ? movableRed : movableBlue).pop();
       if (!movePlayer) break;
@@ -241,6 +246,7 @@ async function runRebalanceOnce(room, state, { playerJoinOrder, botManager, slee
     }
   }
 
+  if (!state.autoManageEnabled) return;
   await balanceBotDistribution(room, state, isBot, sleep);
   rememberLockedTeams(room, state);
   state.teamChangesLocked = true;

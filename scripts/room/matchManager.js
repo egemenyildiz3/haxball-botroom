@@ -227,7 +227,15 @@ async function handleGameStop(room, state, deps) {
   beginTeamTransitionLock(room, state);
 
   await sleep(2000);
+  if (!state.autoManageEnabled) {
+    endTeamTransitionLock(room, state);
+    return;
+  }
   await sleep(ROTATION_START_DELAY_MS);
+  if (!state.autoManageEnabled) {
+    endTeamTransitionLock(room, state);
+    return;
+  }
 
   state.isRebalancing = true;
   state.manualPlacements.clear();
@@ -246,6 +254,7 @@ async function handleGameStop(room, state, deps) {
       console.log(`[MATCH ROTATION] Gerçek oyuncu sayısı <= 8 (${realPlayers.length}). Botlar yalnızca boşluk dolduracak şekilde yeniden dağıtılıyor...`);
 
       for (const p of allPlayers) {
+        if (!state.autoManageEnabled) return;
         if (p.id !== 0 && p.team !== 0) {
           try { room.setPlayerTeam(p.id, 0); } catch (e) {}
           await sleep(ROTATION_MOVE_DELAY_MS);
@@ -265,6 +274,7 @@ async function handleGameStop(room, state, deps) {
       const assignments = mixedTeamAssignments(availableSpecs, redCount, blueCount, isBot);
 
       for (const { player: p, team: targetTeam } of assignments) {
+        if (!state.autoManageEnabled) return;
         try { room.setPlayerTeam(p.id, targetTeam); } catch (e) {}
         await sleep(ROTATION_MOVE_DELAY_MS);
       }
@@ -273,6 +283,7 @@ async function handleGameStop(room, state, deps) {
 
       const losingPlayers = allPlayers.filter((p) => p.id !== 0 && p.team === loserTeam);
       for (const p of losingPlayers) {
+        if (!state.autoManageEnabled) return;
         try {
           room.setPlayerTeam(p.id, 0);
           playerJoinOrder.set(p.id, state.nextJoinOrder++);
@@ -293,11 +304,13 @@ async function handleGameStop(room, state, deps) {
       const nextToPlay = currentSpecs.slice(0, promotionCount);
 
       for (const p of nextToPlay) {
+        if (!state.autoManageEnabled) return;
         try { room.setPlayerTeam(p.id, loserTeam); } catch (e) {}
         await sleep(ROTATION_MOVE_DELAY_MS);
       }
     }
 
+    if (!state.autoManageEnabled) return;
     await balanceBotDistribution(room, state, isBot, sleep);
     rememberLockedTeams(room, state);
     state.teamChangesLocked = true;
@@ -307,6 +320,7 @@ async function handleGameStop(room, state, deps) {
   }
 
   await sleep(1000);
+  if (!state.autoManageEnabled) return;
   checkAndStartGame(room, state);
 }
 
