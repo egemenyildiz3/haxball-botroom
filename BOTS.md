@@ -18,7 +18,7 @@ Then, as an admin, in room chat or the server console:
 
 | Command | Effect |
 |---|---|
-| `!bot aç [adet]` | Add bot(s) to the pitch. Repeatable; caps at `HAXBALL_BOT_MAX` (default 4) |
+| `!bot aç [adet]` | Add bot(s) to the pitch. Repeatable; caps at `HAXBALL_BOT_MAX` (default 8) |
 | `!bot kapat` | Remove the latest active bot |
 | `!bot hepsi` | Remove all bots |
 | `!bot durum` | List active bots and their personalities |

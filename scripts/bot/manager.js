@@ -45,7 +45,7 @@ function fieldBounds(stadium) {
 
 function createBotManager(options = {}) {
   const baseName = options.botName || 'SpaceBot';
-  const maxBots = Number(options.maxBots || 4);
+  const maxBots = Number(options.maxBots || 8);
   const avatar = options.avatar || '🤖';
   const log = options.log || ((msg) => console.log(msg));
   const brainConfig = options.brainConfig || {};
