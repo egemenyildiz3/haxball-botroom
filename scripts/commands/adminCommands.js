@@ -63,7 +63,7 @@ function handleBlacklist(ctx) {
     return false;
   }
 
-  const banReason = reason || 'Super-Admin tarafından kalıcı kara listeye alındınız.';
+  const banReason = reason || 'Kalıcı kara listeye alındınız.';
   const targetCleanName = (target.name || '').replace(/^\[\d{3}\]\s*/, '').trim();
   const targetAuth = target.auth || target.conn || '';
   const targetIp = target.ip || '';
