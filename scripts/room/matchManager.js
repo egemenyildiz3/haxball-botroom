@@ -1,6 +1,6 @@
 const { saveGameResult } = require('../db');
 const { getCleanName } = require('../util');
-const { checkAndStartGame, rememberLockedTeams, beginTeamTransitionLock, endTeamTransitionLock } = require('./teamBalancer');
+const { checkAndStartGame, rememberLockedTeams, beginTeamTransitionLock, endTeamTransitionLock, balanceBotDistribution } = require('./teamBalancer');
 const { desiredBotCount, isBotPlayer, sortRealPlayersFirst } = require('./botPolicy');
 
 const ROTATION_START_DELAY_MS = 700;
@@ -298,6 +298,7 @@ async function handleGameStop(room, state, deps) {
       }
     }
 
+    await balanceBotDistribution(room, state, isBot, sleep);
     rememberLockedTeams(room, state);
     state.teamChangesLocked = true;
     await sleep(ROTATION_END_DELAY_MS);

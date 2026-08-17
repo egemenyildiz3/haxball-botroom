@@ -14,6 +14,61 @@ function lockTeams(room) {
   }
 }
 
+function botCount(players, isBot) {
+  return players.filter(isBot).length;
+}
+
+function canMoveForBotBalance(player, state) {
+  return player && !state.manualPlacements.has(player.id);
+}
+
+async function balanceBotDistribution(room, state, isBot, sleep = fallbackSleep) {
+  if (typeof room.getPlayerList !== 'function' || typeof room.setPlayerTeam !== 'function') return;
+
+  for (let attempts = 0; attempts < 4; attempts++) {
+    const players = room.getPlayerList();
+    const redPlayers = activeTeamPlayers(players, state, 1);
+    const bluePlayers = activeTeamPlayers(players, state, 2);
+    const redBots = botCount(redPlayers, isBot);
+    const blueBots = botCount(bluePlayers, isBot);
+    const diff = redBots - blueBots;
+
+    if (Math.abs(diff) <= 1) return;
+
+    const botHeavyTeam = diff > 0 ? 1 : 2;
+    const botLightTeam = diff > 0 ? 2 : 1;
+    const heavyPlayers = botHeavyTeam === 1 ? redPlayers : bluePlayers;
+    const lightPlayers = botLightTeam === 1 ? redPlayers : bluePlayers;
+
+    const movableBot = heavyPlayers.find((p) => isBot(p) && canMoveForBotBalance(p, state));
+    if (!movableBot) return;
+
+    const movableHuman = lightPlayers.find((p) => !isBot(p) && canMoveForBotBalance(p, state));
+    if (movableHuman) {
+      try {
+        room.setPlayerTeam(movableBot.id, botLightTeam);
+        await sleep(REBALANCE_MOVE_DELAY_MS);
+        room.setPlayerTeam(movableHuman.id, botHeavyTeam);
+        await sleep(REBALANCE_MOVE_DELAY_MS);
+      } catch (e) {
+        return;
+      }
+      continue;
+    }
+
+    const heavyAfterMove = heavyPlayers.length - 1;
+    const lightAfterMove = lightPlayers.length + 1;
+    if (Math.abs(heavyAfterMove - lightAfterMove) > 1) return;
+
+    try {
+      room.setPlayerTeam(movableBot.id, botLightTeam);
+      await sleep(REBALANCE_MOVE_DELAY_MS);
+    } catch (e) {
+      return;
+    }
+  }
+}
+
 function rememberLockedTeams(room, state) {
   if (typeof room.getPlayerList !== 'function') return;
   state.lockedTeams = new Map(
@@ -186,6 +241,7 @@ async function runRebalanceOnce(room, state, { playerJoinOrder, botManager, slee
     }
   }
 
+  await balanceBotDistribution(room, state, isBot, sleep);
   rememberLockedTeams(room, state);
   state.teamChangesLocked = true;
   await sleep(REBALANCE_END_DELAY_MS);
@@ -214,4 +270,5 @@ module.exports = {
   rememberLockedTeams,
   beginTeamTransitionLock,
   endTeamTransitionLock,
+  balanceBotDistribution,
 };
