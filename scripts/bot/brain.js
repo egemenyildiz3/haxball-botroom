@@ -63,6 +63,9 @@ const DEFAULTS = {
   releaseTicks: 3, // tekrar vurabilmek için tuşu bırakma süresi
   preKickReleaseMargin: 18, // topa girmeden önce fren/kick tuşunu bırakmaya başla
   preKickReleaseTicks: 1, // temas anında yeni kick kaydolması için kısa hazırlık
+  overlapRecoveryRange: 6, // topa yapışınca kısa geri/yan açılma modu
+  overlapRecoveryTicks: 5,
+  overlapRecoverySideStep: 45,
   ownGoalCarryRange: 70, // kötü açıdaysa topa gövdeyle dalma mesafesi
   ownGoalCarrySideStep: 80, // kötü açıdan çıkmak için yanal kaçış
   postInset: 22, // direğe bu kadar içeriden nişan al
@@ -651,6 +654,25 @@ function botOnlyNudgeTarget(view, target, cfg, memory) {
   };
 }
 
+function overlapRecoveryTarget(view, cfg, ballToAim, memory) {
+  const selfRadius = view.self.radius || 15;
+  const ballRadius = view.ball.radius || 10;
+  const standOff = selfRadius + ballRadius + cfg.kickPadding + 4;
+  const lateral = normalize({ x: -ballToAim.y, y: ballToAim.x });
+  const sideSign = dot(sub(view.self.pos, view.ball.pos), lateral) >= 0 ? 1 : -1;
+  const raw = add(
+    sub(view.ball.pos, scale(ballToAim, standOff)),
+    scale(lateral, sideSign * cfg.overlapRecoverySideStep)
+  );
+  const f = fieldOf(view);
+  memory.overlapRecoveryTicks = cfg.overlapRecoveryTicks;
+
+  return {
+    x: clamp(raw.x, f.minX * 0.95, f.maxX * 0.95),
+    y: clamp(raw.y, f.minY * 0.85, f.maxY * 0.85),
+  };
+}
+
 // --- Sürüş kontrolü ------------------------------------------------------
 
 /**
@@ -807,6 +829,18 @@ function decide(view, memory, config) {
 
   if (ownGoalCarryDanger) {
     target = avoidOwnGoalCarryTarget(view, activeCfg, ballToAim, upfield);
+  }
+
+  const overlapDistance = (view.self.radius || 15)
+    + (view.ball.radius || 10)
+    + activeCfg.overlapRecoveryRange;
+  const closeOverlap = role === 'attacker'
+    && distToBall <= overlapDistance
+    && dot(normalize(toBall), ballToAim) < 0.15;
+
+  if (!ownGoalCarryDanger && (closeOverlap || memory.overlapRecoveryTicks > 0)) {
+    if (memory.overlapRecoveryTicks > 0) memory.overlapRecoveryTicks--;
+    target = overlapRecoveryTarget(view, activeCfg, ballToAim, memory);
   }
 
   // Hücumcuysak topa hızla dalıyoruz; destekçiysek pozisyonda durmak istiyoruz.

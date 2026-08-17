@@ -38,6 +38,7 @@ const cloneDefaultState = () => JSON.parse(JSON.stringify(DEFAULT_STATE));
 const sub = (a, b) => ({ x: a.x - b.x, y: a.y - b.y });
 const dot = (a, b) => a.x * b.x + a.y * b.y;
 const len = (a) => Math.hypot(a.x, a.y);
+const dist = (a, b) => len(sub(a, b));
 
 function normalize(a) {
   const l = len(a);
@@ -186,10 +187,20 @@ function createBotLearner(options = {}) {
     if (!enabled || !view || !move) return;
 
     const ballSpeed = len(view.ball.speed || { x: 0, y: 0 });
+    const upfield = upfieldOf(view);
     if (bot.learningPendingKick) {
       const pending = bot.learningPendingKick;
       pending.ticks--;
-      if (ballSpeed >= pending.beforeSpeed + 0.55) {
+      const awayGain = dist(view.ball.pos, view.self.pos) - pending.beforeDist;
+      const forwardSpeedGain = dot(view.ball.speed || { x: 0, y: 0 }, upfield) - pending.beforeForwardSpeed;
+      const directionChanged = pending.beforeSpeed > 0.35 && ballSpeed > 0.35
+        && dot(normalize(pending.beforeBallSpeed), normalize(view.ball.speed || { x: 0, y: 0 })) < 0.65;
+      const goodTouch = ballSpeed >= pending.beforeSpeed + 0.45
+        || awayGain >= 8
+        || forwardSpeedGain >= 0.35
+        || directionChanged;
+
+      if (goodTouch) {
         window.successfulKicks++;
         bot.learningPendingKick = null;
       } else if (pending.ticks <= 0) {
@@ -207,10 +218,15 @@ function createBotLearner(options = {}) {
       + 6;
 
     if (move.intentKick && distToBall <= kickWatchRange && !bot.learningPendingKick) {
-      bot.learningPendingKick = { ticks: 5, beforeSpeed: ballSpeed };
+      bot.learningPendingKick = {
+        ticks: 7,
+        beforeSpeed: ballSpeed,
+        beforeBallSpeed: { ...(view.ball.speed || { x: 0, y: 0 }) },
+        beforeForwardSpeed: dot(view.ball.speed || { x: 0, y: 0 }, upfield),
+        beforeDist: distToBall,
+      };
     }
 
-    const upfield = upfieldOf(view);
     const carryForwardness = dot(normalize(toBall), upfield);
     if (move.role === 'attacker' && distToBall <= (cfg.ownGoalCarryRange || 70) + 20 && carryForwardness <= (cfg.ownGoalGuard || -0.25)) {
       window.badCarryRisk++;
