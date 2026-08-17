@@ -1,7 +1,11 @@
 const { sendMsg } = require('./helpers');
 
 const AFK_COOLDOWN_MS = 10 * 60 * 1000;
+const AFK_MIN_DURATION_MS = 30 * 1000;
+const AFK_EARLY_WARNING_MS = 10 * 1000;
 const lastAfkAt = new Map();
+const afkStartedAt = new Map();
+const lastAfkEarlyWarningAt = new Map();
 
 function afkKey(player) {
   return player.auth || player.conn || String(player.id);
@@ -33,13 +37,33 @@ function handlePlayers(ctx) {
 }
 
 function handleAfk(ctx) {
-  const { room, player, displayName, afkPlayers, rebalanceTeams } = ctx;
+  const { room, player, displayName, afkPlayers, rebalanceTeams, gameActive } = ctx;
+  if (!gameActive) {
+    sendMsg(room, '⏸️ !afk komutu sadece maç devam ederken kullanılabilir.', player.id, 0xFFCC00, 'bold');
+    return false;
+  }
+
+  const key = afkKey(player);
+  const now = Date.now();
+
   if (afkPlayers.has(player.id)) {
+    const startedAt = afkStartedAt.get(key) || 0;
+    const waitMs = AFK_MIN_DURATION_MS - (now - startedAt);
+
+    if (waitMs > 0) {
+      const lastWarning = lastAfkEarlyWarningAt.get(key) || 0;
+      if (now - lastWarning >= AFK_EARLY_WARNING_MS) {
+        lastAfkEarlyWarningAt.set(key, now);
+        sendMsg(room, `⏳ AFK modundan çıkmak için ${Math.ceil(waitMs / 1000)} sn daha beklemelisin.`, player.id, 0xFFCC00, 'bold');
+      }
+      return false;
+    }
+
     afkPlayers.delete(player.id);
+    afkStartedAt.delete(key);
+    lastAfkEarlyWarningAt.delete(key);
     sendMsg(room, `🔔 ${displayName} artık AFK değil! Oyuna girmeye hazır.`, null, 0x00FF7F, 'bold');
   } else {
-    const key = afkKey(player);
-    const now = Date.now();
     const previous = lastAfkAt.get(key) || 0;
     const waitMs = AFK_COOLDOWN_MS - (now - previous);
 
@@ -49,6 +73,8 @@ function handleAfk(ctx) {
     }
 
     lastAfkAt.set(key, now);
+    afkStartedAt.set(key, now);
+    lastAfkEarlyWarningAt.delete(key);
     afkPlayers.add(player.id);
     if (player.team !== 0 && typeof room.setPlayerTeam === 'function') {
       try {

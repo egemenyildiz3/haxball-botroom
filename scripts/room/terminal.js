@@ -88,6 +88,7 @@ function attachTerminalInput(room, state, deps, autoManager) {
         chatMuted: state.chatMuted,
         setChatMuted: (muted) => { state.chatMuted = !!muted; },
         mutedPlayers: state.mutedPlayers,
+        gameActive: !!state.currentGame,
       });
       return;
     }
@@ -103,6 +104,7 @@ function attachTerminalInput(room, state, deps, autoManager) {
         chatMuted: state.chatMuted,
         setChatMuted: (muted) => { state.chatMuted = !!muted; },
         mutedPlayers: state.mutedPlayers,
+        gameActive: !!state.currentGame,
       });
       console.log(`💬 [TERMINAL CHAT]: ${text}`);
     } catch (err) {
