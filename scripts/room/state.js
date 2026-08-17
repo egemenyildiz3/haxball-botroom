@@ -15,7 +15,6 @@ function createRoomState() {
     rebalanceRequested: false,
     startGamePending: false,
     teamChangesLocked: false,
-    teamLockInterval: null,
     lockedTeams: new Map(),
     autoManageEnabled: true,
     chatFilter: createChatFilter(),

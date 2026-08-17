@@ -165,7 +165,7 @@ function handleTeamGoal(room, state, team, { getTimestamp, sendMsg }) {
 function handleGameStart(room, state, { sendMsg }) {
   if (typeof room.getPlayerList !== 'function') return;
 
-  endTeamTransitionLock(room, state, { unlock: true });
+  endTeamTransitionLock(room, state);
   state.lastTouchPlayer = null;
   state.secondLastTouchPlayer = null;
   state.touchHistory = [];
@@ -219,7 +219,7 @@ async function handleGameStop(room, state, deps) {
   state.currentGame = null;
 
   if (!state.autoManageEnabled) {
-    endTeamTransitionLock(room, state, { unlock: true });
+    endTeamTransitionLock(room, state);
     console.log('[MATCH ROTATION] Otomatik yönetim kapalı - takım dağıtımı ve yeni maç atlandı.');
     return;
   }
