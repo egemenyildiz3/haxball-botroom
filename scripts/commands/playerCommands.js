@@ -76,6 +76,7 @@ function handleHelp(ctx) {
     '• !giris <şifre> — Mevcut hesabınıza giriş yapar',
     player.admin || isSuperAdmin ? '• !bot aç [adet] / !bot kapat / !bot hepsi / !bot durum — Yapay zeka botunu yönetir (Yönetici)' : '',
     player.admin || isSuperAdmin ? '• !oto aç / !oto kapat / !oto durum — Otomatik takım dağıtımı ve maç başlatmayı açar/kapatır (Yönetici)' : '',
+    player.admin || isSuperAdmin ? '• !mute — Sohbeti kapatır/açar; komutlar etkilenmez (Yönetici)' : '',
     isSuperAdmin ? '• !blacklist <id/isim> [sebep] — Oyuncuyu veritabanı kara listesine ekler (Super-Admin)' : '',
     isSuperAdmin ? '• !clearbans — Tüm banları temizler (Super-Admin)' : '',
   ]

@@ -6,10 +6,12 @@ const { routePlayerCommand } = require('./playerCommands');
 const { routeBotCommand } = require('./botCommands');
 const { routeAutoCommand } = require('./autoCommands');
 const { routeRequestCommand } = require('./requestCommands');
+const { routeMuteCommand } = require('./muteCommands');
 
 const COMMAND_ROUTERS = [
   routeAdminCommand,
   routeRequestCommand,
+  routeMuteCommand,
   routePlayerCommand,
   routeAccountCommand,
   routeAutoCommand,
@@ -40,6 +42,12 @@ function handlePlayerChat(room, player, msg, deps) {
 
   if (!text.startsWith('!')) {
     const chatText = text.toLocaleLowerCase('tr-TR');
+    const isAdminChat = player.admin || isSuperAdmin;
+
+    if (deps.chatMuted && !isAdminChat) {
+      sendMsg(room, '🔇 Sohbet şu anda kapalı. Komutları kullanabilirsin.', player.id, 0xFFCC00, 'bold');
+      return false;
+    }
 
     if (deps.chatFilter && typeof deps.chatFilter.check === 'function') {
       const filterResult = deps.chatFilter.check(player, chatText, { loggedInPlayers: deps.loggedInPlayers });
@@ -52,7 +60,6 @@ function handlePlayerChat(room, player, msg, deps) {
       }
     }
 
-    const isAdminChat = player.admin || isSuperAdmin;
     sendMsg(
       room,
       `💬 ${displayName}: ${chatText}`,

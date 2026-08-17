@@ -173,6 +173,8 @@ async function createRoom(room, deps) {
       rebalanceTeams: () => scheduleRebalance(room, state, roomDeps),
       autoManager,
       chatFilter: state.chatFilter,
+      chatMuted: state.chatMuted,
+      setChatMuted: (muted) => { state.chatMuted = !!muted; },
     });
   };
 
