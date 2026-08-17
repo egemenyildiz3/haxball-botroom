@@ -14,7 +14,7 @@ const MAX_PLAYERS = Number(process.env.HAXBALL_MAX_PLAYERS || 16);
 const SCORE_LIMIT = Number(process.env.HAXBALL_SCORE_LIMIT || 3);
 const TIME_LIMIT = Number(process.env.HAXBALL_TIME_LIMIT || 4);
 const SPEC_PROMOTION_COUNT = Number(process.env.HAXBALL_PROMOTION_COUNT || 4);
-const PRIVATE_ROOM = false;
+const PUBLIC_ROOM = Number(process.env.HAXBALL_PUBLIC ?? 1) === 1;
 const TOKEN = process.env.HAXBALL_TOKEN;
 const ADMIN_PASSWORD = process.env.HAXBALL_ADMIN_PASSWORD;
 
@@ -86,7 +86,7 @@ async function startRoom() {
     roomName: ROOM_NAME,
     playerName: 'Host-admin',
     maxPlayers: MAX_PLAYERS,
-    public: !PRIVATE_ROOM,
+    public: PUBLIC_ROOM,
     noPlayer: false,
     token: TOKEN,
     geo: { code: 'tr', lat: 37.0208, lon: 30.8541 },
