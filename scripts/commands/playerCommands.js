@@ -64,6 +64,19 @@ function handleAfk(ctx) {
   return false;
 }
 
+function handleBye(ctx) {
+  const { room, player, displayName } = ctx;
+  sendMsg(room, `👋 ${displayName} görüşürüz dedi. Yolun açık olsun ✨`, null, 0x00BFFF, 'bold');
+
+  if (typeof room.kickPlayer === 'function') {
+    try {
+      room.kickPlayer(player.id, '👋 Görüşürüz! ✨', false);
+    } catch (e) {}
+  }
+
+  return false;
+}
+
 function handleHelp(ctx) {
   const { room, player, isSuperAdmin } = ctx;
   const helpText = [
@@ -71,12 +84,13 @@ function handleHelp(ctx) {
     '• !oyuncular — Odadaki oyuncuları ve ID\'lerini listeler',
     '• !s / !stats / !istatistik — İstatistiklerinizi gösterir',
     '• !afk — AFK modunu açar/kapatır',
+    '• !bb — Tatlı bir vedayla odadan ayrılır',
     '• !admin <açıklama> — Adminlere istek, talep veya şikayet gönderir',
     '• !kaydol <şifre> — Hesap oluşturur ve oturum açar',
     '• !giris <şifre> — Mevcut hesabınıza giriş yapar',
     player.admin || isSuperAdmin ? '• !bot aç [adet] / !bot kapat / !bot hepsi / !bot durum — Yapay zeka botunu yönetir (Yönetici)' : '',
     player.admin || isSuperAdmin ? '• !oto aç / !oto kapat / !oto durum — Otomatik takım dağıtımı ve maç başlatmayı açar/kapatır (Yönetici)' : '',
-    player.admin || isSuperAdmin ? '• !mute — Sohbeti kapatır/açar; komutlar etkilenmez (Yönetici)' : '',
+    player.admin || isSuperAdmin ? '• !mute [id/isim] — Sohbeti veya bir oyuncuyu susturur (Yönetici)' : '',
     isSuperAdmin ? '• !blacklist <id/isim> [sebep] — Oyuncuyu veritabanı kara listesine ekler (Super-Admin)' : '',
     isSuperAdmin ? '• !clearbans — Tüm banları temizler (Super-Admin)' : '',
   ]
@@ -90,6 +104,7 @@ function handleHelp(ctx) {
 function routePlayerCommand(ctx) {
   if (ctx.command === '!oyuncular' || ctx.command === '!oyunculistesi' || ctx.command === '!players') return handlePlayers(ctx);
   if (ctx.command === '!afk') return handleAfk(ctx);
+  if (ctx.command === '!bb' || ctx.command === '!bye' || ctx.command === '!cik') return handleBye(ctx);
   if (ctx.command === '!yardim' || ctx.command === '!yardım' || ctx.command === '!help') return handleHelp(ctx);
   return null;
 }

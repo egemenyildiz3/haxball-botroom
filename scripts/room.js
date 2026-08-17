@@ -175,6 +175,7 @@ async function createRoom(room, deps) {
       chatFilter: state.chatFilter,
       chatMuted: state.chatMuted,
       setChatMuted: (muted) => { state.chatMuted = !!muted; },
+      mutedPlayers: state.mutedPlayers,
     });
   };
 

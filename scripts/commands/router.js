@@ -6,7 +6,7 @@ const { routePlayerCommand } = require('./playerCommands');
 const { routeBotCommand } = require('./botCommands');
 const { routeAutoCommand } = require('./autoCommands');
 const { routeRequestCommand } = require('./requestCommands');
-const { routeMuteCommand } = require('./muteCommands');
+const { routeMuteCommand, muteKey, minutesLeft } = require('./muteCommands');
 
 const COMMAND_ROUTERS = [
   routeAdminCommand,
@@ -47,6 +47,16 @@ function handlePlayerChat(room, player, msg, deps) {
     if (deps.chatMuted && !isAdminChat) {
       sendMsg(room, '🔇 Sohbet şu anda kapalı. Komutları kullanabilirsin.', player.id, 0xFFCC00, 'bold');
       return false;
+    }
+
+    if (deps.mutedPlayers && !isAdminChat) {
+      const key = muteKey(player);
+      const mute = key ? deps.mutedPlayers.get(key) : null;
+      if (mute && mute.until > Date.now()) {
+        sendMsg(room, `🔇 ${minutesLeft(mute.until - Date.now())} dk daha susturuldunuz. Komutları kullanabilirsiniz.`, player.id, 0xFFCC00, 'bold');
+        return false;
+      }
+      if (mute) deps.mutedPlayers.delete(key);
     }
 
     if (deps.chatFilter && typeof deps.chatFilter.check === 'function') {

@@ -18,6 +18,7 @@ function createRoomState() {
     lockedTeams: new Map(),
     autoManageEnabled: true,
     chatMuted: false,
+    mutedPlayers: new Map(),
     chatFilter: createChatFilter(),
   };
 }
