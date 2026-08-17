@@ -1,6 +1,6 @@
 const { saveGameResult } = require('../db');
 const { getCleanName } = require('../util');
-const { checkAndStartGame, lockTeams, rememberLockedTeams } = require('./teamBalancer');
+const { checkAndStartGame, lockTeams, rememberLockedTeams, beginTeamTransitionLock, endTeamTransitionLock } = require('./teamBalancer');
 const { desiredBotCount, isBotPlayer, sortRealPlayersFirst } = require('./botPolicy');
 
 const ROTATION_START_DELAY_MS = 700;
@@ -165,8 +165,7 @@ function handleTeamGoal(room, state, team, { getTimestamp, sendMsg }) {
 function handleGameStart(room, state, { sendMsg }) {
   if (typeof room.getPlayerList !== 'function') return;
 
-  state.teamChangesLocked = false;
-  state.lockedTeams.clear();
+  endTeamTransitionLock(room, state, { unlock: true });
   state.lastTouchPlayer = null;
   state.secondLastTouchPlayer = null;
   state.touchHistory = [];
@@ -220,14 +219,12 @@ async function handleGameStop(room, state, deps) {
   state.currentGame = null;
 
   if (!state.autoManageEnabled) {
-    state.teamChangesLocked = false;
+    endTeamTransitionLock(room, state, { unlock: true });
     console.log('[MATCH ROTATION] Otomatik yönetim kapalı - takım dağıtımı ve yeni maç atlandı.');
     return;
   }
 
-  lockTeams(room);
-  rememberLockedTeams(room, state);
-  state.teamChangesLocked = true;
+  beginTeamTransitionLock(room, state);
 
   await sleep(2000);
   lockTeams(room);
@@ -304,6 +301,7 @@ async function handleGameStop(room, state, deps) {
 
     lockTeams(room);
     rememberLockedTeams(room, state);
+    state.teamChangesLocked = true;
     await sleep(ROTATION_END_DELAY_MS);
   } finally {
     state.isRebalancing = false;

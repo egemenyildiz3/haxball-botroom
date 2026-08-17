@@ -5,12 +5,19 @@ const REBALANCE_MOVE_DELAY_MS = 350;
 const REBALANCE_END_DELAY_MS = 500;
 const START_RETRY_DELAY_MS = 1000;
 const START_RETRY_COUNT = 5;
+const TEAM_LOCK_KEEPALIVE_MS = 250;
 
 const fallbackSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function lockTeams(room) {
   if (typeof room.setTeamsLock === 'function') {
     try { room.setTeamsLock(true); } catch (e) {}
+  }
+}
+
+function unlockTeams(room) {
+  if (typeof room.setTeamsLock === 'function') {
+    try { room.setTeamsLock(false); } catch (e) {}
   }
 }
 
@@ -23,13 +30,42 @@ function rememberLockedTeams(room, state) {
   );
 }
 
+function beginTeamTransitionLock(room, state) {
+  lockTeams(room);
+  rememberLockedTeams(room, state);
+  state.teamChangesLocked = true;
+
+  if (state.teamLockInterval) return;
+  state.teamLockInterval = setInterval(() => {
+    if (!state.teamChangesLocked || state.currentGame) {
+      endTeamTransitionLock(room, state, { unlock: !!state.currentGame });
+      return;
+    }
+    lockTeams(room);
+  }, TEAM_LOCK_KEEPALIVE_MS);
+
+  if (typeof state.teamLockInterval.unref === 'function') {
+    state.teamLockInterval.unref();
+  }
+}
+
+function endTeamTransitionLock(room, state, { unlock = false } = {}) {
+  if (state.teamLockInterval) {
+    clearInterval(state.teamLockInterval);
+    state.teamLockInterval = null;
+  }
+
+  state.teamChangesLocked = false;
+  state.lockedTeams.clear();
+  if (unlock) unlockTeams(room);
+}
+
 function checkAndStartGame(room, state) {
   if (!state.autoManageEnabled) return;
   if (typeof room.getPlayerList !== 'function') return;
   if (state.startGamePending) return;
 
-  lockTeams(room);
-  rememberLockedTeams(room, state);
+  beginTeamTransitionLock(room, state);
   state.startGamePending = true;
   tryStartGame(room, state, START_RETRY_COUNT);
 }
@@ -45,6 +81,7 @@ function tryStartGame(room, state, retriesLeft) {
     } catch (e) {
       if (retriesLeft <= 0) {
         state.startGamePending = false;
+        endTeamTransitionLock(room, state, { unlock: true });
         console.warn('Oyun başlatılamadı, yeniden deneme hakkı bitti:', e.message);
         return;
       }
@@ -54,6 +91,7 @@ function tryStartGame(room, state, retriesLeft) {
 
   if (retriesLeft <= 0 || state.currentGame || activePlayers.length === 0) {
     state.startGamePending = false;
+    if (!state.currentGame) endTeamTransitionLock(room, state, { unlock: true });
     return;
   }
 
@@ -69,7 +107,7 @@ async function rebalanceTeams(room, state, { playerJoinOrder, botManager, sleep 
   if (typeof room.getPlayerList !== 'function' || typeof room.setPlayerTeam !== 'function') return;
 
   state.isRebalancing = true;
-  lockTeams(room);
+  beginTeamTransitionLock(room, state);
 
   try {
     do {
@@ -177,6 +215,7 @@ async function runRebalanceOnce(room, state, { playerJoinOrder, botManager, slee
 
   lockTeams(room);
   rememberLockedTeams(room, state);
+  state.teamChangesLocked = true;
   await sleep(REBALANCE_END_DELAY_MS);
 }
 
@@ -201,4 +240,6 @@ module.exports = {
   rebalanceTeams,
   lockTeams,
   rememberLockedTeams,
+  beginTeamTransitionLock,
+  endTeamTransitionLock,
 };

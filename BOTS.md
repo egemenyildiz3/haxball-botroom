@@ -46,6 +46,14 @@ network; it watches live bot-only or mixed matches and persistently tunes a few
 brain thresholds such as kick range, kick hold timing, own-goal carry avoidance,
 and support spacing.
 
+Learning is deliberately slow:
+
+- It tunes roughly every 7200 ticks.
+- It needs a meaningful sample before changing kick timing.
+- It only changes support spacing after enough non-attacker positioning samples.
+- Loaded state is clamped to safe bounds, so old over-learned values are pulled
+  back on restart.
+
 ---
 
 ## 2. Architecture, and why it looks like this

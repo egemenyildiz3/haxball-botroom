@@ -87,9 +87,10 @@ function handlePlayerAdminChange(room, state, changedPlayer, byPlayer, deps, san
 }
 
 function handlePlayerTeamChange(room, state, changedPlayer, byPlayer, deps, sanitizePlayer) {
-  if (state.isRebalancing) return;
-
   const safePlayer = sanitizePlayer(room, changedPlayer, state);
+  const changedByHost = !byPlayer || byPlayer.id === 0;
+
+  if (state.isRebalancing && changedByHost) return;
 
   if (state.teamChangesLocked && safePlayer.id !== 0) {
     const expectedTeam = state.lockedTeams.has(safePlayer.id) ? state.lockedTeams.get(safePlayer.id) : 0;

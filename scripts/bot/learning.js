@@ -2,7 +2,8 @@ const fs = require('fs');
 const path = require('path');
 
 const VERSION = 1;
-const TUNE_EVERY_TICKS = 3600;
+const TUNE_EVERY_TICKS = 7200;
+const MIN_KICKS_TO_TUNE = 40;
 
 const DEFAULT_STATE = {
   version: VERSION,
@@ -19,16 +20,17 @@ const DEFAULT_STATE = {
     successfulKicks: 0,
     badCarryRisk: 0,
     crowdedTicks: 0,
+    positionSamples: 0,
   },
   updatedAt: null,
 };
 
 const BOUNDS = {
-  kickAttemptPadding: [0, 14],
-  kickHoldTicks: [0, 3],
-  ownGoalCarryRange: [0, 60],
-  supportBehind: [-30, 100],
-  teamSpacing: [0, 90],
+  kickAttemptPadding: [0, 8],
+  kickHoldTicks: [0, 2],
+  ownGoalCarryRange: [0, 35],
+  supportBehind: [-20, 50],
+  teamSpacing: [0, 45],
 };
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -56,7 +58,7 @@ function readState(file, log) {
 
   try {
     const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
-    return {
+    const state = {
       ...cloneDefaultState(),
       ...parsed,
       adjustments: {
@@ -68,10 +70,27 @@ function readState(file, log) {
         ...(parsed.lifetime || {}),
       },
     };
+    state.adjustments = sanitizeAdjustments(state.adjustments);
+    return state;
   } catch (err) {
     log(`🤖 [LEARN] Öğrenme dosyası okunamadı, sıfırdan başlanıyor: ${err.message}`);
     return cloneDefaultState();
   }
+}
+
+function sanitizeAdjustments(adjustments) {
+  const clean = { ...DEFAULT_STATE.adjustments };
+  for (const key of Object.keys(clean)) {
+    const value = Number(adjustments && adjustments[key]);
+    clean[key] = Number.isFinite(value) ? boundedValue(key, value) : clean[key];
+  }
+  return clean;
+}
+
+function boundedValue(key, value) {
+  const [min, max] = BOUNDS[key];
+  const next = clamp(value, min, max);
+  return key === 'kickHoldTicks' ? Math.round(next) : next;
 }
 
 function createBotLearner(options = {}) {
@@ -86,6 +105,7 @@ function createBotLearner(options = {}) {
     successfulKicks: 0,
     badCarryRisk: 0,
     crowdedTicks: 0,
+    positionSamples: 0,
   };
 
   function save() {
@@ -101,9 +121,7 @@ function createBotLearner(options = {}) {
   }
 
   function bounded(key, value) {
-    const [min, max] = BOUNDS[key];
-    const next = clamp(value, min, max);
-    return key === 'kickHoldTicks' ? Math.round(next) : next;
+    return boundedValue(key, value);
   }
 
   function adjust(key, delta) {
@@ -119,22 +137,26 @@ function createBotLearner(options = {}) {
     const missRate = kicks > 0 ? window.missedKicks / kicks : 0;
     let changed = false;
 
-    if (window.missedKicks >= 8 && missRate > 0.32) {
-      changed = adjust('kickAttemptPadding', missRate > 0.5 ? 2 : 1) || changed;
-      if (missRate > 0.45) changed = adjust('kickHoldTicks', 1) || changed;
-    } else if (window.successfulKicks >= 25 && missRate < 0.12) {
+    if (kicks >= MIN_KICKS_TO_TUNE && window.missedKicks >= 18 && missRate > 0.42) {
+      changed = adjust('kickAttemptPadding', 1) || changed;
+      if (window.missedKicks >= 30 && missRate > 0.62) changed = adjust('kickHoldTicks', 1) || changed;
+    } else if (window.successfulKicks >= 50 && missRate < 0.18) {
       changed = adjust('kickAttemptPadding', -1) || changed;
+      if (window.successfulKicks >= 80 && missRate < 0.1) changed = adjust('kickHoldTicks', -1) || changed;
     }
 
-    if (window.badCarryRisk > 180) {
-      changed = adjust('ownGoalCarryRange', 5) || changed;
+    if (window.badCarryRisk > 600) {
+      changed = adjust('ownGoalCarryRange', 3) || changed;
+    } else if (window.badCarryRisk < 80 && kicks >= MIN_KICKS_TO_TUNE) {
+      changed = adjust('ownGoalCarryRange', -2) || changed;
     }
 
-    if (window.crowdedTicks > 240) {
-      changed = adjust('teamSpacing', 5) || changed;
-      changed = adjust('supportBehind', 5) || changed;
-    } else if (window.crowdedTicks < 60) {
+    if (window.positionSamples >= 1200 && window.crowdedTicks > 1400) {
+      changed = adjust('teamSpacing', 3) || changed;
+      changed = adjust('supportBehind', 3) || changed;
+    } else if (window.positionSamples >= 1200 && window.crowdedTicks < 250) {
       changed = adjust('teamSpacing', -2) || changed;
+      changed = adjust('supportBehind', -2) || changed;
     }
 
     state.lifetime.windows++;
@@ -148,7 +170,7 @@ function createBotLearner(options = {}) {
     }
 
     save();
-    window = { missedKicks: 0, successfulKicks: 0, badCarryRisk: 0, crowdedTicks: 0 };
+    window = { missedKicks: 0, successfulKicks: 0, badCarryRisk: 0, crowdedTicks: 0, positionSamples: 0 };
   }
 
   function beginTick() {
@@ -195,6 +217,7 @@ function createBotLearner(options = {}) {
     }
 
     if (move.role !== 'attacker') {
+      window.positionSamples++;
       const crowded = (view.teammates || []).some((mate) => len(sub(view.self.pos, mate.pos)) < (cfg.teamSpacing || 135) * 0.7);
       if (crowded) window.crowdedTicks++;
     }
