@@ -58,6 +58,8 @@ const DEFAULTS = {
 
   // --- Topa vurma ---
   kickPadding: 4, // yarıçapların ötesinde vuruşun tuttuğu ek mesafe
+  kickAttemptPadding: 7, // temas kaçırmamak için kick'i biraz erken hazırla
+  kickHoldTicks: 2, // erken kick başlarsa temas anına kadar kısa süre basılı tut
   releaseTicks: 3, // tekrar vurabilmek için tuşu bırakma süresi
   preKickReleaseMargin: 18, // topa girmeden önce fren/kick tuşunu bırakmaya başla
   preKickReleaseTicks: 1, // temas anında yeni kick kaydolması için kısa hazırlık
@@ -73,6 +75,8 @@ const DEFAULTS = {
   preciseAimRange: 750, // bu mesafeden yakında direk seçimine geç
   clearConeCos: -0.1, // şut bölgesi dışında yeterli olan "ileriye dönüklük"
   ownGoalGuard: -0.25, // bu değerin altındaki yön = kendi kalemize, asla vurma
+  pressuredOpponentTicks: 10, // rakip bu kadar tick yakındaysa topu bekletme
+  pressureRange: 180, // yakın rakip baskısı mesafesi
 
   // Şut bölgesinde artık sabit bir açı konisi yerine GERÇEK isabet kontrolü
   // yapılıyor: topun gideceği yön kale ağzını kesiyor mu? goalMargin, kale
@@ -83,6 +87,9 @@ const DEFAULTS = {
   // --- Konumlanma ---
   predictTicks: 90, // topu kaç tick ileri tahmin edelim
   supportSpread: 220, // destek oyuncusunun yanal açılma mesafesi
+  supportBehind: 150, // destek oyuncusu topun ne kadar gerisinde opsiyon olsun
+  teamSpacing: 135, // botlar/oyuncular aynı noktaya yığılmasın
+  teamSpacingPush: 75, // çok yakın hedefleri ne kadar yana/geriye itelim
   botOnlyStuckTicks: 80, // sadece botlar varken yatay kilidi kaç tick sonra kır
   botOnlyNudge: 90, // kilit açmak için hedefe eklenecek küçük dikey sapma
 
@@ -424,6 +431,25 @@ function chooseClearPoint(view) {
   };
 }
 
+function opponentPressure(view, cfg) {
+  let bestTicks = Infinity;
+  let bestDistance = Infinity;
+
+  for (const opponent of view.opponents || []) {
+    const eta = solveIntercept(opponent, view.ball, cfg);
+    if (eta.ticks < bestTicks) bestTicks = eta.ticks;
+    const distance = len(sub(opponent.pos, view.ball.pos));
+    if (distance < bestDistance) bestDistance = distance;
+  }
+
+  return {
+    close: bestDistance <= cfg.pressureRange,
+    soon: bestTicks <= cfg.pressuredOpponentTicks,
+    ticks: bestTicks,
+    distance: bestDistance,
+  };
+}
+
 // --- Rol dağılımı --------------------------------------------------------
 
 /**
@@ -453,7 +479,7 @@ function assignRoles(view, cfg) {
   }
 
   if (attackerId === view.self.id) {
-    return { role: 'attacker', intercept: mine, slot: 0 };
+    return { role: 'attacker', intercept: mine, slot: 0, supportIndex: -1, supportCount: 0 };
   }
 
   // 2) Defans: hücumcu dışındakiler arasında kendi kalesine en yakın olan
@@ -471,7 +497,7 @@ function assignRoles(view, cfg) {
   }
 
   if (defenderId === view.self.id) {
-    return { role: 'defender', intercept: mine, slot: 0 };
+    return { role: 'defender', intercept: mine, slot: 0, supportIndex: -1, supportCount: 0 };
   }
 
   // 3) Destek: kalanları yanal şeritlere böl ki üst üste binmesinler
@@ -484,7 +510,7 @@ function assignRoles(view, cfg) {
     ? 0.75 * (view.ball.pos.y >= 0 ? -1 : 1)
     : index - (count - 1) / 2;
 
-  return { role: 'support', intercept: mine, slot };
+  return { role: 'support', intercept: mine, slot, supportIndex: index, supportCount: count };
 }
 
 /**
@@ -520,21 +546,60 @@ function defenderTarget(view, cfg) {
  * `slot` her destekçiye farklı bir şerit verir (… -1, 0, +1 …), böylece
  * aynı noktaya yığılmazlar.
  */
-function supportTarget(view, cfg, slot) {
+function supportTarget(view, cfg, roleInfo) {
   const ownCenter = mid(view.ownGoal.p0, view.ownGoal.p1);
   const oppCenter = mid(view.oppGoal.p0, view.oppGoal.p1);
   const upfield = upfieldOf(view);
   const f = fieldOf(view);
+  const slot = roleInfo.slot || 0;
+  const index = roleInfo.supportIndex || 0;
+  const count = roleInfo.supportCount || 1;
 
   const pitchLength = len(sub(oppCenter, ownCenter)) || (f.maxX - f.minX);
   const ballDepth = dot(sub(view.ball.pos, ownCenter), upfield) / pitchLength;
 
-  // Kendi yarımızdaysak topun biraz gerisinde, hücumdaysak ilerisinde dur
-  const along = ballDepth < 0.5 ? -cfg.supportSpread * 0.6 : cfg.supportSpread;
+  let along;
+  let lateral = slot * cfg.supportSpread;
+
+  if (ballDepth < 0.45) {
+    along = -cfg.supportBehind;
+  } else if (count <= 1) {
+    along = -cfg.supportBehind * 0.7;
+  } else if (index === 0) {
+    along = -cfg.supportBehind * 0.85;
+  } else {
+    along = cfg.supportBehind * 0.45;
+    lateral += (view.ball.pos.y >= 0 ? -1 : 1) * cfg.supportSpread * 0.35;
+  }
 
   return {
     x: clamp(view.ball.pos.x + upfield.x * along, f.minX * 0.95, f.maxX * 0.95),
-    y: clamp(view.ball.pos.y + slot * cfg.supportSpread, f.minY * 0.85, f.maxY * 0.85),
+    y: clamp(view.ball.pos.y + lateral, f.minY * 0.85, f.maxY * 0.85),
+  };
+}
+
+function applyTeamSpacing(view, target, cfg, role) {
+  if (role === 'attacker') return target;
+
+  const f = fieldOf(view);
+  const upfield = upfieldOf(view);
+  const perp = normalize({ x: -upfield.y, y: upfield.x });
+  let adjusted = { ...target };
+
+  for (const mate of view.teammates || []) {
+    const diff = sub(adjusted, mate.pos);
+    const distance = len(diff);
+    if (distance >= cfg.teamSpacing || distance < 1e-6) continue;
+
+    const away = normalize(diff);
+    const side = dot(away, perp) >= 0 ? 1 : -1;
+    const strength = (1 - distance / cfg.teamSpacing) * cfg.teamSpacingPush;
+    adjusted = add(adjusted, add(scale(away, strength), scale(perp, side * strength * 0.45)));
+  }
+
+  return {
+    x: clamp(adjusted.x, f.minX * 0.95, f.maxX * 0.95),
+    y: clamp(adjusted.y, f.minY * 0.85, f.maxY * 0.85),
   };
 }
 
@@ -672,7 +737,8 @@ function decide(view, memory, config) {
     ballDamping: activeCfg.ballDamping,
   };
 
-  const { role, intercept, slot } = assignRoles(view, roleCfg);
+  const roleInfo = assignRoles(view, roleCfg);
+  const { role, intercept } = roleInfo;
 
   const ownCenter = mid(view.ownGoal.p0, view.ownGoal.p1);
   const oppCenter = mid(view.oppGoal.p0, view.oppGoal.p1);
@@ -683,8 +749,10 @@ function decide(view, memory, config) {
   const pitchLength = len(sub(oppCenter, ownCenter)) || (field.maxX - field.minX);
   const ballDepth = dot(sub(view.ball.pos, ownCenter), upfield) / pitchLength;
   const inOwnThird = ballDepth < activeCfg.clearThird;
+  const pressure = opponentPressure(view, activeCfg);
+  const shouldClear = inOwnThird || (ballDepth < 0.55 && (pressure.close || pressure.soon));
 
-  const aim = inOwnThird ? chooseClearPoint(view) : chooseAimPoint(view, activeCfg);
+  const aim = shouldClear ? chooseClearPoint(view) : chooseAimPoint(view, activeCfg);
   const toAim = normalize(sub(aim, view.ball.pos));
 
   // Topun mevcut hızını hesaba katarak hangi yönden vurmamız gerektiğini bul.
@@ -699,16 +767,19 @@ function decide(view, memory, config) {
   } else if (role === 'defender') {
     target = defenderTarget(view, activeCfg);
   } else {
-    target = supportTarget(view, activeCfg, slot);
+    target = supportTarget(view, activeCfg, roleInfo);
   }
 
+  target = applyTeamSpacing(view, target, activeCfg, role);
   target = botOnlyNudgeTarget(view, target, activeCfg, memory);
 
   // --- Vuruş kararı ---
   const toBall = sub(view.ball.pos, view.self.pos);
   const distToBall = len(toBall);
   const kickRange = (view.self.radius || 15) + (view.ball.radius || 10) + activeCfg.kickPadding;
+  const kickEngageRange = kickRange + activeCfg.kickAttemptPadding;
   const inKickRange = distToBall <= kickRange;
+  const inKickEngageRange = distToBall <= kickEngageRange;
 
   // Şimdi vurursak top hangi yöne gider? (vuruş yönü + topun mevcut hızı)
   const kickDir = normalize(toBall);
@@ -757,11 +828,13 @@ function decide(view, memory, config) {
   }
 
   // Kaleye yakınsak isabet şartı ara; uzaktaysak topa vur ve ileri gönder.
-  const wantKick = inKickRange && safeDirection && (
-    inShootingRange ? onTarget : forwardness >= activeCfg.clearConeCos
+  const forwardTouch = forwardness >= activeCfg.clearConeCos;
+  const pressuredTouch = pressure.close || pressure.soon;
+  const wantKick = inKickEngageRange && safeDirection && !ownGoalCarryDanger && (
+    inShootingRange ? (onTarget || (forwardTouch && (pressuredTouch || inKickRange))) : forwardTouch
   );
 
-  const nearKickRange = distToBall <= kickRange + activeCfg.preKickReleaseMargin;
+  const nearKickRange = distToBall <= kickEngageRange + activeCfg.preKickReleaseMargin;
   const likelyKickSoon = role === 'attacker' && nearKickRange && safeDirection && (
     inShootingRange ? true : forwardness >= activeCfg.clearConeCos
   );
@@ -779,7 +852,10 @@ function decide(view, memory, config) {
   let shot = false;
   let releasingForKick = false;
   if (wantKick) {
-    if (memory.preKickReleaseTicks > 0) {
+    if (memory.kickHoldTicks > 0) {
+      memory.kickHoldTicks--;
+      shot = true;
+    } else if (memory.preKickReleaseTicks > 0) {
       memory.preKickReleaseTicks--;
       releasingForKick = true;
     } else if (memory.kickCooldown > 0) {
@@ -789,10 +865,12 @@ function decide(view, memory, config) {
       releasingForKick = true;
     } else {
       shot = true;
+      memory.kickHoldTicks = activeCfg.kickHoldTicks;
       memory.kickCooldown = activeCfg.releaseTicks;
     }
   } else {
     memory.kickCooldown = 0;
+    memory.kickHoldTicks = 0;
     if (memory.preKickReleaseTicks > 0) {
       memory.preKickReleaseTicks--;
       releasingForKick = true;
