@@ -15,7 +15,7 @@ const COMMAND_ROUTERS = [
 ];
 
 const NORMAL_CHAT_COLOR = 0xFFFFFF;
-const ADMIN_CHAT_COLOR = 0xFF6666;
+const ADMIN_CHAT_COLOR = 0xCC99FF;
 
 function handlePlayerChat(room, player, msg, deps) {
   const text = String(msg || '').trim();

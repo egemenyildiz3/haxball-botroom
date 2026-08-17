@@ -12,6 +12,11 @@ const { attachTerminalInput } = require('./room/terminal');
 const { isProtectedBotIdentity } = require('./room/botPolicy');
 const { blockDuplicateJoin } = require('./room/joinGuards');
 
+const TEAM_COLORS = {
+  red: { team: 1, angle: 60, text: 0xE3E3E3, colors: [0xC90209] },
+  blue: { team: 2, angle: 60, text: 0xE3E3E3, colors: [0x0272BD] },
+};
+
 process.on('uncaughtException', (err) => {
   console.error('❌ [CRITICAL ERROR] Yakalanmamış İstisna:', err.message, err.stack);
 });
@@ -19,6 +24,18 @@ process.on('uncaughtException', (err) => {
 process.on('unhandledRejection', (reason) => {
   console.error('⚠️ [UNHANDLED REJECTION] İşlenmemiş Promise Reddi:', reason);
 });
+
+function applyTeamColors(room) {
+  if (typeof room.setTeamColors !== 'function') return;
+
+  for (const { team, angle, text, colors } of Object.values(TEAM_COLORS)) {
+    try {
+      room.setTeamColors(team, angle, text, colors);
+    } catch (err) {
+      console.warn(`[COLORS] Takım forması uygulanamadı (team=${team}):`, err.message);
+    }
+  }
+}
 
 async function createRoom(room, deps) {
   const {
@@ -181,6 +198,7 @@ async function createRoom(room, deps) {
 
   if (typeof room.setScoreLimit === 'function') room.setScoreLimit(SCORE_LIMIT);
   if (typeof room.setTimeLimit === 'function') room.setTimeLimit(TIME_LIMIT);
+  applyTeamColors(room);
 
   lockTeams(room);
 

@@ -3,6 +3,8 @@ node_modules/
 npm-debug.log*
 package-lock.json
 .env
+*.md
+!README.md
 
 # runtime score files
 db/bot-learning.json
