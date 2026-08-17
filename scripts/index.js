@@ -28,10 +28,6 @@ const BOT_NAME = process.env.HAXBALL_BOT_NAME || 'SpaceBot';
 const BOT_MAX = Number(process.env.HAXBALL_BOT_MAX || 8);
 const BOT_AVATAR = process.env.HAXBALL_BOT_AVATAR || '🤖';
 const BOT_AUTOSTART = Number(process.env.HAXBALL_BOT_AUTOSTART ?? 3);
-const BOT_LEARNING_ENABLED = Number(process.env.HAXBALL_BOT_LEARNING ?? 1) === 1;
-const BOT_LEARNING_FILE = process.env.HAXBALL_BOT_LEARNING_FILE
-  ? path.resolve(__dirname, '..', process.env.HAXBALL_BOT_LEARNING_FILE)
-  : path.join(__dirname, '..', 'db', 'bot-learning.json');
 
 let SQL = null;
 let db = null;
@@ -70,8 +66,6 @@ async function startRoom() {
     botName: BOT_NAME,
     maxBots: BOT_MAX,
     avatar: BOT_AVATAR,
-    learningEnabled: BOT_LEARNING_ENABLED,
-    learningFile: BOT_LEARNING_FILE,
   });
 
   // Host kapanırken bot process'leri ortada kalmasın
