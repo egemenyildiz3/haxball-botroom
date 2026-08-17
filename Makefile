@@ -1,6 +1,6 @@
 CONTAINER := haxball-headless
 
-.PHONY: help up down restart rebuild logs logs-backend ps db-users db-drop-users
+.PHONY: help up down restart rebuild logs logs-backend ps db-users db-drop-users db-blacklist db-blacklist_player db-unblacklist_player
 
 help:
 	@echo "======================================================================"
@@ -17,6 +17,8 @@ help:
 	@echo "----------------------------------------------------------------------"
 	@echo "  make db-users      : 'users' tablosundaki tüm kayıtları listeler"
 	@echo "  make db-drop-users : 'users' tablosunu tamamen siler (DROP TABLE)"
+	@echo "  make db-blacklist  : 'blacklisted_users' tablosundaki kayıtları listeler"
+	@echo "  make db-unblacklist_player USERNAME='oyuncu' : Kullanıcıyı kara listeden çıkarır"
 	@echo "======================================================================"
 
 # --- Docker Compose Komutları ---
@@ -88,8 +90,17 @@ db-make_admin: #USERNAME=player1
 
 
 # KARA LISTE
-USERNAME ?= sdgsfgg
-AUTH ?= sdsd
+USERNAME ?=
+AUTH ?=
+UNBLACKLIST_USERNAME := $(strip $(if $(USERNAME),$(USERNAME),$(word 2,$(MAKECMDGOALS))))
+
+ifneq ($(filter db-unblacklist_player,$(MAKECMDGOALS)),)
+$(eval $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS)):;@:)
+endif
 
 db-blacklist_player:
 	docker exec -it $(CONTAINER) node -e 'const fs = require("fs"); const initSqlJs = require("sql.js"); initSqlJs().then(SQL => { const dbPath = "./db/haxball-results.sqlite"; const db = new SQL.Database(fs.readFileSync(dbPath)); let targetUser = "$(USERNAME)".trim(); let targetAuth = "$(AUTH)".trim(); let ip = ""; if (!targetAuth && targetUser) { const stmtV = db.prepare("SELECT auth_key FROM visited_users WHERE LOWER(username) = LOWER(?) AND auth_key IS NOT NULL AND auth_key != \"\""); stmtV.bind([targetUser]); if (stmtV.step()) { targetAuth = stmtV.getAsObject().auth_key || ""; } stmtV.free(); if (!targetAuth) { const stmtU = db.prepare("SELECT auth_key, last_ip FROM users WHERE LOWER(username) = LOWER(?)"); stmtU.bind([targetUser]); if (stmtU.step()) { const r = stmtU.getAsObject(); targetAuth = r.auth_key || ""; ip = r.last_ip || ""; } stmtU.free(); } } if (!targetUser && !targetAuth) { console.log("⚠️ HATA: Username veya Auth Key belirtilmedi!"); return; } db.run("INSERT INTO blacklisted_users (username, auth_key, ip, reason, banned_at) VALUES (?, ?, ?, ?, ?)", [targetUser, targetAuth, ip, "Makefile üzerinden engellendi", new Date().toISOString()]); fs.writeFileSync(dbPath, Buffer.from(db.export())); console.log("🚫 Blacklist Eklendi -> Kullanıcı: \"" + targetUser + "\" | Auth: \"" + targetAuth + "\""); });'
+
+db-unblacklist_player: # USERNAME=player1
+	@if [ -z "$(UNBLACKLIST_USERNAME)" ]; then echo "⚠️ HATA: USERNAME belirtilmedi! Örnek: make db-unblacklist_player USERNAME='oyuncu' veya make db-unblacklist_player oyuncu"; exit 1; fi
+	docker exec -e TARGET_USERNAME="$(UNBLACKLIST_USERNAME)" -it $(CONTAINER) node -e 'const fs = require("fs"); const initSqlJs = require("sql.js"); initSqlJs().then(SQL => { const dbPath = "./db/haxball-results.sqlite"; const db = new SQL.Database(fs.readFileSync(dbPath)); const targetUser = (process.env.TARGET_USERNAME || "").trim(); if (!targetUser) { console.log("⚠️ HATA: USERNAME belirtilmedi!"); return; } const auths = new Set(); for (const query of ["SELECT auth_key FROM visited_users WHERE LOWER(username) = LOWER(?) AND auth_key IS NOT NULL AND auth_key != \"\"", "SELECT auth_key FROM users WHERE LOWER(username) = LOWER(?) AND auth_key IS NOT NULL AND auth_key != \"\""]) { const stmt = db.prepare(query); stmt.bind([targetUser]); while (stmt.step()) auths.add(stmt.getAsObject().auth_key || ""); stmt.free(); } const countStmt = db.prepare("SELECT COUNT(*) AS count FROM blacklisted_users WHERE LOWER(username) = LOWER(?)" + (auths.size ? " OR auth_key IN (" + Array.from(auths).map(() => "?").join(",") + ")" : "")); const params = [targetUser, ...Array.from(auths)]; countStmt.bind(params); countStmt.step(); const before = countStmt.getAsObject().count || 0; countStmt.free(); db.run("DELETE FROM blacklisted_users WHERE LOWER(username) = LOWER(?)" + (auths.size ? " OR auth_key IN (" + Array.from(auths).map(() => "?").join(",") + ")" : ""), params); fs.writeFileSync(dbPath, Buffer.from(db.export())); console.log("✅ Blacklist kaldırıldı -> Kullanıcı: \"" + targetUser + "\" | Silinen kayıt: " + before); });'

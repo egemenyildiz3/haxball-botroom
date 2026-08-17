@@ -67,7 +67,7 @@ function handlePlayers(ctx) {
 }
 
 function handleAfk(ctx) {
-  const { room, player, displayName, afkPlayers, rebalanceTeams, gameActive } = ctx;
+  const { room, player, displayName, afkPlayers, rebalanceTeams, gameActive, isSuperAdmin } = ctx;
   if (!gameActive) {
     sendMsg(room, '⏸️ !afk komutu sadece maç devam ederken kullanılabilir.', player.id, 0xFFCC00, 'bold');
     return false;
@@ -79,8 +79,9 @@ function handleAfk(ctx) {
   if (afkPlayers.has(player.id)) {
     const startedAt = afkStartedAt.get(key) || 0;
     const waitMs = AFK_MIN_DURATION_MS - (now - startedAt);
+    const isAdmin = player.admin || isSuperAdmin;
 
-    if (waitMs > 0) {
+    if (!isAdmin && waitMs > 0) {
       const lastWarning = lastAfkEarlyWarningAt.get(key) || 0;
       if (now - lastWarning >= AFK_EARLY_WARNING_MS) {
         lastAfkEarlyWarningAt.set(key, now);
@@ -94,19 +95,24 @@ function handleAfk(ctx) {
     lastAfkEarlyWarningAt.delete(key);
     sendMsg(room, `🔔 ${displayName} artık AFK değil! Oyuna girmeye hazır.`, null, 0x00FF7F, 'bold');
   } else {
+    const isAdmin = player.admin || isSuperAdmin;
     const previous = lastAfkAt.get(key) || 0;
     const waitMs = AFK_COOLDOWN_MS - (now - previous);
 
-    if (waitMs > 0) {
+    if (!isAdmin && waitMs > 0) {
       sendMsg(room, `⏳ !afk komutunu ${minutesLeft(waitMs)} dk sonra tekrar kullanabilirsin.`, player.id, 0xFFCC00, 'bold');
       return false;
     }
 
-    lastAfkAt.set(key, now);
+    if (!isAdmin) {
+      lastAfkAt.set(key, now);
+    }
     afkStartedAt.set(key, now);
     lastAfkEarlyWarningAt.delete(key);
     afkPlayers.add(player.id);
-    scheduleAfkKick(ctx, key, now);
+    if (!isAdmin) {
+      scheduleAfkKick(ctx, key, now);
+    }
     if (player.team !== 0 && typeof room.setPlayerTeam === 'function') {
       try {
         room.setPlayerTeam(player.id, 0);
