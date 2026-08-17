@@ -21,6 +21,7 @@ const ADMIN_PASSWORD = process.env.HAXBALL_ADMIN_PASSWORD;
 // Configs read from .env (with defaults)
 const CONFIG_ADMIN_CAN_BAN = Number(process.env.CONFIG_ADMIN_CAN_BAN ?? 1);
 const CONFIG_ADMIN_CAN_GIVE_ADMIN = Number(process.env.CONFIG_ADMIN_CAN_GIVE_ADMIN ?? 0);
+const CONFIG_ALLOW_MULTIPLE_JOIN = Number(process.env.CONFIG_ALLOW_MULTIPLE_JOIN ?? 0);
 
 // Yapay zeka bot ayarları
 const BOT_NAME = process.env.HAXBALL_BOT_NAME || 'SpaceBot';
@@ -111,6 +112,7 @@ async function startRoom() {
     sleep,
     CONFIG_ADMIN_CAN_BAN,
     CONFIG_ADMIN_CAN_GIVE_ADMIN,
+    CONFIG_ALLOW_MULTIPLE_JOIN,
     botManager,
   });
 

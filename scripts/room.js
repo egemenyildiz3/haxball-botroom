@@ -10,6 +10,7 @@ const { handlePlayerKicked, handlePlayerAdminChange, handlePlayerTeamChange } = 
 const { handlePlayerBallKick, handleTeamGoal, handleGameStart, handleGameStop } = require('./room/matchManager');
 const { attachTerminalInput } = require('./room/terminal');
 const { isProtectedBotIdentity } = require('./room/botPolicy');
+const { blockDuplicateJoin } = require('./room/joinGuards');
 
 process.on('uncaughtException', (err) => {
   console.error('❌ [CRITICAL ERROR] Yakalanmamış İstisna:', err.message, err.stack);
@@ -38,6 +39,7 @@ async function createRoom(room, deps) {
     sleep,
     CONFIG_ADMIN_CAN_BAN = 1,
     CONFIG_ADMIN_CAN_GIVE_ADMIN = 0,
+    CONFIG_ALLOW_MULTIPLE_JOIN = 0,
     botManager = null,
   } = deps;
 
@@ -57,6 +59,7 @@ async function createRoom(room, deps) {
     SPEC_PROMOTION_COUNT,
     CONFIG_ADMIN_CAN_BAN,
     CONFIG_ADMIN_CAN_GIVE_ADMIN,
+    CONFIG_ALLOW_MULTIPLE_JOIN,
     botManager,
   };
 
@@ -122,6 +125,10 @@ async function createRoom(room, deps) {
       return;
     } else if (hasProtectedBotAuth) {
       console.log(`${getTimestamp()} [BLACKLIST] Bot auth/conn imzası kara liste kontrolünden muaf tutuldu: ${cleanedName} (ID: ${safePlayer.id})`);
+    }
+
+    if (blockDuplicateJoin(room, state, safePlayer, roomDeps)) {
+      return;
     }
 
     logVisitedUser(db, DB_FILE, cleanedName, safePlayer.auth, persistDatabase);

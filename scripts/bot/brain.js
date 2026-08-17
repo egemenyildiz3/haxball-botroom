@@ -61,6 +61,8 @@ const DEFAULTS = {
   releaseTicks: 3, // tekrar vurabilmek için tuşu bırakma süresi
   preKickReleaseMargin: 18, // topa girmeden önce fren/kick tuşunu bırakmaya başla
   preKickReleaseTicks: 1, // temas anında yeni kick kaydolması için kısa hazırlık
+  ownGoalCarryRange: 70, // kötü açıdaysa topa gövdeyle dalma mesafesi
+  ownGoalCarrySideStep: 80, // kötü açıdan çıkmak için yanal kaçış
   postInset: 22, // direğe bu kadar içeriden nişan al
 
   // Bölgeye göre vuruş kararı:
@@ -536,6 +538,22 @@ function supportTarget(view, cfg, slot) {
   };
 }
 
+function avoidOwnGoalCarryTarget(view, cfg, ballToAim, upfield) {
+  const f = fieldOf(view);
+  const standOff = (view.self.radius || 15) + (view.ball.radius || 10) + cfg.kickPadding;
+  const perp = normalize({ x: -upfield.y, y: upfield.x });
+  const selfFromBall = sub(view.self.pos, view.ball.pos);
+  const side = dot(selfFromBall, perp) >= 0 ? 1 : -1;
+
+  const setup = sub(view.ball.pos, scale(ballToAim, standOff * 1.25));
+  const sideStep = scale(perp, side * cfg.ownGoalCarrySideStep);
+
+  return {
+    x: clamp(setup.x + sideStep.x, f.minX * 0.95, f.maxX * 0.95),
+    y: clamp(setup.y + sideStep.y, f.minY * 0.85, f.maxY * 0.85),
+  };
+}
+
 function botOnlyNudgeTarget(view, target, cfg, memory) {
   if (!view.botOnly) {
     memory.botOnlyFlatTicks = 0;
@@ -686,9 +704,6 @@ function decide(view, memory, config) {
 
   target = botOnlyNudgeTarget(view, target, activeCfg, memory);
 
-  // Hücumcuysak topa hızla dalıyoruz; destekçiysek pozisyonda durmak istiyoruz.
-  const nav = navigate(view.self, target, activeCfg, memory, { strike: role === 'attacker' });
-
   // --- Vuruş kararı ---
   const toBall = sub(view.ball.pos, view.self.pos);
   const distToBall = len(toBall);
@@ -713,6 +728,18 @@ function decide(view, memory, config) {
 
   // Kendi kalemize doğru vuruş her koşulda yasak.
   const safeDirection = forwardness > activeCfg.ownGoalGuard;
+
+  const carryForwardness = dot(normalize(toBall), upfield);
+  const ownGoalCarryDanger = role === 'attacker'
+    && distToBall <= activeCfg.ownGoalCarryRange
+    && carryForwardness <= activeCfg.ownGoalGuard;
+
+  if (ownGoalCarryDanger) {
+    target = avoidOwnGoalCarryTarget(view, activeCfg, ballToAim, upfield);
+  }
+
+  // Hücumcuysak topa hızla dalıyoruz; destekçiysek pozisyonda durmak istiyoruz.
+  const nav = navigate(view.self, target, activeCfg, memory, { strike: role === 'attacker' });
 
   // Şut bölgesinde: top gerçekten kale ağzına gidiyor mu VE oraya ulaşıyor mu?
   // (sabit açı konisi yerine ışın-kale kesişimi; boş kale ıskalamasın)
