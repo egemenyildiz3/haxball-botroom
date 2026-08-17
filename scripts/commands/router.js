@@ -5,9 +5,11 @@ const { routeAdminCommand } = require('./adminCommands');
 const { routePlayerCommand } = require('./playerCommands');
 const { routeBotCommand } = require('./botCommands');
 const { routeAutoCommand } = require('./autoCommands');
+const { routeRequestCommand } = require('./requestCommands');
 
 const COMMAND_ROUTERS = [
   routeAdminCommand,
+  routeRequestCommand,
   routePlayerCommand,
   routeAccountCommand,
   routeAutoCommand,

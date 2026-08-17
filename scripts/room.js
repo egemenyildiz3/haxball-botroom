@@ -16,6 +16,8 @@ const TEAM_COLORS = {
   red: { team: 1, angle: 60, text: 0xE3E3E3, colors: [0xC90209] },
   blue: { team: 2, angle: 60, text: 0xE3E3E3, colors: [0x0272BD] },
 };
+const ADMIN_REQUEST_ANNOUNCE_MS = 10 * 60 * 1000;
+const ADMIN_REQUEST_ANNOUNCE_TEXT = '📮 İstek, talep veya şikayet için: !admin <açıklama>';
 
 process.on('uncaughtException', (err) => {
   console.error('❌ [CRITICAL ERROR] Yakalanmamış İstisna:', err.message, err.stack);
@@ -212,6 +214,13 @@ async function createRoom(room, deps) {
       restoreAutoManageIfNoAdmins(room, state, roomDeps);
     }
   }, 2 * 60 * 1000);
+
+  setInterval(() => {
+    if (typeof room.getPlayerList !== 'function') return;
+    const realHumanPlayers = room.getPlayerList().filter((p) => p.id !== 0);
+    if (realHumanPlayers.length === 0) return;
+    sendMsg(room, ADMIN_REQUEST_ANNOUNCE_TEXT, null, 0x00BFFF, 'bold');
+  }, ADMIN_REQUEST_ANNOUNCE_MS);
 
   console.log(`${getTimestamp()} Oda başarıyla oluşturuldu: ${ROOM_NAME}`);
 }

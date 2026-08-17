@@ -46,6 +46,13 @@ function initDatabase(db) {
       username TEXT,
       auth_key TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS istekler (
+      "index" INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT NOT NULL,
+      aciklama TEXT NOT NULL,
+      date TEXT NOT NULL
+    );
   `);
 
   // Existing Alter Table Migrations
@@ -186,6 +193,28 @@ function saveGameResult(db, DB_FILE, scores, winnerTeam, loserTeam, game, endedA
   }
 }
 
+function saveAdminRequest(db, DB_FILE, username, aciklama, persistFn) {
+  if (!username || !aciklama) {
+    return { ok: false, error: 'Eksik kullanıcı veya açıklama.' };
+  }
+
+  try {
+    const date = new Date().toISOString();
+    const stmt = db.prepare('INSERT INTO istekler (username, aciklama, date) VALUES (?, ?, ?)');
+    stmt.run([username, aciklama, date]);
+    stmt.free();
+
+    if (typeof persistFn === 'function') {
+      persistFn(db, DB_FILE);
+    }
+
+    return { ok: true, date };
+  } catch (err) {
+    console.warn('[BACKEND-DB] İstek kaydedilemedi:', err.message);
+    return { ok: false, error: err.message };
+  }
+}
+
 module.exports = {
   loadOrCreateDatabase,
   persistDatabase,
@@ -193,4 +222,5 @@ module.exports = {
   isUserBlacklisted,
   logVisitedUser,
   saveGameResult,
+  saveAdminRequest,
 };
