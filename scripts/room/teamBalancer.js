@@ -24,7 +24,6 @@ function rememberLockedTeams(room, state) {
 }
 
 function beginTeamTransitionLock(room, state) {
-  lockTeams(room);
   rememberLockedTeams(room, state);
   state.teamChangesLocked = true;
 }
@@ -187,7 +186,6 @@ async function runRebalanceOnce(room, state, { playerJoinOrder, botManager, slee
     }
   }
 
-  lockTeams(room);
   rememberLockedTeams(room, state);
   state.teamChangesLocked = true;
   await sleep(REBALANCE_END_DELAY_MS);

@@ -16,7 +16,7 @@ const TEAM_COLORS = {
   red: { team: 1, angle: 60, text: 0xE3E3E3, colors: [0xC90209] },
   blue: { team: 2, angle: 60, text: 0xE3E3E3, colors: [0x0272BD] },
 };
-const ADMIN_REQUEST_ANNOUNCE_MS = 10 * 60 * 1000;
+const ADMIN_REQUEST_ANNOUNCE_MS = 5 * 60 * 1000;
 const ADMIN_REQUEST_ANNOUNCE_TEXT = '📮 İstek, talep veya şikayet için: !admin <açıklama>';
 
 process.on('uncaughtException', (err) => {

@@ -1,12 +1,11 @@
 const { saveGameResult } = require('../db');
 const { getCleanName } = require('../util');
-const { checkAndStartGame, lockTeams, rememberLockedTeams, beginTeamTransitionLock, endTeamTransitionLock } = require('./teamBalancer');
+const { checkAndStartGame, rememberLockedTeams, beginTeamTransitionLock, endTeamTransitionLock } = require('./teamBalancer');
 const { desiredBotCount, isBotPlayer, sortRealPlayersFirst } = require('./botPolicy');
 
 const ROTATION_START_DELAY_MS = 700;
 const ROTATION_MOVE_DELAY_MS = 350;
 const ROTATION_END_DELAY_MS = 500;
-const GAME_START_LOCK_RETRY_MS = [250, 1000];
 
 function shuffle(players) {
   const result = [...players];
@@ -38,14 +37,6 @@ function mixedTeamAssignments(players, redCount, blueCount, isBot) {
     ...red.map((player) => ({ player, team: 1 })),
     ...blue.map((player) => ({ player, team: 2 })),
   ];
-}
-
-function keepTeamsLockedAfterStart(room) {
-  lockTeams(room);
-  for (const delay of GAME_START_LOCK_RETRY_MS) {
-    const timer = setTimeout(() => lockTeams(room), delay);
-    if (typeof timer.unref === 'function') timer.unref();
-  }
 }
 
 function handlePlayerBallKick(state, player) {
@@ -175,7 +166,6 @@ function handleGameStart(room, state, { sendMsg }) {
   if (typeof room.getPlayerList !== 'function') return;
 
   endTeamTransitionLock(room, state);
-  keepTeamsLockedAfterStart(room);
   state.lastTouchPlayer = null;
   state.secondLastTouchPlayer = null;
   state.touchHistory = [];
@@ -237,7 +227,6 @@ async function handleGameStop(room, state, deps) {
   beginTeamTransitionLock(room, state);
 
   await sleep(2000);
-  lockTeams(room);
   await sleep(ROTATION_START_DELAY_MS);
 
   state.isRebalancing = true;
@@ -309,7 +298,6 @@ async function handleGameStop(room, state, deps) {
       }
     }
 
-    lockTeams(room);
     rememberLockedTeams(room, state);
     state.teamChangesLocked = true;
     await sleep(ROTATION_END_DELAY_MS);
