@@ -1,7 +1,7 @@
 const { getCleanName } = require('../util');
 const { sendMsg } = require('../commands/helpers');
 const { restoreAutoManageIfNoAdmins } = require('./autoManager');
-const { rebalanceTeams } = require('./teamBalancer');
+const { rebalanceTeams, lockTeams } = require('./teamBalancer');
 const { isProtectedBotIdentity } = require('./botPolicy');
 
 function handlePlayerKicked(room, state, kickedPlayer, reason, ban, byPlayer, deps, sanitizePlayer) {
@@ -90,6 +90,19 @@ function handlePlayerTeamChange(room, state, changedPlayer, byPlayer, deps, sani
   if (state.isRebalancing) return;
 
   const safePlayer = sanitizePlayer(room, changedPlayer, state);
+
+  if (state.teamChangesLocked && safePlayer.id !== 0) {
+    const expectedTeam = state.lockedTeams.has(safePlayer.id) ? state.lockedTeams.get(safePlayer.id) : 0;
+    if (safePlayer.team !== expectedTeam) {
+      try {
+        room.setPlayerTeam(safePlayer.id, expectedTeam);
+        lockTeams(room);
+      } catch (e) {}
+      console.warn(`${deps.getTimestamp()} [TEAM LOCK] Maç arası izinsiz takım değişimi geri alındı: ${getCleanName(safePlayer)} -> takım ${expectedTeam}`);
+      return;
+    }
+    return;
+  }
 
   if ((state.afkPlayers.has(safePlayer.id) || safePlayer.id === 0) && safePlayer.team !== 0) {
     try {

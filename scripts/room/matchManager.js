@@ -1,6 +1,6 @@
 const { saveGameResult } = require('../db');
 const { getCleanName } = require('../util');
-const { checkAndStartGame, lockTeams } = require('./teamBalancer');
+const { checkAndStartGame, lockTeams, rememberLockedTeams } = require('./teamBalancer');
 const { desiredBotCount, isBotPlayer, sortRealPlayersFirst } = require('./botPolicy');
 
 const ROTATION_START_DELAY_MS = 700;
@@ -133,6 +133,8 @@ function handleTeamGoal(room, state, team, { getTimestamp, sendMsg }) {
 function handleGameStart(room, state, { sendMsg }) {
   if (typeof room.getPlayerList !== 'function') return;
 
+  state.teamChangesLocked = false;
+  state.lockedTeams.clear();
   state.lastTouchPlayer = null;
   state.secondLastTouchPlayer = null;
   state.touchHistory = [];
@@ -186,11 +188,17 @@ async function handleGameStop(room, state, deps) {
   state.currentGame = null;
 
   if (!state.autoManageEnabled) {
+    state.teamChangesLocked = false;
     console.log('[MATCH ROTATION] Otomatik yönetim kapalı - takım dağıtımı ve yeni maç atlandı.');
     return;
   }
 
+  lockTeams(room);
+  rememberLockedTeams(room, state);
+  state.teamChangesLocked = true;
+
   await sleep(2000);
+  lockTeams(room);
   await sleep(ROTATION_START_DELAY_MS);
 
   state.isRebalancing = true;
@@ -269,6 +277,7 @@ async function handleGameStop(room, state, deps) {
     }
 
     lockTeams(room);
+    rememberLockedTeams(room, state);
     await sleep(ROTATION_END_DELAY_MS);
   } finally {
     state.isRebalancing = false;

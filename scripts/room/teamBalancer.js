@@ -14,11 +14,22 @@ function lockTeams(room) {
   }
 }
 
+function rememberLockedTeams(room, state) {
+  if (typeof room.getPlayerList !== 'function') return;
+  state.lockedTeams = new Map(
+    room.getPlayerList()
+      .filter((p) => p.id !== 0)
+      .map((p) => [p.id, p.team])
+  );
+}
+
 function checkAndStartGame(room, state) {
   if (!state.autoManageEnabled) return;
   if (typeof room.getPlayerList !== 'function') return;
   if (state.startGamePending) return;
 
+  lockTeams(room);
+  rememberLockedTeams(room, state);
   state.startGamePending = true;
   tryStartGame(room, state, START_RETRY_COUNT);
 }
@@ -58,6 +69,7 @@ async function rebalanceTeams(room, state, { playerJoinOrder, botManager, sleep 
   if (typeof room.getPlayerList !== 'function' || typeof room.setPlayerTeam !== 'function') return;
 
   state.isRebalancing = true;
+  lockTeams(room);
 
   try {
     do {
@@ -164,6 +176,7 @@ async function runRebalanceOnce(room, state, { playerJoinOrder, botManager, slee
   }
 
   lockTeams(room);
+  rememberLockedTeams(room, state);
   await sleep(REBALANCE_END_DELAY_MS);
 }
 
@@ -187,4 +200,5 @@ module.exports = {
   checkAndStartGame,
   rebalanceTeams,
   lockTeams,
+  rememberLockedTeams,
 };
