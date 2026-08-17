@@ -15,6 +15,8 @@ const { decide, configFromPhysics, makePersonality, describePersonality } = requ
 const FIRST_BOT_ID = 500; // gerçek oyuncu id'leriyle çakışmasın diye yüksek başlıyoruz
 const BOT_CONN_PREFIX = 'bot-conn-';
 const BOT_AUTH_PREFIX = 'bot-auth-';
+const KICK_PULSE_PATTERN = [false, true, false, true];
+const KICK_PULSE_COOLDOWN_TICKS = 3;
 
 const boundsCache = new WeakMap();
 
@@ -77,6 +79,33 @@ function createBotManager(options = {}) {
   }
 
   const bots = new Map(); // name -> { id, name, memory, lastInput }
+
+  function applyKickPulse(bot, move) {
+    if (bot.kickPulseCooldown > 0) bot.kickPulseCooldown--;
+
+    const canPulse = move.intentKick && !move.braking;
+    if (canPulse && bot.kickPulseIndex >= KICK_PULSE_PATTERN.length && bot.kickPulseCooldown === 0) {
+      bot.kickPulseIndex = 0;
+    }
+
+    if (!canPulse) {
+      bot.kickPulseIndex = KICK_PULSE_PATTERN.length;
+      return { ...move, forceSend: false };
+    }
+
+    if (bot.kickPulseIndex < KICK_PULSE_PATTERN.length) {
+      const kick = KICK_PULSE_PATTERN[bot.kickPulseIndex];
+      bot.kickPulseIndex++;
+      if (bot.kickPulseIndex >= KICK_PULSE_PATTERN.length) {
+        bot.kickPulseCooldown = KICK_PULSE_COOLDOWN_TICKS;
+      }
+
+      bot.memory.lastKeyDown = kick;
+      return { ...move, kick, forceSend: true };
+    }
+
+    return { ...move, forceSend: false };
+  }
 
   function expectedName(index) {
     return index === 0 ? baseName : `${baseName} ${index + 1}`;
@@ -182,17 +211,22 @@ function createBotManager(options = {}) {
       try {
         const view = buildView(bot);
         if (view) {
-          const move = decide(view, bot.memory, bot.cfg);
+          const move = applyKickPulse(bot, decide(view, bot.memory, bot.cfg));
           input = keyState(move.dirX, move.dirY, move.kick);
+          bot.forceSendInput = move.forceSend;
         } else {
           bot.memory.kickCooldown = 0;
+          bot.kickPulseIndex = KICK_PULSE_PATTERN.length;
+          bot.kickPulseCooldown = 0;
+          bot.forceSendInput = false;
         }
       } catch (err) {
         input = 0;
+        bot.forceSendInput = false;
       }
 
       // Sadece değiştiğinde gönder (gereksiz olay üretmeyelim)
-      if (input !== bot.lastInput) {
+      if (input !== bot.lastInput || bot.forceSendInput) {
         bot.lastInput = input;
         try { raw.fakeSendPlayerInput(input, bot.id); } catch (e) {}
       }
@@ -215,6 +249,9 @@ function createBotManager(options = {}) {
       name,
       memory: { kickCooldown: 0 },
       lastInput: 0,
+      forceSendInput: false,
+      kickPulseIndex: KICK_PULSE_PATTERN.length,
+      kickPulseCooldown: 0,
       seed,
       personality,
       trait: describePersonality(personality, baseCfg),

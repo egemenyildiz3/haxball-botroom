@@ -715,11 +715,11 @@ function navigate(self, target, cfg, memory = {}, opts = {}) {
  * @param {object} view   Oyun durumunun sadeleştirilmiş görünümü
  * @param {object} memory Tickler arası hafıza (vuruş tuşu döngüsü için)
  * @param {object} config DEFAULTS üzerine yazılacak ayarlar
- * @returns {{dirX:number, dirY:number, kick:boolean, role:string, braking:boolean}}
+ * @returns {{dirX:number, dirY:number, kick:boolean, intentKick:boolean, role:string, braking:boolean}}
  */
 function decide(view, memory, config) {
   const cfg = { ...DEFAULTS, ...(config || {}) };
-  const idle = { dirX: 0, dirY: 0, kick: false, role: 'idle', braking: false };
+  const idle = { dirX: 0, dirY: 0, kick: false, intentKick: false, role: 'idle', braking: false };
 
   if (!view || !view.self || !view.ball) return idle;
   if (!isFinitePoint(view.self.pos) || !isFinitePoint(view.ball.pos)) return idle;
@@ -887,6 +887,7 @@ function decide(view, memory, config) {
     dirX: nav.dirX,
     dirY: nav.dirY,
     kick: keyDown,
+    intentKick: wantKick,
     role,
     braking,
   };
