@@ -85,12 +85,25 @@ function attachTerminalInput(room, state, deps, autoManager) {
           .catch((err) => console.warn('[AUTO] Konsoldan takım dengeleme başarısız:', err.message)),
         autoManager,
         chatFilter: state.chatFilter,
+        chatMuted: state.chatMuted,
+        setChatMuted: (muted) => { state.chatMuted = !!muted; },
+        mutedPlayers: state.mutedPlayers,
       });
       return;
     }
 
     try {
-      room.sendChat(text);
+      handlePlayerChat(room, hostPlayer, text, {
+        ...deps,
+        afkPlayers: state.afkPlayers,
+        rebalanceTeams: () => rebalanceTeams(room, state, deps)
+          .catch((err) => console.warn('[AUTO] Konsoldan takım dengeleme başarısız:', err.message)),
+        autoManager,
+        chatFilter: state.chatFilter,
+        chatMuted: state.chatMuted,
+        setChatMuted: (muted) => { state.chatMuted = !!muted; },
+        mutedPlayers: state.mutedPlayers,
+      });
       console.log(`💬 [TERMINAL CHAT]: ${text}`);
     } catch (err) {
       console.warn('Sohbet mesajı gönderilemedi:', err.message);
