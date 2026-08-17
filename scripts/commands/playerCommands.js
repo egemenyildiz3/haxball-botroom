@@ -1,5 +1,16 @@
 const { sendMsg } = require('./helpers');
 
+const AFK_COOLDOWN_MS = 10 * 60 * 1000;
+const lastAfkAt = new Map();
+
+function afkKey(player) {
+  return player.auth || player.conn || String(player.id);
+}
+
+function minutesLeft(ms) {
+  return Math.max(1, Math.ceil(ms / 60000));
+}
+
 function handlePlayers(ctx) {
   const { room, player, playerAssignments } = ctx;
   if (typeof room.getPlayerList !== 'function') return false;
@@ -27,6 +38,17 @@ function handleAfk(ctx) {
     afkPlayers.delete(player.id);
     sendMsg(room, `🔔 ${displayName} artık AFK değil! Oyuna girmeye hazır.`, null, 0x00FF7F, 'bold');
   } else {
+    const key = afkKey(player);
+    const now = Date.now();
+    const previous = lastAfkAt.get(key) || 0;
+    const waitMs = AFK_COOLDOWN_MS - (now - previous);
+
+    if (waitMs > 0) {
+      sendMsg(room, `⏳ !afk komutunu ${minutesLeft(waitMs)} dk sonra tekrar kullanabilirsin.`, player.id, 0xFFCC00, 'bold');
+      return false;
+    }
+
+    lastAfkAt.set(key, now);
     afkPlayers.add(player.id);
     if (player.team !== 0 && typeof room.setPlayerTeam === 'function') {
       try {
