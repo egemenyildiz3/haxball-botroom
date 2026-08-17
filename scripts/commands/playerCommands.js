@@ -2,6 +2,7 @@ const { sendMsg } = require('./helpers');
 
 const AFK_COOLDOWN_MS = 10 * 60 * 1000;
 const AFK_MIN_DURATION_MS = 30 * 1000;
+const AFK_MAX_DURATION_MS = 15 * 60 * 1000;
 const AFK_EARLY_WARNING_MS = 10 * 1000;
 const lastAfkAt = new Map();
 const afkStartedAt = new Map();
@@ -13,6 +14,35 @@ function afkKey(player) {
 
 function minutesLeft(ms) {
   return Math.max(1, Math.ceil(ms / 60000));
+}
+
+function scheduleAfkKick(ctx, key, startedAt) {
+  const { room, player } = ctx;
+
+  setTimeout(() => {
+    if (!afkStartedAt.has(key) || afkStartedAt.get(key) !== startedAt) return;
+    if (!ctx.afkPlayers.has(player.id)) return;
+
+    const currentPlayer = typeof room.getPlayer === 'function'
+      ? room.getPlayer(player.id)
+      : (typeof room.getPlayerList === 'function' ? room.getPlayerList().find((p) => p.id === player.id) : null);
+    if (!currentPlayer) {
+      afkStartedAt.delete(key);
+      lastAfkEarlyWarningAt.delete(key);
+      ctx.afkPlayers.delete(player.id);
+      return;
+    }
+
+    afkStartedAt.delete(key);
+    lastAfkEarlyWarningAt.delete(key);
+    ctx.afkPlayers.delete(player.id);
+
+    if (typeof room.kickPlayer === 'function') {
+      try {
+        room.kickPlayer(player.id, 'Uzun süre AFK kaldınız.', false);
+      } catch (e) {}
+    }
+  }, AFK_MAX_DURATION_MS);
 }
 
 function handlePlayers(ctx) {
@@ -76,6 +106,7 @@ function handleAfk(ctx) {
     afkStartedAt.set(key, now);
     lastAfkEarlyWarningAt.delete(key);
     afkPlayers.add(player.id);
+    scheduleAfkKick(ctx, key, now);
     if (player.team !== 0 && typeof room.setPlayerTeam === 'function') {
       try {
         room.setPlayerTeam(player.id, 0);

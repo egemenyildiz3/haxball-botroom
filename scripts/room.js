@@ -17,7 +17,7 @@ const TEAM_COLORS = {
   blue: { team: 2, angle: 60, text: 0xE3E3E3, colors: [0x0272BD] },
 };
 const ADMIN_REQUEST_ANNOUNCE_MS = 5 * 60 * 1000;
-const ADMIN_REQUEST_ANNOUNCE_TEXT = '📮 İstek, talep veya şikayet için: !admin <açıklama>';
+const ADMIN_REQUEST_ANNOUNCE_TEXT = '📮 İstek, talep, şikayet veya bug bildirmek için: !admin <açıklama>';
 const INACTIVITY_KICK_MS = 30 * 1000;
 const INACTIVITY_WARNING_MS = 25 * 1000;
 const INACTIVITY_CHECK_MS = 1000;
