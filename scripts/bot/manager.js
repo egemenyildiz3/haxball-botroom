@@ -11,6 +11,7 @@
  */
 
 const { decide, configFromPhysics, makePersonality, describePersonality } = require('./brain');
+const { createBotLearner } = require('./learning');
 
 const FIRST_BOT_ID = 500; // gerçek oyuncu id'leriyle çakışmasın diye yüksek başlıyoruz
 const BOT_CONN_PREFIX = 'bot-conn-';
@@ -51,6 +52,11 @@ function createBotManager(options = {}) {
   const avatar = options.avatar || '🤖';
   const log = options.log || ((msg) => console.log(msg));
   const brainConfig = options.brainConfig || {};
+  const learner = createBotLearner({
+    enabled: options.learningEnabled !== false,
+    file: options.learningFile,
+    log,
+  });
 
   let raw = null; // node-haxball ham oda nesnesi
   let keyState = null; // API.Utils.keyState
@@ -198,13 +204,17 @@ function createBotManager(options = {}) {
   function tick() {
     if (!raw || bots.size === 0) return;
 
-    const cfg = currentBrainConfig();
+    learner.beginTick();
+    const baseCfg = currentBrainConfig();
+    const learnedCfg = learner.apply(baseCfg);
+    const learningRevision = learner.revision();
 
     for (const bot of bots.values()) {
       // Kişiliği taban ayarların üstüne uygula (taban değişirse yeniden birleştir)
-      if (bot.cfgBase !== cfg) {
-        bot.cfgBase = cfg;
-        bot.cfg = { ...cfg, ...bot.personality };
+      if (bot.cfgBase !== baseCfg || bot.learningRevision !== learningRevision) {
+        bot.cfgBase = baseCfg;
+        bot.learningRevision = learningRevision;
+        bot.cfg = { ...learnedCfg, ...bot.personality };
       }
 
       let input = 0;
@@ -212,6 +222,7 @@ function createBotManager(options = {}) {
         const view = buildView(bot);
         if (view) {
           const move = applyKickPulse(bot, decide(view, bot.memory, bot.cfg));
+          learner.observe(bot, view, move, bot.cfg);
           input = keyState(move.dirX, move.dirY, move.kick);
           bot.forceSendInput = move.forceSend;
         } else {
@@ -252,6 +263,8 @@ function createBotManager(options = {}) {
       forceSendInput: false,
       kickPulseIndex: KICK_PULSE_PATTERN.length,
       kickPulseCooldown: 0,
+      learningPendingKick: null,
+      learningRevision: -1,
       seed,
       personality,
       trait: describePersonality(personality, baseCfg),
@@ -355,12 +368,19 @@ function createBotManager(options = {}) {
       if (!raw) return '🤖 Bot durumu: oda henüz hazır değil.';
       if (bots.size === 0) return '🤖 Bot durumu: kapalı. (!bot aç ile ekleyebilirsin)';
       const list = [...bots.values()].map((b) => `${b.name} [${b.trait}]`).join(', ');
-      return `🤖 Bot durumu: ${bots.size}/${maxBots} sahada → ${list}`;
+      const learning = learner.status();
+      const learningText = learning.enabled ? ' | öğrenme: açık' : ' | öğrenme: kapalı';
+      return `🤖 Bot durumu: ${bots.size}/${maxBots} sahada → ${list}${learningText}`;
     },
 
     stopAll() {
+      learner.save();
       if (!raw) return;
       for (const bot of [...bots.values()]) removeOne(bot);
+    },
+
+    learningStatus() {
+      return learner.status();
     },
   };
 }

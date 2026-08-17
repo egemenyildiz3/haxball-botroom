@@ -1,0 +1,226 @@
+const fs = require('fs');
+const path = require('path');
+
+const VERSION = 1;
+const TUNE_EVERY_TICKS = 3600;
+
+const DEFAULT_STATE = {
+  version: VERSION,
+  adjustments: {
+    kickAttemptPadding: 0,
+    kickHoldTicks: 0,
+    ownGoalCarryRange: 0,
+    supportBehind: 0,
+    teamSpacing: 0,
+  },
+  lifetime: {
+    windows: 0,
+    missedKicks: 0,
+    successfulKicks: 0,
+    badCarryRisk: 0,
+    crowdedTicks: 0,
+  },
+  updatedAt: null,
+};
+
+const BOUNDS = {
+  kickAttemptPadding: [0, 14],
+  kickHoldTicks: [0, 3],
+  ownGoalCarryRange: [0, 60],
+  supportBehind: [-30, 100],
+  teamSpacing: [0, 90],
+};
+
+const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+const cloneDefaultState = () => JSON.parse(JSON.stringify(DEFAULT_STATE));
+const sub = (a, b) => ({ x: a.x - b.x, y: a.y - b.y });
+const dot = (a, b) => a.x * b.x + a.y * b.y;
+const len = (a) => Math.hypot(a.x, a.y);
+
+function normalize(a) {
+  const l = len(a);
+  if (l < 1e-6) return { x: 0, y: 0 };
+  return { x: a.x / l, y: a.y / l };
+}
+
+function mid(a, b) {
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+}
+
+function upfieldOf(view) {
+  return normalize(sub(mid(view.oppGoal.p0, view.oppGoal.p1), mid(view.ownGoal.p0, view.ownGoal.p1)));
+}
+
+function readState(file, log) {
+  if (!file || !fs.existsSync(file)) return cloneDefaultState();
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return {
+      ...cloneDefaultState(),
+      ...parsed,
+      adjustments: {
+        ...DEFAULT_STATE.adjustments,
+        ...(parsed.adjustments || {}),
+      },
+      lifetime: {
+        ...DEFAULT_STATE.lifetime,
+        ...(parsed.lifetime || {}),
+      },
+    };
+  } catch (err) {
+    log(`🤖 [LEARN] Öğrenme dosyası okunamadı, sıfırdan başlanıyor: ${err.message}`);
+    return cloneDefaultState();
+  }
+}
+
+function createBotLearner(options = {}) {
+  const enabled = options.enabled !== false;
+  const file = options.file || null;
+  const log = options.log || ((msg) => console.log(msg));
+  const state = readState(file, log);
+  let revision = 0;
+  let tick = 0;
+  let window = {
+    missedKicks: 0,
+    successfulKicks: 0,
+    badCarryRisk: 0,
+    crowdedTicks: 0,
+  };
+
+  function save() {
+    if (!enabled || !file) return;
+
+    try {
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      state.updatedAt = new Date().toISOString();
+      fs.writeFileSync(file, `${JSON.stringify(state, null, 2)}\n`);
+    } catch (err) {
+      log(`🤖 [LEARN] Öğrenme dosyası yazılamadı: ${err.message}`);
+    }
+  }
+
+  function bounded(key, value) {
+    const [min, max] = BOUNDS[key];
+    const next = clamp(value, min, max);
+    return key === 'kickHoldTicks' ? Math.round(next) : next;
+  }
+
+  function adjust(key, delta) {
+    const current = state.adjustments[key] || 0;
+    const next = bounded(key, current + delta);
+    if (next === current) return false;
+    state.adjustments[key] = next;
+    return true;
+  }
+
+  function tune() {
+    const kicks = window.missedKicks + window.successfulKicks;
+    const missRate = kicks > 0 ? window.missedKicks / kicks : 0;
+    let changed = false;
+
+    if (window.missedKicks >= 8 && missRate > 0.32) {
+      changed = adjust('kickAttemptPadding', missRate > 0.5 ? 2 : 1) || changed;
+      if (missRate > 0.45) changed = adjust('kickHoldTicks', 1) || changed;
+    } else if (window.successfulKicks >= 25 && missRate < 0.12) {
+      changed = adjust('kickAttemptPadding', -1) || changed;
+    }
+
+    if (window.badCarryRisk > 180) {
+      changed = adjust('ownGoalCarryRange', 5) || changed;
+    }
+
+    if (window.crowdedTicks > 240) {
+      changed = adjust('teamSpacing', 5) || changed;
+      changed = adjust('supportBehind', 5) || changed;
+    } else if (window.crowdedTicks < 60) {
+      changed = adjust('teamSpacing', -2) || changed;
+    }
+
+    state.lifetime.windows++;
+    for (const key of Object.keys(window)) {
+      state.lifetime[key] = (state.lifetime[key] || 0) + window[key];
+    }
+
+    if (changed) {
+      revision++;
+      log(`🤖 [LEARN] Ayarlar güncellendi: ${JSON.stringify(state.adjustments)}`);
+    }
+
+    save();
+    window = { missedKicks: 0, successfulKicks: 0, badCarryRisk: 0, crowdedTicks: 0 };
+  }
+
+  function beginTick() {
+    if (!enabled) return;
+    tick++;
+    if (tick >= TUNE_EVERY_TICKS) {
+      tick = 0;
+      tune();
+    }
+  }
+
+  function observe(bot, view, move, cfg) {
+    if (!enabled || !view || !move) return;
+
+    const ballSpeed = len(view.ball.speed || { x: 0, y: 0 });
+    if (bot.learningPendingKick) {
+      const pending = bot.learningPendingKick;
+      pending.ticks--;
+      if (ballSpeed >= pending.beforeSpeed + 0.55) {
+        window.successfulKicks++;
+        bot.learningPendingKick = null;
+      } else if (pending.ticks <= 0) {
+        window.missedKicks++;
+        bot.learningPendingKick = null;
+      }
+    }
+
+    const toBall = sub(view.ball.pos, view.self.pos);
+    const distToBall = len(toBall);
+    const kickWatchRange = (view.self.radius || 15)
+      + (view.ball.radius || 10)
+      + (cfg.kickPadding || 4)
+      + (cfg.kickAttemptPadding || 0)
+      + 6;
+
+    if (move.intentKick && distToBall <= kickWatchRange && !bot.learningPendingKick) {
+      bot.learningPendingKick = { ticks: 5, beforeSpeed: ballSpeed };
+    }
+
+    const upfield = upfieldOf(view);
+    const carryForwardness = dot(normalize(toBall), upfield);
+    if (move.role === 'attacker' && distToBall <= (cfg.ownGoalCarryRange || 70) + 20 && carryForwardness <= (cfg.ownGoalGuard || -0.25)) {
+      window.badCarryRisk++;
+    }
+
+    if (move.role !== 'attacker') {
+      const crowded = (view.teammates || []).some((mate) => len(sub(view.self.pos, mate.pos)) < (cfg.teamSpacing || 135) * 0.7);
+      if (crowded) window.crowdedTicks++;
+    }
+  }
+
+  function apply(baseCfg) {
+    if (!enabled) return baseCfg;
+    const a = state.adjustments;
+    return {
+      ...baseCfg,
+      kickAttemptPadding: (baseCfg.kickAttemptPadding || 7) + a.kickAttemptPadding,
+      kickHoldTicks: Math.max(1, Math.round((baseCfg.kickHoldTicks || 2) + a.kickHoldTicks)),
+      ownGoalCarryRange: (baseCfg.ownGoalCarryRange || 70) + a.ownGoalCarryRange,
+      supportBehind: (baseCfg.supportBehind || 150) + a.supportBehind,
+      teamSpacing: (baseCfg.teamSpacing || 135) + a.teamSpacing,
+    };
+  }
+
+  return {
+    apply,
+    beginTick,
+    observe,
+    revision: () => revision,
+    save,
+    status: () => ({ enabled, file, adjustments: { ...state.adjustments }, lifetime: { ...state.lifetime } }),
+  };
+}
+
+module.exports = { createBotLearner };

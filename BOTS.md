@@ -22,6 +22,7 @@ Then, as an admin, in room chat or the server console:
 | `!bot kapat` | Remove the latest active bot |
 | `!bot hepsi` | Remove all bots |
 | `!bot durum` | List active bots and their personalities |
+| `!bot öğrenme` | Show the persistent learning/tuning state |
 | `!oto kapat` | Disable auto team assignment, auto match start, post-match rotation |
 | `!oto aç` | Re-enable it |
 | `!oto durum` | Show current mode |
@@ -30,6 +31,20 @@ Then, as an admin, in room chat or the server console:
 still recorded while it's off — only team manipulation stops. It automatically
 resets to **on** if the room is left with no admin or super-admin, so the room
 can't get stuck in manual mode after an admin leaves.
+
+For an overnight bot-only 4v4 learning room, use:
+
+```env
+HAXBALL_BOT_MAX=8
+HAXBALL_BOT_AUTOSTART=8
+HAXBALL_BOT_LEARNING=1
+HAXBALL_BOT_LEARNING_FILE=db/bot-learning.json
+```
+
+The learner is intentionally small and conservative. It does not train a neural
+network; it watches live bot-only or mixed matches and persistently tunes a few
+brain thresholds such as kick range, kick hold timing, own-goal carry avoidance,
+and support spacing.
 
 ---
 
@@ -310,7 +325,8 @@ All in `scripts/bot/brain.js` → `DEFAULTS`.
 | `supportSpread` | 220 | Widen the gap between supporting bots |
 | `cruiseSpeed` | 10 | Move faster when positioning |
 
-Env overrides: `HAXBALL_BOT_NAME`, `HAXBALL_BOT_MAX`, `HAXBALL_BOT_AVATAR`.
+Env overrides: `HAXBALL_BOT_NAME`, `HAXBALL_BOT_MAX`, `HAXBALL_BOT_AVATAR`,
+`HAXBALL_BOT_AUTOSTART`, `HAXBALL_BOT_LEARNING`, `HAXBALL_BOT_LEARNING_FILE`.
 
 ---
 

@@ -28,8 +28,24 @@ function routeBotCommand(ctx) {
     sendMsg(room, result.message, null, result.ok ? 0x00FF7F : 0xFF5555, 'bold');
   } else if (sub === 'durum' || sub === 'status') {
     sendMsg(room, botManager.status(), player.id, 0x00BFFF, 'normal');
+  } else if (sub === 'ogrenme' || sub === 'learn' || sub === 'learning') {
+    const status = typeof botManager.learningStatus === 'function' ? botManager.learningStatus() : null;
+    if (!status) {
+      sendMsg(room, '❌ Öğrenme durumu alınamadı.', player.id, 0xFF5555, 'bold');
+      return false;
+    }
+
+    const state = status.enabled ? 'açık' : 'kapalı';
+    const lifetime = status.lifetime || {};
+    sendMsg(
+      room,
+      `🧠 Bot öğrenme: ${state} | ayar=${JSON.stringify(status.adjustments)} | pencere=${lifetime.windows || 0}`,
+      player.id,
+      0x00BFFF,
+      'normal'
+    );
   } else {
-    sendMsg(room, '❌ Kullanım: !bot aç [adet] | !bot kapat | !bot hepsi | !bot durum', player.id, 0xFF5555, 'bold');
+    sendMsg(room, '❌ Kullanım: !bot aç [adet] | !bot kapat | !bot hepsi | !bot durum | !bot öğrenme', player.id, 0xFF5555, 'bold');
   }
 
   return false;
