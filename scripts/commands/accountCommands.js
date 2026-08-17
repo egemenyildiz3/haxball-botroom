@@ -87,6 +87,59 @@ function handleStats(ctx) {
   return false;
 }
 
+const LEADERBOARDS = {
+  goals: {
+    column: 'goals',
+    title: '⚽ Gol kralı',
+    empty: 'Henüz gol istatistiği yok.',
+  },
+  assists: {
+    column: 'assists',
+    title: '🅰️ Asist kralı',
+    empty: 'Henüz asist istatistiği yok.',
+  },
+  wins: {
+    column: 'wins',
+    title: '🏆 En çok maç kazananlar',
+    empty: 'Henüz galibiyet istatistiği yok.',
+  },
+};
+
+function handleLeaderboard(ctx, type) {
+  const { room, player, db } = ctx;
+  const leaderboard = LEADERBOARDS[type];
+  if (!leaderboard) return false;
+
+  try {
+    const stmt = db.prepare(`
+      SELECT username, ${leaderboard.column} AS value
+      FROM users
+      WHERE COALESCE(${leaderboard.column}, 0) > 0
+      ORDER BY ${leaderboard.column} DESC, username COLLATE NOCASE ASC
+      LIMIT 5
+    `.replace(/\s+/g, ' '));
+
+    const rows = [];
+    while (stmt.step()) {
+      rows.push(stmt.getAsObject());
+    }
+    stmt.free();
+
+    if (rows.length === 0) {
+      sendMsg(room, `📊 ${leaderboard.empty}`, player.id, 0xFFCC00, 'bold');
+      return false;
+    }
+
+    const lines = rows.map((row, index) => `${index + 1}. ${row.username} — ${row.value}`);
+    sendMsg(room, `${leaderboard.title}\n${lines.join('\n')}`, null, 0xFFD700, 'bold');
+  } catch (err) {
+    console.warn('[BACKEND-DB] Liderlik tablosu sorgu hatası:', err.message);
+    sendMsg(room, '❌ Liderlik tablosu yüklenirken bir hata oluştu.', player.id, 0xFF5555, 'bold');
+  }
+
+  return false;
+}
+
 function handleRegister(ctx) {
   const { room, player, args, cleanedName, playerToken, loggedInPlayers, db, DB_FILE, persistDatabase } = ctx;
   if (loggedInPlayers.has(player.id)) {
@@ -184,6 +237,9 @@ function handleLogin(ctx) {
 
 function routeAccountCommand(ctx) {
   if (ctx.command === '!s' || ctx.command === '!stats' || ctx.command === '!istatistik') return handleStats(ctx);
+  if (ctx.command === '!golkrali') return handleLeaderboard(ctx, 'goals');
+  if (ctx.command === '!asistkrali') return handleLeaderboard(ctx, 'assists');
+  if (ctx.command === '!top') return handleLeaderboard(ctx, 'wins');
   if (ctx.command === '!kaydol' || ctx.command === '!kayit') return handleRegister(ctx);
   if (ctx.command === '!giris') return handleLogin(ctx);
   return null;

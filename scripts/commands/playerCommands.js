@@ -109,6 +109,7 @@ function handleHelp(ctx) {
     '📖 Spacebounce 4v4 - Komut listesi:',
     '• !oyuncular — Odadaki oyuncuları ve ID\'lerini listeler',
     '• !s / !stats / !istatistik — İstatistiklerinizi gösterir',
+    '• !golkralı / !asistkralı / !top — Liderlik tablolarını gösterir',
     '• !afk — AFK modunu açar/kapatır',
     '• !bb — Tatlı bir vedayla odadan ayrılır',
     '• !admin <açıklama> — Adminlere istek, talep veya şikayet gönderir',
