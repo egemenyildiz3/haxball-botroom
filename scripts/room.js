@@ -152,6 +152,19 @@ function attachRoomDiagnostics(room, state, deps) {
   }, ROOM_DIAGNOSTIC_LOG_MS);
 }
 
+function markSuperAdminAfkOnJoin(room, state, player, deps) {
+  const userData = deps.loggedInPlayers.get(player.id);
+  if (!userData || userData.isadmin !== 1) return false;
+
+  state.afkPlayers.add(player.id);
+  if (player.team !== 0 && typeof room.setPlayerTeam === 'function') {
+    try { room.setPlayerTeam(player.id, 0); } catch (e) {}
+  }
+
+  console.log(`${deps.getTimestamp()} [AFK] Superadmin girişte otomatik AFK yapıldı: ${getCleanName(player)} (ID: ${player.id})`);
+  return true;
+}
+
 async function createRoom(room, deps) {
   const {
     ROOM_NAME,
@@ -275,6 +288,7 @@ async function createRoom(room, deps) {
 
     const updatedPlayer = sanitizePlayer(room, safePlayer, state);
     handleAutoLogin(room, updatedPlayer, { db, DB_FILE, loggedInPlayers, persistDatabase });
+    markSuperAdminAfkOnJoin(room, state, sanitizePlayer(room, updatedPlayer, state), roomDeps);
     await handlePlayerJoin(room, updatedPlayer, state, roomDeps);
   };
 
