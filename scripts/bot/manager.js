@@ -321,6 +321,20 @@ function createBotManager(options = {}) {
       return `🤖 Bot durumu: ${bots.size}/${maxBots} sahada → ${list}`;
     },
 
+    diagnostics() {
+      if (!raw) return null;
+
+      const gameState = raw.gameState || null;
+      const players = Array.isArray(raw.players) ? raw.players : [];
+      return {
+        rawGame: !!gameState,
+        rawTime: gameState ? Number(gameState.timeElapsed || 0).toFixed(2) : 'none',
+        rawScore: gameState ? `${gameState.redScore || 0}-${gameState.blueScore || 0}` : 'none',
+        rawPlayers: players.length,
+        rawTeamsLocked: raw.teamsLocked,
+      };
+    },
+
     stopAll() {
       if (!raw) return;
       for (const bot of [...bots.values()]) removeOne(bot);

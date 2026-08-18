@@ -6,6 +6,7 @@ function createRoomState() {
     secondLastTouchPlayer: null,
     touchHistory: [],
     currentGame: null,
+    lastGameTickAt: null,
     nextJoinNumber: 100,
     nextJoinOrder: 1,
     playerAuths: new Map(),

@@ -21,6 +21,8 @@ const ADMIN_REQUEST_ANNOUNCE_TEXT = '📮 İstek, talep, şikayet veya bug bildi
 const INACTIVITY_KICK_MS = 30 * 1000;
 const INACTIVITY_WARNING_MS = 25 * 1000;
 const INACTIVITY_CHECK_MS = 1000;
+const ROOM_DIAGNOSTIC_LOG_MS = 60 * 1000;
+const ROOM_STUCK_TICK_MS = 45 * 1000;
 
 process.on('uncaughtException', (err) => {
   console.error('❌ [CRITICAL ERROR] Yakalanmamış İstisna:', err.message, err.stack);
@@ -115,6 +117,41 @@ function attachInactivityKick(room, state, deps) {
   }, INACTIVITY_CHECK_MS);
 }
 
+function attachRoomDiagnostics(room, state, deps) {
+  const { botManager, getTimestamp } = deps;
+
+  setInterval(() => {
+    const players = typeof room.getPlayerList === 'function' ? room.getPlayerList() : [];
+    const scores = typeof room.getScores === 'function' ? room.getScores() : null;
+    const activePlayers = players.filter((p) => p.id !== 0 && (p.team === 1 || p.team === 2));
+    const botPlayers = activePlayers.filter((p) => botManager && botManager.isBotPlayer(p.id));
+    const humanPlayers = activePlayers.filter((p) => !(botManager && botManager.isBotPlayer(p.id)));
+    const lastTickAgeMs = state.lastGameTickAt ? Date.now() - state.lastGameTickAt : null;
+    const rawDiag = botManager && typeof botManager.diagnostics === 'function'
+      ? botManager.diagnostics()
+      : null;
+
+    const scoreText = scores ? `${scores.red}-${scores.blue}` : 'none';
+    const timeText = scores ? Number(scores.time || 0).toFixed(2) : 'none';
+    const tickText = lastTickAgeMs === null ? 'never' : `${lastTickAgeMs}ms`;
+    const rawText = rawDiag ? JSON.stringify(rawDiag) : 'none';
+
+    console.log(
+      `${getTimestamp()} [ROOM-DIAG] currentGame=${!!state.currentGame} ` +
+      `scores=${scoreText} time=${timeText} players=${players.length} ` +
+      `active=${activePlayers.length} humans=${humanPlayers.length} bots=${botPlayers.length} ` +
+      `lastTickAge=${tickText} raw=${rawText}`
+    );
+
+    if (state.currentGame && (lastTickAgeMs === null || lastTickAgeMs > ROOM_STUCK_TICK_MS)) {
+      console.warn(
+        `${getTimestamp()} [ROOM-STUCK] currentGame var ama onGameTick ` +
+        `${tickText} önce geldi. Haxball physics/client sync takılmış olabilir.`
+      );
+    }
+  }, ROOM_DIAGNOSTIC_LOG_MS);
+}
+
 async function createRoom(room, deps) {
   const {
     ROOM_NAME,
@@ -161,6 +198,7 @@ async function createRoom(room, deps) {
   const autoManager = createAutoManager(room, state, roomDeps);
   attachTerminalInput(room, state, roomDeps, autoManager);
   attachInactivityKick(room, state, roomDeps);
+  attachRoomDiagnostics(room, state, roomDeps);
 
   const originalKickPlayer = room.kickPlayer.bind(room);
   room.kickPlayer = function (id, reason, ban) {
@@ -175,6 +213,7 @@ async function createRoom(room, deps) {
   };
 
   room.onGameTick = function () {
+    state.lastGameTickAt = Date.now();
     repairOutOfBoundsBall(room, sendMsg);
   };
 
