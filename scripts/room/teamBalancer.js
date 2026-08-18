@@ -5,6 +5,8 @@ const REBALANCE_MOVE_DELAY_MS = 350;
 const REBALANCE_END_DELAY_MS = 500;
 const START_RETRY_DELAY_MS = 1000;
 const START_RETRY_COUNT = 5;
+const MAX_TEAM_SIZE = 4;
+const MAX_ACTIVE_PLAYERS = 8;
 
 const fallbackSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -20,6 +22,14 @@ function botCount(players, isBot) {
 
 function canMoveForBotBalance(player, state) {
   return player && !state.manualPlacements.has(player.id);
+}
+
+function pickMovable(players, state, isBot, preferBot = false) {
+  const ordered = [...players];
+  if (preferBot) {
+    ordered.sort((a, b) => Number(isBot(b)) - Number(isBot(a)));
+  }
+  return ordered.find((p) => canMoveForBotBalance(p, state)) || ordered[0] || null;
 }
 
 async function balanceBotDistribution(room, state, isBot, sleep = fallbackSleep) {
@@ -67,6 +77,101 @@ async function balanceBotDistribution(room, state, isBot, sleep = fallbackSleep)
       return;
     }
   }
+}
+
+async function validateTeamDistribution(room, state, deps = {}) {
+  if (!state.autoManageEnabled) return;
+
+  const {
+    botManager,
+    playerJoinOrder = new Map(),
+    sleep = fallbackSleep,
+    reason = 'unknown',
+  } = deps;
+
+  if (typeof room.getPlayerList !== 'function' || typeof room.setPlayerTeam !== 'function') return;
+
+  const isBot = (p) => isBotPlayer(botManager, p);
+
+  for (let attempts = 0; attempts < 8; attempts++) {
+    if (!state.autoManageEnabled) return;
+
+    const players = room.getPlayerList();
+    const eligiblePlayers = players.filter((p) => p.id !== 0 && !state.afkPlayers.has(p.id));
+    const realPlayers = eligiblePlayers.filter((p) => !isBot(p));
+    const botPlayers = eligiblePlayers.filter(isBot);
+    const targetBotCount = desiredBotCount(realPlayers.length, botPlayers.length, MAX_ACTIVE_PLAYERS);
+    const desiredActiveCount = Math.min(MAX_ACTIVE_PLAYERS, realPlayers.length + targetBotCount);
+    const redPlayers = activeTeamPlayers(players, state, 1);
+    const bluePlayers = activeTeamPlayers(players, state, 2);
+    const activePlayers = [...redPlayers, ...bluePlayers];
+    const redCount = redPlayers.length;
+    const blueCount = bluePlayers.length;
+
+    if (activePlayers.length > desiredActiveCount) {
+      const heavyTeam = redCount >= blueCount ? 1 : 2;
+      const heavyPlayers = heavyTeam === 1 ? redPlayers : bluePlayers;
+      const excessBot = activePlayers
+        .filter((p) => isBot(p) && canMoveForBotBalance(p, state))
+        .sort((a, b) => (playerJoinOrder.get(b.id) ?? 0) - (playerJoinOrder.get(a.id) ?? 0))[0];
+      const excessPlayer = excessBot || pickMovable(heavyPlayers, state, isBot, true);
+
+      if (!excessPlayer) break;
+      try {
+        console.warn(`[TEAM-VALIDATOR] ${reason}: fazla aktif oyuncu düzeltildi, ${excessPlayer.name} spec'e alındı.`);
+        room.setPlayerTeam(excessPlayer.id, 0);
+        await sleep(REBALANCE_MOVE_DELAY_MS);
+        continue;
+      } catch (e) {
+        break;
+      }
+    }
+
+    const oversizedTeam = redCount > MAX_TEAM_SIZE ? 1 : (blueCount > MAX_TEAM_SIZE ? 2 : 0);
+    if (oversizedTeam) {
+      const fromPlayers = oversizedTeam === 1 ? redPlayers : bluePlayers;
+      const toTeam = oversizedTeam === 1 ? 2 : 1;
+      const toCount = oversizedTeam === 1 ? blueCount : redCount;
+      const movable = pickMovable(fromPlayers, state, isBot, true);
+
+      if (!movable) break;
+      try {
+        const targetTeam = toCount < MAX_TEAM_SIZE ? toTeam : 0;
+        console.warn(`[TEAM-VALIDATOR] ${reason}: takım kapasitesi düzeltildi, ${movable.name} team=${targetTeam}.`);
+        room.setPlayerTeam(movable.id, targetTeam);
+        await sleep(REBALANCE_MOVE_DELAY_MS);
+        continue;
+      } catch (e) {
+        break;
+      }
+    }
+
+    if (desiredActiveCount >= 2 && Math.abs(redCount - blueCount) > 1) {
+      const fromRed = redCount > blueCount;
+      const fromPlayers = fromRed ? redPlayers : bluePlayers;
+      const toCount = fromRed ? blueCount : redCount;
+      if (toCount >= MAX_TEAM_SIZE) break;
+
+      const movable = pickMovable(fromPlayers, state, isBot, true);
+      if (!movable) break;
+
+      try {
+        const targetTeam = fromRed ? 2 : 1;
+        console.warn(`[TEAM-VALIDATOR] ${reason}: takım sayısı düzeltildi, ${movable.name} team=${targetTeam}.`);
+        room.setPlayerTeam(movable.id, targetTeam);
+        await sleep(REBALANCE_MOVE_DELAY_MS);
+        continue;
+      } catch (e) {
+        break;
+      }
+    }
+
+    await balanceBotDistribution(room, state, isBot, sleep);
+    return;
+  }
+
+  if (!state.autoManageEnabled) return;
+  await balanceBotDistribution(room, state, isBot, sleep);
 }
 
 function rememberLockedTeams(room, state) {
@@ -186,8 +291,8 @@ async function runRebalanceOnce(room, state, { playerJoinOrder, botManager, slee
     ...spectatorsByType(players, state, playerJoinOrder, isBot, true).slice(0, botSlotsRemaining),
   ];
 
-  const desiredActiveCount = Math.min(8, realPlayers.length + targetBotCount);
-  const maxTeamSize = Math.min(4, Math.max(1, Math.ceil(desiredActiveCount / 2)));
+  const desiredActiveCount = Math.min(MAX_ACTIVE_PLAYERS, realPlayers.length + targetBotCount);
+  const maxTeamSize = Math.min(MAX_TEAM_SIZE, Math.max(1, Math.ceil(desiredActiveCount / 2)));
 
   let redCount = redPlayers.length;
   let blueCount = bluePlayers.length;
@@ -247,7 +352,7 @@ async function runRebalanceOnce(room, state, { playerJoinOrder, botManager, slee
   }
 
   if (!state.autoManageEnabled) return;
-  await balanceBotDistribution(room, state, isBot, sleep);
+  await validateTeamDistribution(room, state, { playerJoinOrder, botManager, sleep, reason: 'rebalance' });
   rememberLockedTeams(room, state);
   state.teamChangesLocked = true;
   await sleep(REBALANCE_END_DELAY_MS);
@@ -277,4 +382,5 @@ module.exports = {
   beginTeamTransitionLock,
   endTeamTransitionLock,
   balanceBotDistribution,
+  validateTeamDistribution,
 };
