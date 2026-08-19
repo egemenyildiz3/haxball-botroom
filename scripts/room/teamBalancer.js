@@ -24,6 +24,15 @@ function canMoveForBotBalance(player, state) {
   return player && !state.manualPlacements.has(player.id);
 }
 
+function isAutoEligiblePlayer(player, state) {
+  return !!(
+    player
+    && player.id !== 0
+    && !state.afkPlayers.has(player.id)
+    && !(player.team === 0 && state.manualPlacements.has(player.id))
+  );
+}
+
 function pickMovable(players, state, isBot, preferBot = false) {
   const ordered = [...players];
   if (preferBot) {
@@ -97,7 +106,7 @@ async function validateTeamDistribution(room, state, deps = {}) {
     if (!state.autoManageEnabled) return;
 
     const players = room.getPlayerList();
-    const eligiblePlayers = players.filter((p) => p.id !== 0 && !state.afkPlayers.has(p.id));
+    const eligiblePlayers = players.filter((p) => isAutoEligiblePlayer(p, state));
     const realPlayers = eligiblePlayers.filter((p) => !isBot(p));
     const botPlayers = eligiblePlayers.filter(isBot);
     const targetBotCount = desiredBotCount(realPlayers.length, botPlayers.length, MAX_ACTIVE_PLAYERS);
@@ -264,9 +273,9 @@ async function runRebalanceOnce(room, state, { playerJoinOrder, botManager, slee
   }
 
   const isBot = (p) => isBotPlayer(botManager, p);
-  const nonAfkPlayers = players.filter((p) => p.id !== 0 && !state.afkPlayers.has(p.id));
-  const realPlayers = nonAfkPlayers.filter((p) => !isBot(p));
-  const botPlayers = nonAfkPlayers.filter(isBot);
+  const autoEligiblePlayers = players.filter((p) => isAutoEligiblePlayer(p, state));
+  const realPlayers = autoEligiblePlayers.filter((p) => !isBot(p));
+  const botPlayers = autoEligiblePlayers.filter(isBot);
   const targetBotCount = desiredBotCount(realPlayers.length, botPlayers.length);
 
   const activeBots = botPlayers.filter((p) => p.team === 1 || p.team === 2);
