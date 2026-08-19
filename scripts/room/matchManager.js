@@ -6,6 +6,7 @@ const { desiredBotCount, isBotPlayer, sortRealPlayersFirst } = require('./botPol
 const ROTATION_START_DELAY_MS = 700;
 const ROTATION_MOVE_DELAY_MS = 350;
 const ROTATION_END_DELAY_MS = 500;
+const KICKOFF_TOUCH_DELAY_MS = 10 * 1000;
 
 function shuffle(players) {
   const result = [...players];
@@ -39,7 +40,52 @@ function mixedTeamAssignments(players, redCount, blueCount, isBot) {
   ];
 }
 
+function kickoffTeamAfterGoal(scoringTeam) {
+  if (scoringTeam === 1) return 2;
+  if (scoringTeam === 2) return 1;
+  return null;
+}
+
+function startKickoffWatch(state, team = null) {
+  state.kickoffWatch = {
+    team,
+    startedAt: Date.now(),
+    triggered: false,
+  };
+}
+
+function clearKickoffWatch(state, player = null) {
+  const watch = state.kickoffWatch;
+  if (!watch) return;
+  if (player && watch.team && player.team !== watch.team) return;
+  state.kickoffWatch = null;
+}
+
+function checkKickoffWatch(room, state, deps) {
+  const { botManager, getTimestamp } = deps;
+  const watch = state.kickoffWatch;
+  if (!watch || watch.triggered || !state.currentGame) return;
+  if (Date.now() - watch.startedAt < KICKOFF_TOUCH_DELAY_MS) return;
+  if (!botManager || typeof botManager.forceClosestBotToBall !== 'function') {
+    watch.triggered = true;
+    return;
+  }
+
+  const teams = watch.team ? [watch.team] : [1, 2];
+  for (const team of teams) {
+    if (botManager.forceClosestBotToBall(team)) {
+      watch.triggered = true;
+      console.log(`${getTimestamp()} [KICKOFF-WATCH] ${team} takımındaki en yakın bot santra için topa gönderildi.`);
+      return;
+    }
+  }
+
+  watch.triggered = true;
+}
+
 function handlePlayerBallKick(state, player) {
+  clearKickoffWatch(state, player);
+
   if (!Array.isArray(state.touchHistory)) state.touchHistory = [];
 
   if (!state.lastTouchPlayer || state.lastTouchPlayer.id !== player.id) {
@@ -160,6 +206,7 @@ function handleTeamGoal(room, state, team, { getTimestamp, sendMsg }) {
   state.lastTouchPlayer = null;
   state.secondLastTouchPlayer = null;
   state.touchHistory = [];
+  startKickoffWatch(state, kickoffTeamAfterGoal(team));
 }
 
 function handleGameStart(room, state, { sendMsg }) {
@@ -182,6 +229,8 @@ function handleGameStart(room, state, { sendMsg }) {
       assists: 0,
     })),
   };
+
+  startKickoffWatch(state);
 
   console.log(`[GAME START] Maç başladı! Aktif oyuncu sayısı: ${state.currentGame.players.length}`);
   sendMsg(room, '🚀 Maç başladı! Herkese başarılar ve iyi oyunlar!', null, 0x00FF7F, 'bold');
@@ -217,6 +266,7 @@ async function handleGameStop(room, state, deps) {
   }
 
   state.currentGame = null;
+  clearKickoffWatch(state);
 
   if (!state.autoManageEnabled) {
     endTeamTransitionLock(room, state);
@@ -329,4 +379,5 @@ module.exports = {
   handleTeamGoal,
   handleGameStart,
   handleGameStop,
+  checkKickoffWatch,
 };

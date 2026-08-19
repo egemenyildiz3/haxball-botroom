@@ -654,7 +654,10 @@ function decide(view, memory, config) {
     ballDamping: activeCfg.ballDamping,
   };
 
-  const { role, intercept, slot } = assignRoles(view, roleCfg);
+  const assigned = assignRoles(view, roleCfg);
+  const role = view.forceBall ? 'attacker' : assigned.role;
+  const intercept = assigned.intercept;
+  const slot = assigned.slot;
 
   const ownCenter = mid(view.ownGoal.p0, view.ownGoal.p1);
   const oppCenter = mid(view.oppGoal.p0, view.oppGoal.p1);

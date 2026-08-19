@@ -7,7 +7,7 @@ const { repairOutOfBoundsBall } = require('./room/spacebounceSafety');
 const { createAutoManager, restoreAutoManageIfNoAdmins } = require('./room/autoManager');
 const { rebalanceTeams, checkAndStartGame, lockTeams } = require('./room/teamBalancer');
 const { handlePlayerKicked, handlePlayerAdminChange, handlePlayerTeamChange } = require('./room/moderationGuards');
-const { handlePlayerBallKick, handleTeamGoal, handleGameStart, handleGameStop } = require('./room/matchManager');
+const { handlePlayerBallKick, handleTeamGoal, handleGameStart, handleGameStop, checkKickoffWatch } = require('./room/matchManager');
 const { attachTerminalInput } = require('./room/terminal');
 const { isProtectedBotIdentity } = require('./room/botPolicy');
 const { blockDuplicateJoin } = require('./room/joinGuards');
@@ -227,6 +227,7 @@ async function createRoom(room, deps) {
 
   room.onGameTick = function () {
     state.lastGameTickAt = Date.now();
+    checkKickoffWatch(room, state, roomDeps);
     repairOutOfBoundsBall(room, sendMsg);
   };
 

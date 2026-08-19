@@ -15,6 +15,7 @@ const { decide, configFromPhysics, makePersonality, describePersonality } = requ
 const FIRST_BOT_ID = 500; // gerçek oyuncu id'leriyle çakışmasın diye yüksek başlıyoruz
 const BOT_CONN_PREFIX = 'bot-conn-';
 const BOT_AUTH_PREFIX = 'bot-auth-';
+const KICKOFF_FORCE_MS = 8 * 1000;
 
 const boundsCache = new WeakMap();
 
@@ -162,7 +163,15 @@ function createBotManager(options = {}) {
       stadium: { width, height },
       field,
       botOnly,
+      forceBall: bot.forceBallUntil && bot.forceBallUntil > Date.now(),
     };
+  }
+
+  function distanceToBall(player, ball) {
+    if (!player || !player.disc || !player.disc.pos || !ball || !ball.pos) return Infinity;
+    const dx = player.disc.pos.x - ball.pos.x;
+    const dy = player.disc.pos.y - ball.pos.y;
+    return Math.sqrt(dx * dx + dy * dy);
   }
 
   /** Her fizik tick'inde tüm botların girdisini hesaplar ve gönderir. */
@@ -271,6 +280,23 @@ function createBotManager(options = {}) {
 
     count() {
       return bots.size;
+    },
+
+    forceClosestBotToBall(teamId, durationMs = KICKOFF_FORCE_MS) {
+      if (!raw || !raw.gameState || !raw.gameState.physicsState) return false;
+
+      const ball = raw.gameState.physicsState.discs[0];
+      const candidates = [...bots.values()]
+        .map((bot) => ({ bot, player: raw.getPlayer(bot.id) }))
+        .filter(({ player }) => player && player.disc && player.team && player.team.id === teamId)
+        .sort((a, b) => distanceToBall(a.player, ball) - distanceToBall(b.player, ball));
+
+      const chosen = candidates[0];
+      if (!chosen) return false;
+
+      chosen.bot.forceBallUntil = Date.now() + durationMs;
+      log(`🤖 [BOT] Santra watchdog: ${chosen.bot.name} topa gitmeye zorlandı (team=${teamId}).`);
+      return true;
     },
 
     start(requested = 1) {
