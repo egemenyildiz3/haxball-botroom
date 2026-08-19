@@ -39,7 +39,7 @@ function scheduleAfkKick(ctx, key, startedAt) {
 
     if (typeof room.kickPlayer === 'function') {
       try {
-        room.kickPlayer(player.id, 'Uzun süre AFK kaldınız.', false);
+        room.kickPlayer(player.id, '😴 Uzun süre AFK kaldınız. 👋', false);
       } catch (e) {}
     }
   }, AFK_MAX_DURATION_MS);
