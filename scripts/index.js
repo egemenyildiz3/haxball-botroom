@@ -74,8 +74,6 @@ async function startRoom() {
   process.on('SIGTERM', () => { cleanupBots(); process.exit(0); });
   process.on('SIGINT', () => { cleanupBots(); process.exit(0); });
 
-  // Oda node-haxball ile açılıyor (arayüz haxball.js ile aynı). Sebebi:
-  // bellek içi bot oyuncuları sadece bu kütüphanenin host modunda mümkün.
   const host = createHostRoom({
     roomName: ROOM_NAME,
     playerName: 'Host-admin',
@@ -94,7 +92,7 @@ async function startRoom() {
     if (raw) {
       clearInterval(waitForRaw);
       botManager.attach(raw, host.api);
-      console.log(`${getTimestamp()} 🤖 Bot motoru hazır (!bot aç ile kullanılabilir).`);
+      console.log(`${getTimestamp()} 🤖 Bot motoru hazır.`);
     }
   }, 250);
 
