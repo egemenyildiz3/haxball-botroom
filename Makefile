@@ -49,7 +49,10 @@ logs-f:
 logs-backend:
 	docker logs -f $(CONTAINER) | grep --line-buffered "\[BACKEND-DB\]"
 
-make attach:
+logs-chat:
+	docker logs -f $(CONTAINER) | grep --line-buffered "\[CHAT\]"
+
+attach:
 	docker attach haxball-headless
 
 # --- SQLite Veritabanı Komutları ---
@@ -78,34 +81,9 @@ db-users-today:
 db-visited_users-today:
 	docker exec -it $(CONTAINER) node -e "const fs = require('fs'); const initSqlJs = require('sql.js'); initSqlJs().then(SQL => { const db = new SQL.Database(fs.readFileSync('./db/haxball-results.sqlite')); const stmt = db.prepare(\"SELECT * FROM visited_users WHERE date(last_visited_at) = date('now') ORDER BY last_visited_at;\"); const rows = []; while (stmt.step()) rows.push(stmt.getAsObject()); stmt.free(); console.table(rows); });"
 
-db-users-ljungberg:
+db-ljungberg:
 	docker exec -it $(CONTAINER) node -e "const fs = require('fs'); const initSqlJs = require('sql.js'); initSqlJs().then(SQL => { const db = new SQL.Database(fs.readFileSync('./db/haxball-results.sqlite')); const stmt = db.prepare(\"SELECT username, last_visited_at FROM users WHERE username='Ljungberg';\"); const rows = []; while (stmt.step()) rows.push(stmt.getAsObject()); stmt.free(); console.table(rows); });"
 
-db-backup:
-	@set -e; \
-	if [ ! -f "$(DB_FILE)" ]; then echo "⚠️ HATA: $(DB_FILE) bulunamadı."; exit 1; fi; \
-	mkdir -p "$(DB_BACKUP_DIR)"; \
-	ts=$$(date +%Y%m%d-%H%M%S); \
-	backup="$(DB_BACKUP_DIR)/haxball-results-$$ts.sqlite"; \
-	tmp="$$backup.tmp"; \
-	cp -p "$(DB_FILE)" "$$tmp"; \
-	node -e 'const fs = require("fs"); const initSqlJs = require("sql.js"); const file = process.argv[1]; initSqlJs().then(SQL => { const db = new SQL.Database(fs.readFileSync(file)); db.exec("SELECT name FROM sqlite_master LIMIT 1"); db.close(); }).catch((err) => { console.error("⚠️ Backup doğrulaması başarısız:", err.message); process.exit(1); });' "$$tmp"; \
-	mv "$$tmp" "$$backup"; \
-	echo "✅ DB backup alındı: $$backup"
-
-db-backups:
-	@mkdir -p "$(DB_BACKUP_DIR)"
-	@find "$(DB_BACKUP_DIR)" -maxdepth 1 -type f -name 'haxball-results-*.sqlite' -printf '%TY-%Tm-%Td %TH:%TM  %s bytes  %p\n' | sort
-
-db-restore:
-	@if [ -z "$(BACKUP)" ]; then echo "⚠️ HATA: BACKUP belirtilmedi! Örnek: make db-restore BACKUP='$(DB_BACKUP_DIR)/haxball-results-YYYYMMDD-HHMMSS.sqlite'"; exit 1; fi
-	@if [ ! -f "$(BACKUP)" ]; then echo "⚠️ HATA: Backup bulunamadı: $(BACKUP)"; exit 1; fi
-	@if docker inspect -f '{{.State.Running}}' $(CONTAINER) 2>/dev/null | grep -q true; then echo "⚠️ HATA: Container çalışırken restore yapılmadı. Önce odayı bilinçli şekilde durdur."; exit 1; fi
-	@node -e 'const fs = require("fs"); const initSqlJs = require("sql.js"); const file = process.argv[1]; initSqlJs().then(SQL => { const db = new SQL.Database(fs.readFileSync(file)); db.exec("SELECT name FROM sqlite_master LIMIT 1"); db.close(); }).catch((err) => { console.error("⚠️ Backup doğrulaması başarısız:", err.message); process.exit(1); });' "$(BACKUP)"
-	@mkdir -p "$(dir $(DB_FILE))"
-	@cp -p "$(BACKUP)" "$(DB_FILE)"
-	@echo "✅ DB restore edildi: $(BACKUP) -> $(DB_FILE)"
-	
 # --- DANGER ZONE ---
 
 db-make_admin: #USERNAME=player1
@@ -139,3 +117,31 @@ db-blacklist-player:
 db-unblacklist-player: # USERNAME=player1
 	@if [ -z "$(UNBLACKLIST_USERNAME)" ]; then echo "⚠️ HATA: USERNAME belirtilmedi! Örnek: make db-unblacklist_player USERNAME='oyuncu' veya make db-unblacklist_player oyuncu"; exit 1; fi
 	docker exec -e TARGET_USERNAME="$(UNBLACKLIST_USERNAME)" -it $(CONTAINER) node -e 'const fs = require("fs"); const initSqlJs = require("sql.js"); initSqlJs().then(SQL => { const dbPath = "./db/haxball-results.sqlite"; const db = new SQL.Database(fs.readFileSync(dbPath)); const targetUser = (process.env.TARGET_USERNAME || "").trim(); if (!targetUser) { console.log("⚠️ HATA: USERNAME belirtilmedi!"); return; } const auths = new Set(); for (const query of ["SELECT auth_key FROM visited_users WHERE LOWER(username) = LOWER(?) AND auth_key IS NOT NULL AND auth_key != \"\"", "SELECT auth_key FROM users WHERE LOWER(username) = LOWER(?) AND auth_key IS NOT NULL AND auth_key != \"\""]) { const stmt = db.prepare(query); stmt.bind([targetUser]); while (stmt.step()) auths.add(stmt.getAsObject().auth_key || ""); stmt.free(); } const countStmt = db.prepare("SELECT COUNT(*) AS count FROM blacklisted_users WHERE LOWER(username) = LOWER(?)" + (auths.size ? " OR auth_key IN (" + Array.from(auths).map(() => "?").join(",") + ")" : "")); const params = [targetUser, ...Array.from(auths)]; countStmt.bind(params); countStmt.step(); const before = countStmt.getAsObject().count || 0; countStmt.free(); db.run("DELETE FROM blacklisted_users WHERE LOWER(username) = LOWER(?)" + (auths.size ? " OR auth_key IN (" + Array.from(auths).map(() => "?").join(",") + ")" : ""), params); fs.writeFileSync(dbPath, Buffer.from(db.export())); console.log("✅ Blacklist kaldırıldı -> Kullanıcı: \"" + targetUser + "\" | Silinen kayıt: " + before); });'
+
+
+
+# DB backup
+db-backup:
+	@set -e; \
+	if [ ! -f "$(DB_FILE)" ]; then echo "⚠️ HATA: $(DB_FILE) bulunamadı."; exit 1; fi; \
+	mkdir -p "$(DB_BACKUP_DIR)"; \
+	ts=$$(date +%Y%m%d-%H%M%S); \
+	backup="$(DB_BACKUP_DIR)/haxball-results-$$ts.sqlite"; \
+	tmp="$$backup.tmp"; \
+	cp -p "$(DB_FILE)" "$$tmp"; \
+	node -e 'const fs = require("fs"); const initSqlJs = require("sql.js"); const file = process.argv[1]; initSqlJs().then(SQL => { const db = new SQL.Database(fs.readFileSync(file)); db.exec("SELECT name FROM sqlite_master LIMIT 1"); db.close(); }).catch((err) => { console.error("⚠️ Backup doğrulaması başarısız:", err.message); process.exit(1); });' "$$tmp"; \
+	mv "$$tmp" "$$backup"; \
+	echo "✅ DB backup alındı: $$backup"
+
+db-backups:
+	@mkdir -p "$(DB_BACKUP_DIR)"
+	@find "$(DB_BACKUP_DIR)" -maxdepth 1 -type f -name 'haxball-results-*.sqlite' -printf '%TY-%Tm-%Td %TH:%TM  %s bytes  %p\n' | sort
+
+db-restore:
+	@if [ -z "$(BACKUP)" ]; then echo "⚠️ HATA: BACKUP belirtilmedi! Örnek: make db-restore BACKUP='$(DB_BACKUP_DIR)/haxball-results-YYYYMMDD-HHMMSS.sqlite'"; exit 1; fi
+	@if [ ! -f "$(BACKUP)" ]; then echo "⚠️ HATA: Backup bulunamadı: $(BACKUP)"; exit 1; fi
+	@if docker inspect -f '{{.State.Running}}' $(CONTAINER) 2>/dev/null | grep -q true; then echo "⚠️ HATA: Container çalışırken restore yapılmadı. Önce odayı bilinçli şekilde durdur."; exit 1; fi
+	@node -e 'const fs = require("fs"); const initSqlJs = require("sql.js"); const file = process.argv[1]; initSqlJs().then(SQL => { const db = new SQL.Database(fs.readFileSync(file)); db.exec("SELECT name FROM sqlite_master LIMIT 1"); db.close(); }).catch((err) => { console.error("⚠️ Backup doğrulaması başarısız:", err.message); process.exit(1); });' "$(BACKUP)"
+	@mkdir -p "$(dir $(DB_FILE))"
+	@cp -p "$(BACKUP)" "$(DB_FILE)"
+	@echo "✅ DB restore edildi: $(BACKUP) -> $(DB_FILE)"

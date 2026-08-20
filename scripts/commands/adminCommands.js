@@ -76,7 +76,7 @@ function handleBlacklist(ctx) {
     persistDatabase(db, DB_FILE);
 
     room.kickPlayer(target.id, banReason, true);
-    sendMsg(room, `⛔ ${targetCleanName} (HB-ID: ${target.id}) veritabanı kara listesine (blacklisted_users) eklendi ve odadan yasaklandı!`, null, 0xFF0000, 'bold');
+    sendMsg(room, `⛔ ${targetCleanName} karalisteye eklendi ve odadan yasaklandı!`, null, 0xFF0000, 'bold');
     console.log(`[BLACKLIST] Super-Admin ${cleanedName}, ${targetCleanName} kullanıcısını kara listeye ekledi. Auth: ${targetAuth}, IP: ${targetIp}`);
   } catch (err) {
     console.warn('[BLACKLIST] Veritabanı hatası:', err.message);
