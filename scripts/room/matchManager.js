@@ -75,7 +75,7 @@ function checkKickoffWatch(room, state, deps) {
   for (const team of teams) {
     if (botManager.forceClosestBotToBall(team)) {
       watch.triggered = true;
-      console.log(`${getTimestamp()} [KICKOFF-WATCH] ${team} takımındaki en yakın bot santra için topa gönderildi.`);
+      console.log(`[KICKOFF-WATCH] ${team} takımındaki en yakın bot santra için topa gönderildi.`);
       return;
     }
   }

@@ -314,7 +314,7 @@ async function createRoom(room, deps) {
     if (typeof room.getPlayerList === 'function') {
       const realHumanPlayers = room.getPlayerList().filter((p) => p.id !== 0);
       if (realHumanPlayers.length > 0) {
-        console.log(`${getTimestamp()} [STATUS] Odada şu an aktif ${realHumanPlayers.length} oyuncu bulunuyor.`);
+        console.log(` [STATUS] Odada şu an aktif ${realHumanPlayers.length} oyuncu bulunuyor. Zaman: ${getTimestamp()}`);
       }
 
       restoreAutoManageIfNoAdmins(room, state, roomDeps);

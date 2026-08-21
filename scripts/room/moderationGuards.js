@@ -116,7 +116,7 @@ function handlePlayerTeamChange(room, state, changedPlayer, byPlayer, deps, sani
 
   if (byPlayer && byPlayer.id !== 0) {
     state.manualPlacements.set(safePlayer.id, safePlayer.team);
-    console.log(`${deps.getTimestamp()} [MANUAL] ${getCleanName(sanitizePlayer(room, byPlayer, state))}, ${getCleanName(safePlayer)} oyuncusunu elle taşıdı (takım: ${safePlayer.team}). Otomatik dağıtım bu oyuncuya dokunmayacak.`);
+    console.log(`[MANUAL] ${getCleanName(sanitizePlayer(room, byPlayer, state))}, ${getCleanName(safePlayer)} oyuncusunu elle taşıdı (takım: ${safePlayer.team}). Otomatik dağıtım bu oyuncuya dokunmayacak.`);
     return;
   }
 

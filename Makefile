@@ -100,8 +100,8 @@ db-make_admin: #USERNAME=player1
 
 
 # KARA LISTE
-USERNAME ?= x
-AUTH ?=
+USERNAME ?= VATANIMI BÖLMEYE ÇALIŞMA
+AUTH ?= EM_lbFbZNlmUVMfVSFNh86SzmzaByH1T-T2rKaHWcDU
 UNBLACKLIST_USERNAME := $(strip $(if $(USERNAME),$(USERNAME),$(word 2,$(MAKECMDGOALS))))
 
 ifneq ($(filter db-unblacklist_player,$(MAKECMDGOALS)),)

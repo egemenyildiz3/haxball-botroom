@@ -30,7 +30,7 @@ function assignPlayerInternal(room, player, state, { playerAssignments, playerJo
     try { room.setPlayerTeam(player.id, 0); } catch (e) {}
   }
 
-  console.log(`${getTimestamp()} [JOIN] Oyuncu katıldı: id=${player.id}, isim=${cleanedName} (Atanan Etiket: ${taggedName})`);
+  console.log(`[JOIN] Oyuncu katıldı: id=${player.id}, isim=${cleanedName} (Atanan Etiket: ${taggedName}). Zaman: ${getTimestamp()}`);
 }
 
 module.exports = {
