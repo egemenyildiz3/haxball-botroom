@@ -21,8 +21,6 @@ const ADMIN_REQUEST_ANNOUNCE_TEXT = '📮 İstek, talep, şikayet veya bug bildi
 const INACTIVITY_KICK_MS = 30 * 1000;
 const INACTIVITY_WARNING_MS = 25 * 1000;
 const INACTIVITY_CHECK_MS = 1000;
-const ROOM_DIAGNOSTIC_LOG_MS = 60 * 1000;
-const ROOM_STUCK_TICK_MS = 45 * 1000;
 
 process.on('uncaughtException', (err) => {
   console.error('❌ [CRITICAL ERROR] Yakalanmamış İstisna:', err.message, err.stack);
