@@ -86,7 +86,7 @@ db-ljungberg:
 
 # --- DANGER ZONE ---
 
-db-make_admin: #USERNAME=player1
+db-make-superadmin: #USERNAME=player1
 	docker exec -it $(CONTAINER) node -e "\
 		const fs = require('fs'); \
 		const initSqlJs = require('sql.js'); \
@@ -100,8 +100,8 @@ db-make_admin: #USERNAME=player1
 
 
 # KARA LISTE
-USERNAME ?= VATANIMI BÖLMEYE ÇALIŞMA
-AUTH ?= EM_lbFbZNlmUVMfVSFNh86SzmzaByH1T-T2rKaHWcDU
+USERNAME ?= "ayak müptelası"
+AUTH ?= 6SHPMPT4vKTLwyosIHip1KVuRwuyTPLadBib7p34_1Q
 UNBLACKLIST_USERNAME := $(strip $(if $(USERNAME),$(USERNAME),$(word 2,$(MAKECMDGOALS))))
 
 ifneq ($(filter db-unblacklist_player,$(MAKECMDGOALS)),)
@@ -113,6 +113,14 @@ db-user-with-auth:
 
 db-blacklist-player:
 	docker exec -it $(CONTAINER) node -e 'const fs = require("fs"); const initSqlJs = require("sql.js"); initSqlJs().then(SQL => { const dbPath = "./db/haxball-results.sqlite"; const db = new SQL.Database(fs.readFileSync(dbPath)); let targetUser = "$(USERNAME)".trim(); let targetAuth = "$(AUTH)".trim(); let ip = ""; if (!targetAuth && targetUser) { const stmtV = db.prepare("SELECT auth_key FROM visited_users WHERE LOWER(username) = LOWER(?) AND auth_key IS NOT NULL AND auth_key != \"\""); stmtV.bind([targetUser]); if (stmtV.step()) { targetAuth = stmtV.getAsObject().auth_key || ""; } stmtV.free(); if (!targetAuth) { const stmtU = db.prepare("SELECT auth_key, last_ip FROM users WHERE LOWER(username) = LOWER(?)"); stmtU.bind([targetUser]); if (stmtU.step()) { const r = stmtU.getAsObject(); targetAuth = r.auth_key || ""; ip = r.last_ip || ""; } stmtU.free(); } } if (!targetUser && !targetAuth) { console.log("⚠️ HATA: Username veya Auth Key belirtilmedi!"); return; } db.run("INSERT INTO blacklisted_users (username, auth_key, ip, reason, banned_at) VALUES (?, ?, ?, ?, ?)", [targetUser, targetAuth, ip, "Makefile üzerinden engellendi", new Date().toISOString()]); fs.writeFileSync(dbPath, Buffer.from(db.export())); console.log("🚫 Blacklist Eklendi -> Kullanıcı: \"" + targetUser + "\" | Auth: \"" + targetAuth + "\""); });'
+
+# KARA LISTE
+USERNAME ?= ayak müptelası
+AUTH ?=
+REASON ?= xxx
+
+db-blacklist-player:
+	docker exec -it $(CONTAINER) node -e 'const fs = require("fs"); const initSqlJs = require("sql.js"); initSqlJs().then(SQL => { const dbPath = "./db/haxball-results.sqlite"; const db = new SQL.Database(fs.readFileSync(dbPath)); let targetUser = "$(USERNAME)".trim(); let targetAuth = "$(AUTH)".trim(); let reason = "$(REASON)".trim(); let ip = ""; if (!targetAuth && targetUser) { const stmtV = db.prepare("SELECT auth_key FROM visited_users WHERE LOWER(username) = LOWER(?) AND auth_key IS NOT NULL AND auth_key != \"\""); stmtV.bind([targetUser]); if (stmtV.step()) { targetAuth = stmtV.getAsObject().auth_key || ""; } stmtV.free(); if (!targetAuth) { const stmtU = db.prepare("SELECT auth_key, last_ip FROM users WHERE LOWER(username) = LOWER(?)"); stmtU.bind([targetUser]); if (stmtU.step()) { const r = stmtU.getAsObject(); targetAuth = r.auth_key || ""; ip = r.last_ip || ""; } stmtU.free(); } } if (!targetUser && !targetAuth) { console.log("⚠️ HATA: Username veya Auth Key belirtilmedi!"); return; } db.run("INSERT INTO blacklisted_users (username, auth_key, ip, reason, banned_at) VALUES (?, ?, ?, ?, ?)", [targetUser, targetAuth, ip, reason, new Date().toISOString()]); fs.writeFileSync(dbPath, Buffer.from(db.export())); console.log("🚫 Blacklist Eklendi -> Kullanıcı: \"" + targetUser + "\" | Auth: \"" + targetAuth + "\" | Sebep: \"" + reason + "\""); });'
 
 db-unblacklist-player: # USERNAME=player1
 	@if [ -z "$(UNBLACKLIST_USERNAME)" ]; then echo "⚠️ HATA: USERNAME belirtilmedi! Örnek: make db-unblacklist_player USERNAME='oyuncu' veya make db-unblacklist_player oyuncu"; exit 1; fi

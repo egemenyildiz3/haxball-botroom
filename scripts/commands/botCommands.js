@@ -6,7 +6,7 @@ function routeBotCommand(ctx) {
   if (command !== '!bot') return null;
 
   if (!player.admin && !isSuperAdmin) {
-    sendMsg(room, '❌ Bot kontrolü için yönetici olmalısın.', player.id, 0xFF5555, 'bold');
+    sendMsg(room, '❌ Bot kontrolü için Admin olmalısın.', player.id, 0xFF5555, 'bold');
     return false;
   }
 

@@ -229,7 +229,7 @@ async function createRoom(room, deps) {
     const hasProtectedBotAuth = isProtectedBotIdentity(botManager, safePlayer);
 
     if (!hasProtectedBotAuth && isUserBlacklisted(db, cleanedName, safePlayer.auth)) {
-      console.log(`${getTimestamp()} [BLACKLIST] Karlistedeki oyuncu engellendi: ${cleanedName} (ID: ${safePlayer.id}, Auth: ${safePlayer.auth || 'YOK'})`);
+      console.log(`${getTimestamp()} [BLACKLIST] Karalistedeki oyuncu engellendi: ${cleanedName} (ID: ${safePlayer.id}, Auth: ${safePlayer.auth || 'YOK'})`);
       try {
         room.kickPlayer(safePlayer.id, "Karalisteye alındınız.", true);
       } catch (e) {

@@ -152,11 +152,11 @@ function handleHelp(ctx) {
     '• !admin <açıklama> — Adminlere istek, talep veya şikayet gönderir',
     '• !kaydol <şifre> — Hesap oluşturur ve oturum açar',
     '• !giris <şifre> — Mevcut hesabınıza giriş yapar',
-    player.admin || isSuperAdmin ? '• !bot aç [adet] / !bot kapat / !bot hepsi / !bot durum — Yapay zeka botunu yönetir (Yönetici)' : '',
-    player.admin || isSuperAdmin ? '• !oto aç / !oto kapat / !oto durum — Otomatik takım dağıtımı ve maç başlatmayı açar/kapatır (Yönetici)' : '',
-    player.admin || isSuperAdmin ? '• !mute [id/isim] — Sohbeti veya bir oyuncuyu susturur (Yönetici)' : '',
-    isSuperAdmin ? '• !blacklist <id/isim> [sebep] — Oyuncuyu veritabanı kara listesine ekler (Super-Admin)' : '',
-    isSuperAdmin ? '• !clearbans — Tüm banları temizler (Super-Admin)' : '',
+    player.admin || isSuperAdmin ? '• !bot aç [adet] / !bot kapat / !bot hepsi / !bot durum — Yapay zeka botunu yönetir (Admin)' : '',
+    player.admin || isSuperAdmin ? '• !oto aç / !oto kapat / !oto durum — Otomatik takım dağıtımı ve maç başlatmayı açar/kapatır (Admin)' : '',
+    player.admin || isSuperAdmin ? '• !mute [id/isim] — Sohbeti veya bir oyuncuyu susturur (Admin)' : '',
+    isSuperAdmin ? '• !blacklist <id/isim> [sebep] — Oyuncuyu veritabanı kara listesine ekler (Kurucu)' : '',
+    isSuperAdmin ? '• !clearbans — Tüm banları temizler (Kurucu)' : '',
   ]
     .filter(Boolean)
     .join('\n');

@@ -31,7 +31,7 @@ function routeMuteCommand(ctx) {
   if (command !== '!mute' && command !== '!sohbet' && command !== '!chat') return null;
 
   if (!player.admin && !isSuperAdmin) {
-    sendMsg(room, '❌ Sohbet kilidini sadece adminler değiştirebilir.', player.id, 0xFF5555, 'bold');
+    sendMsg(room, '❌ Sohbet kilidini sadece Admin değiştirebilir.', player.id, 0xFF5555, 'bold');
     return false;
   }
 

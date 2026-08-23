@@ -45,7 +45,7 @@ function handleAutoLogin(room, player, { db, DB_FILE, loggedInPlayers, persistDa
     stmt.free();
   } catch (err) {
     console.warn('[BACKEND-DB] Veritabanı hatası (AutoLogin):', err.message);
-    sendMsg(room, `❌ Veritabanı hatası oluştu. Lütfen yöneticiye bildirin.`, player.id, 0xFF5555, 'bold');
+    sendMsg(room, `❌ Veritabanı hatası oluştu. Lütfen Kurucuya bildirin.`, player.id, 0xFF5555, 'bold');
   }
 }
 

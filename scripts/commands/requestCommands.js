@@ -41,7 +41,7 @@ function routeRequestCommand(ctx) {
   }
 
   lastAdminRequestAt.set(key, now);
-  sendMsg(room, '✅ İsteğin adminlere iletilmek üzere kaydedildi.', player.id, 0x00FF7F, 'bold');
+  sendMsg(room, '✅ İsteğin Adminlere iletilmek üzere kaydedildi.', player.id, 0x00FF7F, 'bold');
   console.log(`[ADMIN-REQUEST] ${cleanedName || player.name || 'Bilinmeyen'}: ${aciklama}`);
   return false;
 }

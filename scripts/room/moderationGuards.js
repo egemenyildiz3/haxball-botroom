@@ -31,7 +31,7 @@ function handlePlayerKicked(room, state, kickedPlayer, reason, ban, byPlayer, de
   const isOwnerKicked = loggedInPlayers.has(safeKicked.id) && loggedInPlayers.get(safeKicked.id).isadmin === 1;
 
   if (isOwnerKicked) {
-    console.warn(`[SECURITY] ${byClean} (ID: ${safeBy.id}), Super Admin ${kickedClean}'ı atmaya çalıştı!`);
+    console.warn(`[SECURITY] ${byClean} (ID: ${safeBy.id}), Kurucu ${kickedClean}'ı atmaya çalıştı!`);
 
     try { room.clearBan(safeKicked.id); } catch (e) {}
 
@@ -40,7 +40,7 @@ function handlePlayerKicked(room, state, kickedPlayer, reason, ban, byPlayer, de
       room.kickPlayer(safeBy.id, "Kurucuya yetki uygulamaya çalıştığınız için banlandınız!", true);
     } catch (e) {}
 
-    sendMsg(room, `🛡️ ${byClean}, Super-Admin'i atmaya çalıştığı için cezalandırıldı!`, null, 0xFF5555, 'bold');
+    sendMsg(room, `🛡️ ${byClean}, Kurucuyu atmaya çalıştığı için cezalandırıldı!`, null, 0xFF5555, 'bold');
     return;
   }
 

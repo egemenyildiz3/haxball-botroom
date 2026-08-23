@@ -14,15 +14,15 @@ function routeAdminCommand(ctx) {
 function handleClearBans(ctx) {
   const { room, player, cleanedName, isSuperAdmin } = ctx;
   if (!isSuperAdmin) {
-    sendMsg(room, '❌ Bu komutu sadece Super-Admin (Kurucu) kullanabilir!', player.id, 0xFF5555, 'bold');
+    sendMsg(room, '❌ Bu komutu sadece Kurucu kullanabilir!', player.id, 0xFF5555, 'bold');
     return false;
   }
 
   try {
     if (typeof room.clearBans === 'function') {
       room.clearBans();
-      sendMsg(room, '🧹 Tüm banlar Super-Admin tarafından temizlendi!', null, 0x00FF7F, 'bold');
-      console.log(`[SECURITY] Super-Admin ${cleanedName} (ID: ${player.id}) tüm banları temizledi.`);
+      sendMsg(room, '🧹 Tüm banlar Kurucu tarafından temizlendi!', null, 0x00FF7F, 'bold');
+      console.log(`[SECURITY] Kurucu ${cleanedName} (ID: ${player.id}) tüm banları temizledi.`);
     } else {
       sendMsg(room, '❌ Ban temizleme fonksiyonu odada aktif değil.', player.id, 0xFF5555, 'bold');
     }
@@ -36,7 +36,7 @@ function handleClearBans(ctx) {
 function handleBlacklist(ctx) {
   const { room, player, args, cleanedName, isSuperAdmin, loggedInPlayers, playerAssignments, db, DB_FILE, persistDatabase, botManager } = ctx;
   if (!isSuperAdmin) {
-    sendMsg(room, '❌ Bu komutu sadece Super-Admin (Kurucu) kullanabilir!', player.id, 0xFF5555, 'bold');
+    sendMsg(room, '❌ Bu komutu sadece Kurucu kullanabilir!', player.id, 0xFF5555, 'bold');
     return false;
   }
 
@@ -59,7 +59,7 @@ function handleBlacklist(ctx) {
 
   const targetUserData = loggedInPlayers.get(target.id);
   if (targetUserData && targetUserData.isadmin === 1) {
-    sendMsg(room, '🛡️ Super-Admin (Kurucu) kara listeye alınamaz!', player.id, 0xFF5555, 'bold');
+    sendMsg(room, '🛡️ Kurucu kara listeye alınamaz!', player.id, 0xFF5555, 'bold');
     return false;
   }
 
@@ -77,7 +77,7 @@ function handleBlacklist(ctx) {
 
     room.kickPlayer(target.id, banReason, true);
     sendMsg(room, `⛔ ${targetCleanName} karalisteye eklendi ve odadan yasaklandı!`, null, 0xFF0000, 'bold');
-    console.log(`[BLACKLIST] Super-Admin ${cleanedName}, ${targetCleanName} kullanıcısını kara listeye ekledi. Auth: ${targetAuth}, IP: ${targetIp}`);
+    console.log(`[BLACKLIST] Kurucu ${cleanedName}, ${targetCleanName} kullanıcısını kara listeye ekledi. Auth: ${targetAuth}, IP: ${targetIp}`);
   } catch (err) {
     console.warn('[BLACKLIST] Veritabanı hatası:', err.message);
     sendMsg(room, `❌ Kara listeye ekleme hatası: ${err.message}`, player.id, 0xFF5555, 'bold');
@@ -89,7 +89,7 @@ function handleAdminPassword(ctx) {
   const { room, player } = ctx;
   if (typeof room.setPlayerAdmin === 'function') {
     room.setPlayerAdmin(player.id, true);
-    sendMsg(room, '👑 Yönetici yetkisi verildi.', player.id, 0xFFD700, 'bold');
+    sendMsg(room, '👑 Admin yetkisi verildi.', player.id, 0xFFD700, 'bold');
   }
   return false;
 }
@@ -97,12 +97,12 @@ function handleAdminPassword(ctx) {
 function handleBan(ctx) {
   const { room, player, args, isSuperAdmin, loggedInPlayers, playerAssignments, CONFIG_ADMIN_CAN_BAN, botManager } = ctx;
   if (!player.admin) {
-    sendMsg(room, '❌ Bu komutu kullanmak için yönetici olmalısın.', player.id, 0xFF5555, 'bold');
+    sendMsg(room, '❌ Bu komutu kullanmak için admin olmalısın.', player.id, 0xFF5555, 'bold');
     return false;
   }
 
   if (Number(CONFIG_ADMIN_CAN_BAN) === 0 && !isSuperAdmin) {
-    sendMsg(room, '❌ Yönetici ban yetkisi kapalıdır!', player.id, 0xFF5555, 'bold');
+    sendMsg(room, '❌ Admin ban yetkisi kapalıdır!', player.id, 0xFF5555, 'bold');
     return false;
   }
 
@@ -125,11 +125,11 @@ function handleBan(ctx) {
 
   const targetUserData = loggedInPlayers.get(target.id);
   if (targetUserData && targetUserData.isadmin === 1) {
-    sendMsg(room, '🛡️ Super-Admin (Kurucu) banlanamaz!', player.id, 0xFF5555, 'bold');
+    sendMsg(room, '🛡️ Kurucu banlanamaz!', player.id, 0xFF5555, 'bold');
     return false;
   }
 
-  const banReason = reason || 'Yönetici tarafından banlandınız.';
+  const banReason = reason || 'Admin tarafından banlandınız.';
   const targetCleanName = playerAssignments.get(target.id) || target.name || '';
 
   try {
@@ -144,7 +144,7 @@ function handleBan(ctx) {
 function handleKick(ctx) {
   const { room, player, args, loggedInPlayers, playerAssignments } = ctx;
   if (!player.admin) {
-    sendMsg(room, '❌ Bu komutu kullanmak için yönetici olmalısın.', player.id, 0xFF5555, 'bold');
+    sendMsg(room, '❌ Bu komutu kullanmak için Admin olmalısın.', player.id, 0xFF5555, 'bold');
     return false;
   }
 
@@ -162,11 +162,11 @@ function handleKick(ctx) {
 
   const targetUserData = loggedInPlayers.get(target.id);
   if (targetUserData && targetUserData.isadmin === 1) {
-    sendMsg(room, '🛡️ Super-Admin (Kurucu) odadan atılamaz!', player.id, 0xFF5555, 'bold');
+    sendMsg(room, '🛡️ Kurucu odadan atılamaz!', player.id, 0xFF5555, 'bold');
     return false;
   }
 
-  const kickReason = reason || 'Yönetici tarafından atıldınız.';
+  const kickReason = reason || 'Admin tarafından atıldınız.';
   const targetCleanName = playerAssignments.get(target.id) || target.name || '';
 
   try {

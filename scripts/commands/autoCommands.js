@@ -6,7 +6,7 @@ function routeAutoCommand(ctx) {
   if (command !== '!oto' && command !== '!otomatik' && command !== '!auto') return null;
 
   if (!player.admin && !isSuperAdmin) {
-    sendMsg(room, '❌ Bu komutu kullanmak için yönetici olmalısın.', player.id, 0xFF5555, 'bold');
+    sendMsg(room, '❌ Bu komutu kullanmak için Admin olmalısın.', player.id, 0xFF5555, 'bold');
     return false;
   }
 
