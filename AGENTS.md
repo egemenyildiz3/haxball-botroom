@@ -45,6 +45,17 @@ team management, moderation tools, and in-memory bot players.
 - `scripts/commands/autoCommands.js`: automatic-management commands.
 - `scripts/commands/helpers.js`: shared command helpers.
 
+## Permissions
+
+Player-facing roles are `Admin` and `Kurucu` (`isadmin = 1` in the `users`
+table). Native Haxball `player.admin` means regular Admin-level room authority;
+Kurucu-only commands must check the router context's `isSuperAdmin` flag.
+
+Terminal/stdin commands run through `scripts/room/terminal.js` as the synthetic
+`Host-admin` player (`id = 0`). That player is treated as Kurucu only for that
+command context by injecting a transient `loggedInPlayers` entry; do not create a
+real database user for `Host-admin`.
+
 ## Bot And Team Policy
 
 The room auto-starts bots with `HAXBALL_BOT_AUTOSTART` and caps them with

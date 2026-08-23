@@ -5,8 +5,8 @@ function routeAutoCommand(ctx) {
   const { room, player, args, command, displayName, cleanedName, isSuperAdmin, autoManager } = ctx;
   if (command !== '!oto' && command !== '!otomatik' && command !== '!auto') return null;
 
-  if (!player.admin && !isSuperAdmin) {
-    sendMsg(room, '❌ Bu komutu kullanmak için Admin olmalısın.', player.id, 0xFF5555, 'bold');
+  if (!isSuperAdmin) {
+    sendMsg(room, '❌ Bu komutu kullanmak için Kurucu olmalısın.', player.id, 0xFF5555, 'bold');
     return false;
   }
 

@@ -153,7 +153,7 @@ function handleHelp(ctx) {
     '• !kaydol <şifre> — Hesap oluşturur ve oturum açar',
     '• !giris <şifre> — Mevcut hesabınıza giriş yapar',
     player.admin || isSuperAdmin ? '• !bot aç [adet] / !bot kapat / !bot hepsi / !bot durum — Yapay zeka botunu yönetir (Admin)' : '',
-    player.admin || isSuperAdmin ? '• !oto aç / !oto kapat / !oto durum — Otomatik takım dağıtımı ve maç başlatmayı açar/kapatır (Admin)' : '',
+    isSuperAdmin ? '• !oto aç / !oto kapat / !oto durum — Otomatik takım dağıtımı ve maç başlatmayı açar/kapatır (Kurucu)' : '',
     player.admin || isSuperAdmin ? '• !kick <id/isim> [sebep] — Oyuncuyu odadan atar (Admin)' : '',
     player.admin || isSuperAdmin ? '• !ban <id/isim> [sebep] — Oyuncuyu odadan banlar (Admin)' : '',
     player.admin || isSuperAdmin ? '• !mute [id/isim] — Sohbeti veya bir oyuncuyu susturur (Admin)' : '',

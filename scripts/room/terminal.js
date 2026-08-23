@@ -10,6 +10,29 @@ function attachTerminalInput(room, state, deps, autoManager) {
 
   const hostPlayer = { id: 0, name: 'Host-admin', admin: true, team: 0 };
 
+  function terminalDeps() {
+    const loggedInPlayers = new Map(deps.loggedInPlayers || []);
+    loggedInPlayers.set(hostPlayer.id, {
+      username: hostPlayer.name,
+      isadmin: 1,
+      source: 'terminal',
+    });
+
+    return {
+      ...deps,
+      loggedInPlayers,
+      afkPlayers: state.afkPlayers,
+      rebalanceTeams: () => rebalanceTeams(room, state, deps)
+        .catch((err) => console.warn('[AUTO] Konsoldan takım dengeleme başarısız:', err.message)),
+      autoManager,
+      chatFilter: state.chatFilter,
+      chatMuted: state.chatMuted,
+      setChatMuted: (muted) => { state.chatMuted = !!muted; },
+      mutedPlayers: state.mutedPlayers,
+      gameActive: !!state.currentGame,
+    };
+  }
+
   rl.on('line', (line) => {
     const text = line.trim();
     if (!text) return;
@@ -78,34 +101,12 @@ function attachTerminalInput(room, state, deps, autoManager) {
 
     if (text.startsWith('!')) {
       console.log(`⚡ [CONSOLE CMD]: ${text}`);
-      handlePlayerChat(room, hostPlayer, text, {
-        ...deps,
-        afkPlayers: state.afkPlayers,
-        rebalanceTeams: () => rebalanceTeams(room, state, deps)
-          .catch((err) => console.warn('[AUTO] Konsoldan takım dengeleme başarısız:', err.message)),
-        autoManager,
-        chatFilter: state.chatFilter,
-        chatMuted: state.chatMuted,
-        setChatMuted: (muted) => { state.chatMuted = !!muted; },
-        mutedPlayers: state.mutedPlayers,
-        gameActive: !!state.currentGame,
-      });
+      handlePlayerChat(room, hostPlayer, text, terminalDeps());
       return;
     }
 
     try {
-      handlePlayerChat(room, hostPlayer, text, {
-        ...deps,
-        afkPlayers: state.afkPlayers,
-        rebalanceTeams: () => rebalanceTeams(room, state, deps)
-          .catch((err) => console.warn('[AUTO] Konsoldan takım dengeleme başarısız:', err.message)),
-        autoManager,
-        chatFilter: state.chatFilter,
-        chatMuted: state.chatMuted,
-        setChatMuted: (muted) => { state.chatMuted = !!muted; },
-        mutedPlayers: state.mutedPlayers,
-        gameActive: !!state.currentGame,
-      });
+      handlePlayerChat(room, hostPlayer, text, terminalDeps());
       console.log(`💬 [TERMINAL CHAT]: ${text}`);
     } catch (err) {
       console.warn('Sohbet mesajı gönderilemedi:', err.message);
