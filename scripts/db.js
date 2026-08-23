@@ -61,7 +61,6 @@ function initDatabase(db) {
       auth_key TEXT,
       role TEXT NOT NULL DEFAULT 'player',
       registered_at TEXT,
-      last_ip TEXT,
       last_visited_at TEXT,
       goals INTEGER DEFAULT 0,
       assists INTEGER DEFAULT 0,

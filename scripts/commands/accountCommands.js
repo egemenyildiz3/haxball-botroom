@@ -220,13 +220,12 @@ function handleRegister(ctx) {
       stmt.free();
     } else {
       stmt.free();
-      const playerIp = player.ip || '';
       const playerUid = getOrCreatePlayerUid(db, cleanedName, playerToken);
       console.log(`[BACKEND-DB] Yeni kullanıcı ekleniyor -> Kullanıcı: "${cleanedName}" | Token: "${playerToken}"`);
 
       db.run(
-        'INSERT INTO users (username, player_uid, password, auth_key, role, registered_at, last_ip, goals, assists, wins, losses) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0)',
-        [cleanedName, playerUid, password, playerToken, 'player', new Date().toISOString(), playerIp]
+        'INSERT INTO users (username, player_uid, password, auth_key, role, registered_at, goals, assists, wins, losses) VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0, 0)',
+        [cleanedName, playerUid, password, playerToken, 'player', new Date().toISOString()]
       );
 
       persistDatabase(db, DB_FILE);

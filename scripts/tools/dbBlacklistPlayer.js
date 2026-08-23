@@ -73,13 +73,13 @@ function findIdentity(db, username) {
   visitedStmt.free();
 
   const userStmt = db.prepare(
-    "SELECT auth_key, last_ip FROM users WHERE LOWER(TRIM(username)) = LOWER(TRIM(?)) LIMIT 1",
+    "SELECT auth_key FROM users WHERE LOWER(TRIM(username)) = LOWER(TRIM(?)) LIMIT 1",
   );
   userStmt.bind([username]);
   if (userStmt.step()) {
     const row = userStmt.getAsObject();
     userStmt.free();
-    return { auth: row.auth_key || "", ip: row.last_ip || "" };
+    return { auth: row.auth_key || "", ip: "" };
   }
   userStmt.free();
 
