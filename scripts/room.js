@@ -10,7 +10,7 @@ const { handlePlayerKicked, handlePlayerAdminChange, handlePlayerTeamChange } = 
 const { handlePlayerBallKick, handleTeamGoal, handleGameStart, handleGameStop, checkKickoffWatch } = require('./room/matchManager');
 const { attachTerminalInput } = require('./room/terminal');
 const { isProtectedBotIdentity } = require('./room/botPolicy');
-const { blockDuplicateJoin } = require('./room/joinGuards');
+const { blockDuplicateJoin, blockInvalidJoinName } = require('./room/joinGuards');
 
 const TEAM_COLORS = {
   red: { team: 1, angle: 60, text: 0xE3E3E3, colors: [0xC90209] },
@@ -239,6 +239,10 @@ async function createRoom(room, deps) {
       return;
     } else if (hasProtectedBotAuth) {
       console.log(`${getTimestamp()} [BLACKLIST] Bot auth/conn imzası kara liste kontrolünden muaf tutuldu: ${cleanedName} (ID: ${safePlayer.id})`);
+    }
+
+    if (blockInvalidJoinName(room, safePlayer, roomDeps)) {
+      return;
     }
 
     if (blockDuplicateJoin(room, state, safePlayer, roomDeps)) {

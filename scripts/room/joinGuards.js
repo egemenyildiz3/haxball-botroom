@@ -47,6 +47,32 @@ function duplicateJoinMatch(room, player, state, botManager) {
   return null;
 }
 
+function blockInvalidJoinName(room, player, deps) {
+  const { getTimestamp, botManager } = deps;
+  if (isProtectedBotIdentity(botManager, player)) return false;
+
+  const name = String(player.name || '');
+  const trimmedName = name.trim();
+  let reason = '';
+
+  if (name !== trimmedName) {
+    reason = 'İsminizin başında veya sonunda boşluk olamaz.';
+  } else if (name.toLowerCase().includes('spacebot')) {
+    reason = 'SpaceBot ismi sadece oda botlarına özeldir.';
+  }
+
+  if (!reason) return false;
+
+  console.log(`${getTimestamp()} [JOIN-GUARD] Geçersiz isim engellendi: "${name}" (ID: ${player.id}) - ${reason}`);
+
+  try {
+    sendMsg(room, `⚠️ ${reason}`, player.id, 0xFF5555, 'bold');
+    room.kickPlayer(player.id, reason, false);
+  } catch (e) {}
+
+  return true;
+}
+
 function blockDuplicateJoin(room, state, player, deps) {
   const { db, getTimestamp, CONFIG_ALLOW_MULTIPLE_JOIN = 0, botManager } = deps;
   if (Number(CONFIG_ALLOW_MULTIPLE_JOIN) === 1) return false;
@@ -69,6 +95,7 @@ function blockDuplicateJoin(room, state, player, deps) {
 }
 
 module.exports = {
+  blockInvalidJoinName,
   blockDuplicateJoin,
   duplicateJoinMatch,
   isSuperAdminAuth,
