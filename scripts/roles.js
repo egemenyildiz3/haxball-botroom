@@ -38,24 +38,6 @@ function normalizeRole(role) {
   return VALID_ROLES.has(clean) ? clean : 'player';
 }
 
-function parseCapabilities(raw, fallback = []) {
-  if (raw === undefined || raw === null || raw === '') return [...fallback];
-  return String(raw)
-    .split(',')
-    .map((item) => item.trim().toLowerCase())
-    .filter(Boolean);
-}
-
-function createRoleCapabilities(env = process.env) {
-  return {
-    owner: parseCapabilities(env.ROLE_OWNER_CAPABILITIES, DEFAULT_ROLE_CAPABILITIES.owner),
-    admin: parseCapabilities(env.ROLE_ADMIN_CAPABILITIES, DEFAULT_ROLE_CAPABILITIES.admin),
-    mod: parseCapabilities(env.ROLE_MOD_CAPABILITIES, DEFAULT_ROLE_CAPABILITIES.mod),
-    vip: parseCapabilities(env.ROLE_VIP_CAPABILITIES, DEFAULT_ROLE_CAPABILITIES.vip),
-    player: parseCapabilities(env.ROLE_PLAYER_CAPABILITIES, DEFAULT_ROLE_CAPABILITIES.player),
-  };
-}
-
 function roleOfUser(userData) {
   return normalizeRole(userData && userData.role);
 }
@@ -72,12 +54,6 @@ function hasCapability(userData, capability, roleCapabilities) {
   return capabilities.includes('*') || capabilities.includes(String(capability || '').trim().toLowerCase());
 }
 
-function hasPlayerCapability(player, loggedInPlayers, capability, roleCapabilities) {
-  if (!player) return false;
-  if (player.id === 0) return true;
-  return hasCapability(loggedInPlayers && loggedInPlayers.get(player.id), capability, roleCapabilities);
-}
-
 function isOwner(userData) {
   return roleOfUser(userData) === 'owner';
 }
@@ -88,20 +64,10 @@ function isOwnerPlayer(player, loggedInPlayers) {
   return isOwner(loggedInPlayers && loggedInPlayers.get(player.id));
 }
 
-function isPrivilegedRole(userData, roleCapabilities) {
-  return hasCapability(userData, 'admin_chat', roleCapabilities);
-}
-
 module.exports = {
-  DEFAULT_ROLE_CAPABILITIES,
-  VALID_ROLES,
-  capabilitiesForRole,
-  createRoleCapabilities,
   hasCapability,
-  hasPlayerCapability,
   isOwner,
   isOwnerPlayer,
-  isPrivilegedRole,
   normalizeRole,
   roleOfUser,
 };

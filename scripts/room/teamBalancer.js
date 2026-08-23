@@ -68,7 +68,7 @@ function pickExcessActivePlayer(heavyPlayers, redPlayers, bluePlayers, state, is
 
       return {
         player,
-        // Bot diff > 1 usually triggers a follow-up cross-team bot move, which feels bad in the room.
+        // Avoid creating a bot imbalance that forces another corrective move.
         score: (botDiff > 1 ? 100 : botDiff * 10)
           + teamDiff
           + (isBot(player) ? 0 : 5)

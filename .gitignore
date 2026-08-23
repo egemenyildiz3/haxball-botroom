@@ -8,8 +8,3 @@ package-lock.json
 *token*.txt
 *.md
 !README.md
-
-# runtime score files
-db/bot-learning.json
-db/scores.blue
-db/scores.red

@@ -74,7 +74,6 @@ async function startRoom() {
     t,
   });
 
-  // Host kapanırken bot process'leri ortada kalmasın
   const cleanupBots = () => botManager.stopAll();
   process.on('exit', cleanupBots);
   process.on('SIGTERM', () => { cleanupBots(); process.exit(0); });
