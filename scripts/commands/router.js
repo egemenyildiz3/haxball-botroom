@@ -18,15 +18,9 @@ const COMMAND_ROUTERS = [
   routeBotCommand,
 ];
 
-const NORMAL_CHAT_COLOR = 0xFFFFFF;
-const ADMIN_CHAT_COLOR = 0xCC99FF;
 const TEAM_RADIO_COLORS = {
   1: 0xFF7777,
   2: 0x77A7FF,
-};
-const TEAM_RADIO_NAMES = {
-  1: 'KIRMIZI',
-  2: 'MAVİ',
 };
 
 function adminChatPrefix(isAdminChat, isSuperAdmin) {
@@ -46,25 +40,40 @@ function isAdminLike(player, loggedInPlayers) {
   return !!(player.admin || (userData && userData.isadmin === 1));
 }
 
-function sendTeamRadio(room, player, message, { displayName, loggedInPlayers }) {
+function fallbackT(key, vars = {}) {
+  const messages = {
+    'common.unknownCommand': '❌ Hatalı komut! Yardım için !yardım yazabilirsiniz.',
+    'chat.muted': '🔇 Sohbet şu anda kapalı. Komutları kullanabilirsin.',
+    'chat.playerMuted': `🔇 ${vars.minutes} dk daha susturuldunuz. Komutları kullanabilirsiniz.`,
+    'teamRadio.onlyPlayers': '📻 Telsizi sadece sahadaki oyuncular kullanabilir.',
+    'teamRadio.usage': '📻 Kullanım: !t <mesaj>',
+    'teamRadio.red': 'KIRMIZI',
+    'teamRadio.blue': 'MAVİ',
+    'teamRadio.team': 'TAKIM',
+    'teamRadio.message': `📻 [${vars.team} TELSİZ] ${vars.name}: ${vars.message}`,
+  };
+  return messages[key] || key;
+}
+
+function sendTeamRadio(room, player, message, { displayName, loggedInPlayers, t = fallbackT }) {
   const teamId = playerTeamId(player);
 
   if (teamId !== 1 && teamId !== 2) {
-    sendMsg(room, '📻 Telsizi sadece sahadaki oyuncular kullanabilir.', player.id, 0xFFCC00, 'bold');
+    sendMsg(room, t('teamRadio.onlyPlayers'), player.id, 0xFFCC00, 'bold');
     return false;
   }
 
   const radioText = message.trim().toLocaleLowerCase('tr-TR');
   if (!radioText) {
-    sendMsg(room, '📻 Kullanım: !t <mesaj>', player.id, 0xFFCC00, 'bold');
+    sendMsg(room, t('teamRadio.usage'), player.id, 0xFFCC00, 'bold');
     return false;
   }
 
   if (typeof room.getPlayerList !== 'function') return false;
 
   const color = TEAM_RADIO_COLORS[teamId] || 0x00BFFF;
-  const teamName = TEAM_RADIO_NAMES[teamId] || 'TAKIM';
-  const text = `📻 [${teamName} TELSİZ] ${displayName}: ${radioText}`;
+  const teamName = teamId === 1 ? t('teamRadio.red') : teamId === 2 ? t('teamRadio.blue') : t('teamRadio.team');
+  const text = t('teamRadio.message', { team: teamName, name: displayName, message: radioText });
   const recipients = room.getPlayerList()
     .filter((p) => p.id !== 0 && (playerTeamId(p) === teamId || isAdminLike(p, loggedInPlayers)));
   const sent = new Set();
@@ -81,6 +90,8 @@ function sendTeamRadio(room, player, message, { displayName, loggedInPlayers }) 
 
 function handlePlayerChat(room, player, msg, deps) {
   const text = String(msg || '').trim();
+  const t = deps.t || fallbackT;
+  const chatConfig = deps.config && deps.config.chat ? deps.config.chat : {};
 
   const displayName = deps.playerAssignments.get(player.id) || (player.name ? player.name.replace(/^\[\d{3}\]\s*/, '').trim() : '');
   const cleanedName = (player.name || '').replace(/^\[\d{3}\]\s*/, '').trim();
@@ -102,6 +113,7 @@ function handlePlayerChat(room, player, msg, deps) {
     return sendTeamRadio(room, player, args.slice(1).join(' '), {
       displayName,
       loggedInPlayers: deps.loggedInPlayers,
+      t,
     });
   }
 
@@ -110,7 +122,7 @@ function handlePlayerChat(room, player, msg, deps) {
     const isAdminChat = player.admin || isSuperAdmin;
 
     if (deps.chatMuted && !isAdminChat) {
-      sendMsg(room, '🔇 Sohbet şu anda kapalı. Komutları kullanabilirsin.', player.id, 0xFFCC00, 'bold');
+      sendMsg(room, t('chat.muted'), player.id, 0xFFCC00, 'bold');
       return false;
     }
 
@@ -118,7 +130,7 @@ function handlePlayerChat(room, player, msg, deps) {
       const key = muteKey(player);
       const mute = key ? deps.mutedPlayers.get(key) : null;
       if (mute && mute.until > Date.now()) {
-        sendMsg(room, `🔇 ${minutesLeft(mute.until - Date.now())} dk daha susturuldunuz. Komutları kullanabilirsiniz.`, player.id, 0xFFCC00, 'bold');
+        sendMsg(room, t('chat.playerMuted', { minutes: minutesLeft(mute.until - Date.now()) }), player.id, 0xFFCC00, 'bold');
         return false;
       }
       if (mute) deps.mutedPlayers.delete(key);
@@ -139,7 +151,7 @@ function handlePlayerChat(room, player, msg, deps) {
       room,
       `💬 ${adminChatPrefix(isAdminChat, isSuperAdmin)}${displayName}: ${chatText}`,
       null,
-      isAdminChat ? ADMIN_CHAT_COLOR : NORMAL_CHAT_COLOR,
+      isAdminChat ? (chatConfig.adminColor || 0xCC99FF) : (chatConfig.normalColor || 0xFFFFFF),
       isAdminChat ? 'bold' : 'normal'
     );
     return false;
@@ -165,7 +177,7 @@ function handlePlayerChat(room, player, msg, deps) {
     if (result !== null) return result;
   }
 
-  sendMsg(room, '❌ Hatalı komut! Yardım için !yardım yazabilirsiniz.', player.id, 0xFF5555, 'bold');
+  sendMsg(room, t('common.unknownCommand'), player.id, 0xFF5555, 'bold');
   return false;
 }
 

@@ -28,10 +28,18 @@ function isGlobalMuteSub(sub) {
 
 function routeMuteCommand(ctx) {
   const { room, player, args, command, displayName, isSuperAdmin } = ctx;
+  const t = ctx.t || ((key, vars = {}) => {
+    const messages = {
+      'mute.needAdmin': '❌ Sohbet kilidini sadece Admin değiştirebilir.',
+      'mute.globalOn': `🔇 Sohbet ${vars.name} tarafından susturuldu. Komutlar kullanılabilir.`,
+      'mute.globalOff': `🔊 Sohbet ${vars.name} tarafından açıldı.`,
+    };
+    return messages[key] || key;
+  });
   if (command !== '!mute' && command !== '!sohbet' && command !== '!chat') return null;
 
   if (!player.admin && !isSuperAdmin) {
-    sendMsg(room, '❌ Sohbet kilidini sadece Admin değiştirebilir.', player.id, 0xFF5555, 'bold');
+    sendMsg(room, t('mute.needAdmin'), player.id, 0xFF5555, 'bold');
     return false;
   }
 
@@ -49,9 +57,9 @@ function routeMuteCommand(ctx) {
   ctx.setChatMuted(enable);
 
   if (enable) {
-    sendMsg(room, `🔇 Sohbet ${displayName} tarafından susturuldu. Komutlar kullanılabilir.`, null, 0xFFCC00, 'bold');
+    sendMsg(room, t('mute.globalOn', { name: displayName }), null, 0xFFCC00, 'bold');
   } else {
-    sendMsg(room, `🔊 Sohbet ${displayName} tarafından açıldı.`, null, 0x00FF7F, 'bold');
+    sendMsg(room, t('mute.globalOff', { name: displayName }), null, 0x00FF7F, 'bold');
   }
 
   return false;
@@ -59,32 +67,44 @@ function routeMuteCommand(ctx) {
 
 function muteTargetPlayer(ctx) {
   const { room, player, args, playerAssignments, mutedPlayers, loggedInPlayers } = ctx;
+  const t = ctx.t || ((key, vars = {}) => {
+    const messages = {
+      'mute.unavailable': '❌ Oyuncu susturma sistemi hazır değil.',
+      'common.multipleMatches': `⚠️ Birden fazla eşleşen oyuncu bulundu: ${vars.candidates}. Lütfen net bir ID/isim belirtin.`,
+      'mute.notFound': '❌ Oyuncu bulunamadı. Kullanım: !mute <id / etiket / oyuncu_adı>',
+      'mute.adminProtected': '🛡️ Adminler susturulamaz.',
+      'mute.noIdentity': '❌ Oyuncu kimliği okunamadı, susturma uygulanamadı.',
+      'mute.targetMuted': `🔇 ${vars.name} 10 dakikalığına susturuldu.`,
+      'mute.targetNotice': '🔇 10 dakika boyunca sohbete mesaj yazamazsınız. Komutları kullanabilirsiniz.',
+    };
+    return messages[key] || key;
+  });
   if (!mutedPlayers) {
-    sendMsg(room, '❌ Oyuncu susturma sistemi hazır değil.', player.id, 0xFF5555, 'bold');
+    sendMsg(room, t('mute.unavailable'), player.id, 0xFF5555, 'bold');
     return false;
   }
 
   const { target, candidates } = resolveTargetPlayer(room, args, playerAssignments);
 
   if (candidates && candidates.length > 1) {
-    sendMsg(room, `⚠️ Birden fazla eşleşen oyuncu bulundu: ${candidateList(candidates, playerAssignments)}. Lütfen net bir ID/isim belirtin.`, player.id, 0xFFCC00, 'bold');
+    sendMsg(room, t('common.multipleMatches', { candidates: candidateList(candidates, playerAssignments) }), player.id, 0xFFCC00, 'bold');
     return false;
   }
 
   if (!target) {
-    sendMsg(room, '❌ Oyuncu bulunamadı. Kullanım: !mute <id / etiket / oyuncu_adı>', player.id, 0xFF5555, 'bold');
+    sendMsg(room, t('mute.notFound'), player.id, 0xFF5555, 'bold');
     return false;
   }
 
   const targetUserData = loggedInPlayers && loggedInPlayers.get(target.id);
   if (target.admin || (targetUserData && targetUserData.isadmin === 1)) {
-    sendMsg(room, '🛡️ Adminler susturulamaz.', player.id, 0xFFCC00, 'bold');
+    sendMsg(room, t('mute.adminProtected'), player.id, 0xFFCC00, 'bold');
     return false;
   }
 
   const key = muteKey(target);
   if (!key) {
-    sendMsg(room, '❌ Oyuncu kimliği okunamadı, susturma uygulanamadı.', player.id, 0xFF5555, 'bold');
+    sendMsg(room, t('mute.noIdentity'), player.id, 0xFF5555, 'bold');
     return false;
   }
 
@@ -92,8 +112,8 @@ function muteTargetPlayer(ctx) {
   const name = (playerAssignments && playerAssignments.get(target.id)) || target.name || 'Oyuncu';
   mutedPlayers.set(key, { until, name });
 
-  sendMsg(room, `🔇 ${name} 10 dakikalığına susturuldu.`, null, 0xFFCC00, 'bold');
-  sendMsg(room, '🔇 10 dakika boyunca sohbete mesaj yazamazsınız. Komutları kullanabilirsiniz.', target.id, 0xFFCC00, 'bold');
+  sendMsg(room, t('mute.targetMuted', { name }), null, 0xFFCC00, 'bold');
+  sendMsg(room, t('mute.targetNotice'), target.id, 0xFFCC00, 'bold');
   return false;
 }
 

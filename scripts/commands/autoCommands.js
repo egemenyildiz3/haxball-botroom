@@ -3,15 +3,27 @@ const { sendMsg } = require('./helpers');
 
 function routeAutoCommand(ctx) {
   const { room, player, args, command, displayName, cleanedName, isSuperAdmin, autoManager } = ctx;
+  const t = ctx.t || ((key, vars = {}) => {
+    const messages = {
+      'auto.needFounder': '❌ Bu komutu kullanmak için Kurucu olmalısın.',
+      'auto.unavailable': '❌ Otomatik yönetim denetimi bu odada aktif değil.',
+      'auto.alreadyOff': 'ℹ️ Otomatik yönetim zaten kapalı.',
+      'auto.alreadyOn': 'ℹ️ Otomatik yönetim zaten açık.',
+      'auto.off': `🔒 Otomatik yönetim KAPATILDI (${vars.name}). Artık takım dağıtımı, otomatik maç başlatma ve maç sonu rotasyonu yapılmayacak.`,
+      'auto.on': `🔓 Otomatik yönetim AÇILDI (${vars.name}). Takım dağıtımı ve otomatik maç başlatma yeniden devrede.`,
+      'auto.usage': '❌ Kullanım: !oto aç | !oto kapat | !oto durum',
+    };
+    return messages[key] || key;
+  });
   if (command !== '!oto' && command !== '!otomatik' && command !== '!auto') return null;
 
   if (!isSuperAdmin) {
-    sendMsg(room, '❌ Bu komutu kullanmak için Kurucu olmalısın.', player.id, 0xFF5555, 'bold');
+    sendMsg(room, t('auto.needFounder'), player.id, 0xFF5555, 'bold');
     return false;
   }
 
   if (!autoManager) {
-    sendMsg(room, '❌ Otomatik yönetim denetimi bu odada aktif değil.', player.id, 0xFF5555, 'bold');
+    sendMsg(room, t('auto.unavailable'), player.id, 0xFF5555, 'bold');
     return false;
   }
 
@@ -19,13 +31,13 @@ function routeAutoCommand(ctx) {
 
   if (sub === 'kapat' || sub === 'off' || sub === 'kapali') {
     if (!autoManager.isEnabled()) {
-      sendMsg(room, 'ℹ️ Otomatik yönetim zaten kapalı.', player.id, 0xFFCC00, 'normal');
+      sendMsg(room, t('auto.alreadyOff'), player.id, 0xFFCC00, 'normal');
       return false;
     }
     autoManager.disable();
     sendMsg(
       room,
-      `🔒 Otomatik yönetim KAPATILDI (${displayName}). Artık takım dağıtımı, otomatik maç başlatma ve maç sonu rotasyonu yapılmayacak.`,
+      t('auto.off', { name: displayName }),
       null,
       0xFFCC00,
       'bold'
@@ -33,13 +45,13 @@ function routeAutoCommand(ctx) {
     console.log(`[AUTO] Otomatik yönetim kapatıldı -> ${cleanedName}`);
   } else if (sub === 'ac' || sub === 'on' || sub === 'acik') {
     if (autoManager.isEnabled()) {
-      sendMsg(room, 'ℹ️ Otomatik yönetim zaten açık.', player.id, 0xFFCC00, 'normal');
+      sendMsg(room, t('auto.alreadyOn'), player.id, 0xFFCC00, 'normal');
       return false;
     }
     autoManager.enable();
     sendMsg(
       room,
-      `🔓 Otomatik yönetim AÇILDI (${displayName}). Takım dağıtımı ve otomatik maç başlatma yeniden devrede.`,
+      t('auto.on', { name: displayName }),
       null,
       0x00FF7F,
       'bold'
@@ -48,7 +60,7 @@ function routeAutoCommand(ctx) {
   } else if (sub === 'durum' || sub === 'status') {
     sendMsg(room, autoManager.status(), player.id, 0x00BFFF, 'normal');
   } else {
-    sendMsg(room, '❌ Kullanım: !oto aç | !oto kapat | !oto durum', player.id, 0xFF5555, 'bold');
+    sendMsg(room, t('auto.usage'), player.id, 0xFF5555, 'bold');
   }
 
   return false;

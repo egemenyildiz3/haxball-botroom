@@ -1,7 +1,40 @@
 const { sendMsg } = require('./helpers');
 const { getOrCreatePlayerUid } = require('../db');
 
-function handleAutoLogin(room, player, { db, DB_FILE, loggedInPlayers, persistDatabase }) {
+function fallbackT(key, vars = {}) {
+  const messages = {
+    'common.dbError': '❌ Veritabanı hatası oluştu. Lütfen Kurucuya bildirin.',
+    'account.autoLogin': `🟢 Otomatik giriş yapıldı! Hoş geldin, ${vars.name}.`,
+    'account.registeredDetected': '🟡 Kayıtlı hesap tespit edildi. Giriş yapmak için: !giriş / !giris <şifre>',
+    'account.welcomeUnregistered': `ℹ️ Odaya hoş geldiniz ${vars.name}! Kayıt olmak için: !kaydol <şifre>`,
+    'account.statsLoginRequired': '⚠️ İstatistiklerinizi görmek için önce giriş yapmalısınız! (!kaydol <şifre> veya !giris <şifre>)',
+    'account.statsMissing': '❌ İstatistikleriniz bulunamadı.',
+    'account.statsError': '❌ İstatistikler yüklenirken bir hata oluştu.',
+    'account.statsLine': `📊 [${vars.name}] İstatistikler | ⚽ Gol: ${vars.goals} | 🅰️ Asist: ${vars.assists} | 🏆 Galibiyet: ${vars.wins} | ❌ Mağlubiyet: ${vars.losses} | 📈 Win %: %${vars.winRate}`,
+    'leaderboard.empty': `📊 ${vars.text}`,
+    'leaderboard.error': '❌ Liderlik tablosu yüklenirken bir hata oluştu.',
+    'leaderboard.goals.title': '⚽ Gol kralı',
+    'leaderboard.goals.empty': 'Henüz gol istatistiği yok.',
+    'leaderboard.assists.title': '🅰️ Asist kralı',
+    'leaderboard.assists.empty': 'Henüz asist istatistiği yok.',
+    'leaderboard.wins.title': '🏆 En çok maç kazananlar',
+    'leaderboard.wins.empty': 'Henüz galibiyet istatistiği yok.',
+    'account.alreadySession': '🟢 Zaten oturum açmış durumdasınız!',
+    'account.registerUsage': '❌ Kullanım: !kaydol <şifre>',
+    'account.usernameTaken': '⚠️ Bu kullanıcı adı zaten kayıtlı. Giriş yapmak için: !giriş / !giris <şifre>',
+    'account.registerSuccess': '🎉 Hesabınız oluşturuldu ve giriş yapıldı!',
+    'account.registerError': '❌ Hesap kaydedilirken bir hata oluştu.',
+    'account.alreadyLoggedIn': '🟢 Zaten giriş yapmış durumdasınız!',
+    'account.loginUsage': '❌ Kullanım: !giriş / !giris <şifre>',
+    'account.loginSuccess': `🔓 Giriş başarılı! Hoş geldin, ${vars.name}.`,
+    'account.badPassword': '❌ Hatalı şifre.',
+    'account.notFound': '⚠️ Hesap bulunamadı. Kayıt olmak için: !kaydol <şifre>',
+    'account.loginError': '❌ Giriş yapılırken veritabanı hatası oluştu.',
+  };
+  return messages[key] || key;
+}
+
+function handleAutoLogin(room, player, { db, DB_FILE, loggedInPlayers, persistDatabase, t = fallbackT }) {
   if (!player || typeof player.id === 'undefined') return;
 
   const cleanedName = player.name ? player.name.replace(/^\[\d{3}\]\s*/, '').trim() : '';
@@ -39,26 +72,27 @@ function handleAutoLogin(room, player, { db, DB_FILE, loggedInPlayers, persistDa
           console.log(`[BACKEND-DB] Admin yetkisi atandı -> Kullanıcı: "${cleanedName}"`);
         }
 
-        sendMsg(room, `🟢 Otomatik giriş yapıldı! Hoş geldin, ${cleanedName}.`, player.id, 0x00FF7F, 'bold');
+        sendMsg(room, t('account.autoLogin', { name: cleanedName }), player.id, 0x00FF7F, 'bold');
       } else {
         console.log(`[BACKEND-DB] Token eşleşmedi (Sadece şifre ile giriş yapabilir) -> Kullanıcı: "${cleanedName}"`);
-        sendMsg(room, `🟡 Kayıtlı hesap tespit edildi. Giriş yapmak için: !giriş / !giris <şifre>`, player.id, 0xFFCC00, 'normal');
+        sendMsg(room, t('account.registeredDetected'), player.id, 0xFFCC00, 'normal');
       }
     } else {
       console.log(`[BACKEND-DB] Kayıtsız kullanıcı tespit edildi -> Kullanıcı: "${cleanedName}"`);
-      sendMsg(room, `ℹ️ Odaya hoş geldiniz ${cleanedName}! Kayıt olmak için: !kaydol <şifre>`, player.id, 0x00BFFF, 'normal');
+      sendMsg(room, t('account.welcomeUnregistered', { name: cleanedName }), player.id, 0x00BFFF, 'normal');
     }
     stmt.free();
   } catch (err) {
     console.warn('[BACKEND-DB] Veritabanı hatası (AutoLogin):', err.message);
-    sendMsg(room, `❌ Veritabanı hatası oluştu. Lütfen Kurucuya bildirin.`, player.id, 0xFF5555, 'bold');
+    sendMsg(room, t('common.dbError'), player.id, 0xFF5555, 'bold');
   }
 }
 
 function handleStats(ctx) {
   const { room, player, cleanedName, loggedInPlayers, db } = ctx;
+  const t = ctx.t || fallbackT;
   if (!loggedInPlayers.has(player.id)) {
-    sendMsg(room, '⚠️ İstatistiklerinizi görmek için önce giriş yapmalısınız! (!kaydol <şifre> veya !giris <şifre>)', player.id, 0xFFCC00, 'bold');
+    sendMsg(room, t('account.statsLoginRequired'), player.id, 0xFFCC00, 'bold');
     return false;
   }
 
@@ -77,18 +111,18 @@ function handleStats(ctx) {
 
       sendMsg(
         room,
-        `📊 [${cleanedName}] İstatistikler | ⚽ Gol: ${goals} | 🅰️ Asist: ${assists} | 🏆 Galibiyet: ${wins} | ❌ Mağlubiyet: ${losses} | 📈 Win %: %${winRate}`,
+        t('account.statsLine', { name: cleanedName, goals, assists, wins, losses, winRate }),
         player.id,
         0x00BFFF,
         'bold'
       );
     } else {
-      sendMsg(room, '❌ İstatistikleriniz bulunamadı.', player.id, 0xFF5555, 'bold');
+      sendMsg(room, t('account.statsMissing'), player.id, 0xFF5555, 'bold');
     }
     stmt.free();
   } catch (err) {
     console.warn('[BACKEND-DB] Stats sorgu hatası:', err.message);
-    sendMsg(room, '❌ İstatistikler yüklenirken bir hata oluştu.', player.id, 0xFF5555, 'bold');
+    sendMsg(room, t('account.statsError'), player.id, 0xFF5555, 'bold');
   }
   return false;
 }
@@ -113,6 +147,7 @@ const LEADERBOARDS = {
 
 function handleLeaderboard(ctx, type) {
   const { room, player, db } = ctx;
+  const t = ctx.t || fallbackT;
   const leaderboard = LEADERBOARDS[type];
   if (!leaderboard) return false;
 
@@ -132,15 +167,15 @@ function handleLeaderboard(ctx, type) {
     stmt.free();
 
     if (rows.length === 0) {
-      sendMsg(room, `📊 ${leaderboard.empty}`, player.id, 0xFFCC00, 'bold');
+      sendMsg(room, t('leaderboard.empty', { text: t(`leaderboard.${type}.empty`) }), player.id, 0xFFCC00, 'bold');
       return false;
     }
 
     const lines = rows.map((row, index) => `${index + 1}. ${row.username} — ${row.value}`);
-    sendMsg(room, `${leaderboard.title}\n${lines.join('\n')}`, null, 0xFFD700, 'bold');
+    sendMsg(room, `${t(`leaderboard.${type}.title`)}\n${lines.join('\n')}`, null, 0xFFD700, 'bold');
   } catch (err) {
     console.warn('[BACKEND-DB] Liderlik tablosu sorgu hatası:', err.message);
-    sendMsg(room, '❌ Liderlik tablosu yüklenirken bir hata oluştu.', player.id, 0xFF5555, 'bold');
+    sendMsg(room, t('leaderboard.error'), player.id, 0xFF5555, 'bold');
   }
 
   return false;
@@ -148,14 +183,15 @@ function handleLeaderboard(ctx, type) {
 
 function handleRegister(ctx) {
   const { room, player, args, cleanedName, playerToken, loggedInPlayers, db, DB_FILE, persistDatabase } = ctx;
+  const t = ctx.t || fallbackT;
   if (loggedInPlayers.has(player.id)) {
-    sendMsg(room, '🟢 Zaten oturum açmış durumdasınız!', player.id, 0x00FF7F, 'bold');
+    sendMsg(room, t('account.alreadySession'), player.id, 0x00FF7F, 'bold');
     return false;
   }
 
   const password = args[1];
   if (!password) {
-    sendMsg(room, '❌ Kullanım: !kaydol <şifre>', player.id, 0xFF5555, 'bold');
+    sendMsg(room, t('account.registerUsage'), player.id, 0xFF5555, 'bold');
     return false;
   }
 
@@ -166,7 +202,7 @@ function handleRegister(ctx) {
 
     if (stmt.step()) {
       console.log(`[BACKEND-DB] Kayıt engellendi (Kullanıcı zaten mevcut) -> "${cleanedName}"`);
-      sendMsg(room, '⚠️ Bu kullanıcı adı zaten kayıtlı. Giriş yapmak için: !giriş / !giris <şifre>', player.id, 0xFFCC00, 'bold');
+      sendMsg(room, t('account.usernameTaken'), player.id, 0xFFCC00, 'bold');
       stmt.free();
     } else {
       stmt.free();
@@ -183,25 +219,26 @@ function handleRegister(ctx) {
       loggedInPlayers.set(player.id, { username: cleanedName, isadmin: 0, player_uid: playerUid });
 
       console.log(`[BACKEND-DB] Yeni kullanıcı başarıyla kaydedildi ve dosyaya yazıldı -> "${cleanedName}"`);
-      sendMsg(room, `🎉 Hesabınız oluşturuldu ve giriş yapıldı!`, player.id, 0x00FF7F, 'bold');
+      sendMsg(room, t('account.registerSuccess'), player.id, 0x00FF7F, 'bold');
     }
   } catch (err) {
     console.warn('[BACKEND-DB] Kayıt hatası:', err.message);
-    sendMsg(room, '❌ Hesap kaydedilirken bir hata oluştu.', player.id, 0xFF5555, 'bold');
+    sendMsg(room, t('account.registerError'), player.id, 0xFF5555, 'bold');
   }
   return false;
 }
 
 function handleLogin(ctx) {
   const { room, player, args, cleanedName, playerToken, loggedInPlayers, db, DB_FILE, persistDatabase } = ctx;
+  const t = ctx.t || fallbackT;
   if (loggedInPlayers.has(player.id)) {
-    sendMsg(room, '🟢 Zaten giriş yapmış durumdasınız!', player.id, 0x00FF7F, 'bold');
+    sendMsg(room, t('account.alreadyLoggedIn'), player.id, 0x00FF7F, 'bold');
     return false;
   }
 
   const password = args[1];
   if (!password) {
-    sendMsg(room, '❌ Kullanım: !giriş / !giris <şifre>', player.id, 0xFF5555, 'bold');
+    sendMsg(room, t('account.loginUsage'), player.id, 0xFF5555, 'bold');
     return false;
   }
 
@@ -226,19 +263,19 @@ function handleLogin(ctx) {
         }
 
         console.log(`[BACKEND-DB] Manuel giriş başarılı -> "${cleanedName}"`);
-        sendMsg(room, `🔓 Giriş başarılı! Hoş geldin, ${cleanedName}.`, player.id, 0x00FF7F, 'bold');
+        sendMsg(room, t('account.loginSuccess', { name: cleanedName }), player.id, 0x00FF7F, 'bold');
       } else {
         console.log(`[BACKEND-DB] Manuel giriş başarısız (Hatalı Şifre) -> "${cleanedName}"`);
-        sendMsg(room, '❌ Hatalı şifre.', player.id, 0xFF5555, 'bold');
+        sendMsg(room, t('account.badPassword'), player.id, 0xFF5555, 'bold');
       }
     } else {
       console.log(`[BACKEND-DB] Manuel giriş başarısız (Kullanıcı Bulunamadı) -> "${cleanedName}"`);
-      sendMsg(room, '⚠️ Hesap bulunamadı. Kayıt olmak için: !kaydol <şifre>', player.id, 0xFFCC00, 'bold');
+      sendMsg(room, t('account.notFound'), player.id, 0xFFCC00, 'bold');
     }
     stmt.free();
   } catch (err) {
     console.warn('[BACKEND-DB] Giriş hatası:', err.message);
-    sendMsg(room, '❌ Giriş yapılırken veritabanı hatası oluştu.', player.id, 0xFF5555, 'bold');
+    sendMsg(room, t('account.loginError'), player.id, 0xFF5555, 'bold');
   }
   return false;
 }

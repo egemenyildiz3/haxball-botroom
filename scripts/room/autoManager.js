@@ -8,6 +8,14 @@ function rebalanceThenStart(room, state, deps) {
 }
 
 function createAutoManager(room, state, deps) {
+  const t = deps.t || ((key) => {
+    const messages = {
+      'auto.statusOn': '⚙️ Otomatik yönetim AÇIK: takım dağıtımı, maç başlatma ve maç sonu rotasyonu çalışıyor.',
+      'auto.statusOff': '⚙️ Otomatik yönetim KAPALI: takımlar ve maç tamamen elle yönetiliyor.',
+    };
+    return messages[key] || key;
+  });
+
   return {
     isEnabled: () => state.autoManageEnabled,
 
@@ -27,8 +35,8 @@ function createAutoManager(room, state, deps) {
 
     status() {
       return state.autoManageEnabled
-        ? '⚙️ Otomatik yönetim AÇIK: takım dağıtımı, maç başlatma ve maç sonu rotasyonu çalışıyor.'
-        : '⚙️ Otomatik yönetim KAPALI: takımlar ve maç tamamen elle yönetiliyor.';
+        ? t('auto.statusOn')
+        : t('auto.statusOff');
     },
   };
 }
@@ -52,7 +60,13 @@ function restoreAutoManageIfNoAdmins(room, state, deps, excludeId) {
 
   state.autoManageEnabled = true;
   console.log('[AUTO] Odada Admin/Kurucu kalmadı - otomatik yönetim tekrar açıldı.');
-  sendMsg(room, '🔓 Odada Admin/Kurucu kalmadığı için otomatik yönetim tekrar açıldı.', null, 0x00FF7F, 'bold');
+  sendMsg(
+    room,
+    deps.t ? deps.t('auto.restored') : '🔓 Odada Admin/Kurucu kalmadığı için otomatik yönetim tekrar açıldı.',
+    null,
+    0x00FF7F,
+    'bold'
+  );
 
   rebalanceThenStart(room, state, deps);
   return true;

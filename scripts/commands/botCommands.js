@@ -3,15 +3,20 @@ const { sendMsg } = require('./helpers');
 
 function routeBotCommand(ctx) {
   const { room, player, args, command, isSuperAdmin, botManager } = ctx;
+  const t = ctx.t || ((key) => ({
+    'bot.needAdmin': '❌ Bot kontrolü için Admin olmalısın.',
+    'bot.unavailable': '❌ Bot yöneticisi bu odada aktif değil.',
+    'bot.usage': '❌ Kullanım: !bot aç [adet] | !bot kapat | !bot hepsi | !bot durum',
+  }[key] || key));
   if (command !== '!bot') return null;
 
   if (!player.admin && !isSuperAdmin) {
-    sendMsg(room, '❌ Bot kontrolü için Admin olmalısın.', player.id, 0xFF5555, 'bold');
+    sendMsg(room, t('bot.needAdmin'), player.id, 0xFF5555, 'bold');
     return false;
   }
 
   if (!botManager) {
-    sendMsg(room, '❌ Bot yöneticisi bu odada aktif değil.', player.id, 0xFF5555, 'bold');
+    sendMsg(room, t('bot.unavailable'), player.id, 0xFF5555, 'bold');
     return false;
   }
 
@@ -29,7 +34,7 @@ function routeBotCommand(ctx) {
   } else if (sub === 'durum' || sub === 'status') {
     sendMsg(room, botManager.status(), player.id, 0x00BFFF, 'normal');
   } else {
-    sendMsg(room, '❌ Kullanım: !bot aç [adet] | !bot kapat | !bot hepsi | !bot durum', player.id, 0xFF5555, 'bold');
+    sendMsg(room, t('bot.usage'), player.id, 0xFF5555, 'bold');
   }
 
   return false;

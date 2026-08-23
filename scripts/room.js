@@ -12,17 +12,6 @@ const { attachTerminalInput } = require('./room/terminal');
 const { isProtectedBotIdentity } = require('./room/botPolicy');
 const { blockDuplicateJoin, blockInvalidJoinName } = require('./room/joinGuards');
 
-const TEAM_COLORS = {
-  red: { team: 1, angle: 60, text: 0xE3E3E3, colors: [0xC90209] },
-  blue: { team: 2, angle: 60, text: 0xE3E3E3, colors: [0x0272BD] },
-};
-const ADMIN_REQUEST_ANNOUNCE_MS = 5 * 60 * 1000;
-const ADMIN_REQUEST_ANNOUNCE_TEXT = '📮 İstek, talep, şikayet veya bug bildirmek için: !admin <açıklama>';
-const INACTIVITY_KICK_MS = 30 * 1000;
-const INACTIVITY_WARNING_MS = 25 * 1000;
-const INACTIVITY_CHECK_MS = 1000;
-const AUTO_RESTORE_CHECK_MS = 30 * 1000;
-
 process.on('uncaughtException', (err) => {
   console.error('❌ [CRITICAL ERROR] Yakalanmamış İstisna:', err.message, err.stack);
 });
@@ -31,10 +20,10 @@ process.on('unhandledRejection', (reason) => {
   console.error('⚠️ [UNHANDLED REJECTION] İşlenmemiş Promise Reddi:', reason);
 });
 
-function applyTeamColors(room) {
+function applyTeamColors(room, teamColors) {
   if (typeof room.setTeamColors !== 'function') return;
 
-  for (const { team, angle, text, colors } of Object.values(TEAM_COLORS)) {
+  for (const { team, angle, text, colors } of Object.values(teamColors)) {
     try {
       room.setTeamColors(team, angle, text, colors);
     } catch (err) {
@@ -71,7 +60,8 @@ function getRawPlayerInput(room, playerId) {
 }
 
 function attachInactivityKick(room, state, deps) {
-  const { botManager, sendMsg, getTimestamp } = deps;
+  const { botManager, sendMsg, getTimestamp, config, t } = deps;
+  const { kickMs, warningMs, checkMs } = config.inactivity;
 
   room.onPlayerActivity = function (player) {
     markPlayerInput(state, player, botManager);
@@ -97,7 +87,7 @@ function attachInactivityKick(room, state, deps) {
       }
 
       const idleMs = now - state.lastInputAt.get(player.id);
-      if (idleMs >= INACTIVITY_KICK_MS) {
+      if (idleMs >= kickMs) {
         const name = getCleanName(player);
         state.lastInputAt.delete(player.id);
         state.inactivityWarnings.delete(player.id);
@@ -108,12 +98,12 @@ function attachInactivityKick(room, state, deps) {
         } catch (err) {
           console.warn('[INACTIVITY] Oyuncu kicklenemedi:', err.message);
         }
-      } else if (idleMs >= INACTIVITY_WARNING_MS && !state.inactivityWarnings.has(player.id)) {
+      } else if (idleMs >= warningMs && !state.inactivityWarnings.has(player.id)) {
         state.inactivityWarnings.add(player.id);
-        sendMsg(room, '⚠️ 5 saniye daha hareketsiz kalırsanız atılacaksınız.', player.id, 0xFFCC00, 'bold');
+        sendMsg(room, t('inactivity.warning', { seconds: Math.ceil((kickMs - warningMs) / 1000) }), player.id, 0xFFCC00, 'bold');
       }
     }
-  }, INACTIVITY_CHECK_MS);
+  }, checkMs);
 }
 
 function markSuperAdminAfkOnJoin(room, state, player, deps) {
@@ -125,7 +115,7 @@ function markSuperAdminAfkOnJoin(room, state, player, deps) {
     try { room.setPlayerTeam(player.id, 0); } catch (e) {}
   }
 
-  deps.sendMsg(room, '💤 Kurucu olduğunuz için girişte otomatik AFK moduna alındınız.', player.id, 0xFFCC00, 'bold');
+  deps.sendMsg(room, deps.t('superadmin.autoAfk'), player.id, 0xFFCC00, 'bold');
   console.log(`${deps.getTimestamp()} [AFK] Superadmin girişte otomatik AFK yapıldı: ${getCleanName(player)} (ID: ${player.id})`);
   return true;
 }
@@ -151,9 +141,11 @@ async function createRoom(room, deps) {
     CONFIG_ADMIN_CAN_GIVE_ADMIN = 0,
     CONFIG_ALLOW_MULTIPLE_JOIN = 0,
     botManager = null,
+    config,
+    t,
   } = deps;
 
-  const state = createRoomState();
+  const state = createRoomState({ chat: config.chat, t });
   const roomDeps = {
     db,
     DB_FILE,
@@ -171,6 +163,8 @@ async function createRoom(room, deps) {
     CONFIG_ADMIN_CAN_GIVE_ADMIN,
     CONFIG_ALLOW_MULTIPLE_JOIN,
     botManager,
+    config,
+    t,
   };
 
   const autoManager = createAutoManager(room, state, roomDeps);
@@ -256,7 +250,7 @@ async function createRoom(room, deps) {
     await sleep(800);
 
     const updatedPlayer = sanitizePlayer(room, safePlayer, state);
-    handleAutoLogin(room, updatedPlayer, { db, DB_FILE, loggedInPlayers, persistDatabase });
+    handleAutoLogin(room, updatedPlayer, { db, DB_FILE, loggedInPlayers, persistDatabase, t });
     markSuperAdminAfkOnJoin(room, state, sanitizePlayer(room, updatedPlayer, state), roomDeps);
     await handlePlayerJoin(room, updatedPlayer, state, roomDeps);
   };
@@ -310,7 +304,7 @@ async function createRoom(room, deps) {
 
   if (typeof room.setScoreLimit === 'function') room.setScoreLimit(SCORE_LIMIT);
   if (typeof room.setTimeLimit === 'function') room.setTimeLimit(TIME_LIMIT);
-  applyTeamColors(room);
+  applyTeamColors(room, config.teamColors);
 
   lockTeams(room);
 
@@ -325,14 +319,14 @@ async function createRoom(room, deps) {
 
   setInterval(() => {
     restoreAutoManageIfNoAdmins(room, state, roomDeps);
-  }, AUTO_RESTORE_CHECK_MS);
+  }, config.autoManagement.restoreCheckMs);
 
   setInterval(() => {
     if (typeof room.getPlayerList !== 'function') return;
     const realHumanPlayers = room.getPlayerList().filter((p) => p.id !== 0);
     if (realHumanPlayers.length === 0) return;
-    sendMsg(room, ADMIN_REQUEST_ANNOUNCE_TEXT, null, 0x00BFFF, 'bold');
-  }, ADMIN_REQUEST_ANNOUNCE_MS);
+    sendMsg(room, t('request.announce'), null, 0x00BFFF, 'bold');
+  }, config.adminRequests.announceMs);
 
   console.log(`${getTimestamp()} Oda başarıyla oluşturuldu: ${ROOM_NAME}`);
 }

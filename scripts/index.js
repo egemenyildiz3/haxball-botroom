@@ -6,32 +6,13 @@ const { getTimestamp, sanitizeStadiumFileContents, sleep } = require('./util');
 const { loadOrCreateDatabase, persistDatabase, initDatabase } = require('./db');
 const { createRoom } = require('./room');
 const { createBotManager } = require('./bot/manager');
+const config = require('./config');
+const { createTranslator } = require('./i18n');
 
 const MAP_FILE = path.join(__dirname, '..', 'maps', 'Spacebounce.hbs');
 const DB_FILE = path.join(__dirname, '..', 'db', 'haxball-results.sqlite');
-const ROOM_NAME = process.env.HAXBALL_ROOM_NAME || '🛰️🛰️ SPACEBOUNCE | ⚽ 4v4 🪐 🛰️🛰️';
-const MAX_PLAYERS = Number(process.env.HAXBALL_MAX_PLAYERS || 16);
-const SCORE_LIMIT = Number(process.env.HAXBALL_SCORE_LIMIT || 3);
-const TIME_LIMIT = Number(process.env.HAXBALL_TIME_LIMIT || 4);
-const SPEC_PROMOTION_COUNT = Number(process.env.HAXBALL_PROMOTION_COUNT || 4);
-const PUBLIC_ROOM = Number(process.env.HAXBALL_PUBLIC ?? 1) === 1;
 const TOKEN = process.env.HAXBALL_TOKEN;
-const ADMIN_PASSWORD = process.env.HAXBALL_ADMIN_PASSWORD;
-
-// Configs read from .env (with defaults)
-const CONFIG_ADMIN_CAN_BAN = Number(process.env.CONFIG_ADMIN_CAN_BAN ?? 1);
-const CONFIG_ADMIN_CAN_GIVE_ADMIN = Number(process.env.CONFIG_ADMIN_CAN_GIVE_ADMIN ?? 0);
-const CONFIG_ALLOW_MULTIPLE_JOIN = Number(process.env.CONFIG_ALLOW_MULTIPLE_JOIN ?? 0);
-
-// Yapay zeka bot ayarları
-const BOT_NAME = process.env.HAXBALL_BOT_NAME || 'SpaceBot';
-const BOT_MAX = Number(process.env.HAXBALL_BOT_MAX || 8);
-const BOT_AVATAR = process.env.HAXBALL_BOT_AVATAR || '🤖';
-const BOT_AUTOSTART = Number(process.env.HAXBALL_BOT_AUTOSTART ?? 4);
-const BOT_NAMES = (process.env.HAXBALL_BOT_NAMES || '')
-  .split(',')
-  .map((name) => name.trim())
-  .filter(Boolean);
+const t = createTranslator(config.room.language);
 
 let SQL = null;
 let db = null;
@@ -67,10 +48,10 @@ async function startRoom() {
   persistDatabase(db, DB_FILE);
 
   const botManager = createBotManager({
-    botName: BOT_NAME,
-    botNames: BOT_NAMES,
-    maxBots: BOT_MAX,
-    avatar: BOT_AVATAR,
+    botName: config.bot.baseName,
+    botNames: config.bot.names,
+    maxBots: config.bot.max,
+    avatar: config.bot.avatar,
   });
 
   // Host kapanırken bot process'leri ortada kalmasın
@@ -80,10 +61,10 @@ async function startRoom() {
   process.on('SIGINT', () => { cleanupBots(); process.exit(0); });
 
   const host = createHostRoom({
-    roomName: ROOM_NAME,
+    roomName: config.room.name,
     playerName: 'Host-admin',
-    maxPlayers: MAX_PLAYERS,
-    public: PUBLIC_ROOM,
+    maxPlayers: config.room.maxPlayers,
+    public: config.room.public,
     noPlayer: false,
     token: TOKEN,
     geo: { code: 'tr', lat: 37.0208, lon: 30.8541 },
@@ -102,33 +83,35 @@ async function startRoom() {
   }, 250);
 
   await createRoom(room, {
-    ROOM_NAME,
-    SCORE_LIMIT,
-    TIME_LIMIT,
-    SPEC_PROMOTION_COUNT,
+    ROOM_NAME: config.room.name,
+    SCORE_LIMIT: config.room.scoreLimit,
+    TIME_LIMIT: config.room.timeLimit,
+    SPEC_PROMOTION_COUNT: config.room.promotionCount,
     mapData,
     db,
     DB_FILE,
     persistDatabase,
-    ADMIN_PASSWORD,
+    ADMIN_PASSWORD: config.adminRules.password,
     playerAssignments,
     playerJoinOrder,
     loggedInPlayers,
     leavingIntentions,
     getTimestamp,
     sleep,
-    CONFIG_ADMIN_CAN_BAN,
-    CONFIG_ADMIN_CAN_GIVE_ADMIN,
-    CONFIG_ALLOW_MULTIPLE_JOIN,
+    CONFIG_ADMIN_CAN_BAN: config.adminRules.canBan ? 1 : 0,
+    CONFIG_ADMIN_CAN_GIVE_ADMIN: config.adminRules.canGiveAdmin ? 1 : 0,
+    CONFIG_ALLOW_MULTIPLE_JOIN: config.adminRules.allowMultipleJoin ? 1 : 0,
     botManager,
+    config,
+    t,
   });
 
-  if (BOT_AUTOSTART > 0) {
+  if (config.bot.autostart > 0) {
     const autoStartBots = setInterval(() => {
       if (!botManager.isReady()) return;
 
       clearInterval(autoStartBots);
-      const result = botManager.start(BOT_AUTOSTART);
+      const result = botManager.start(config.bot.autostart);
       const status = result.ok ? 'başlatıldı' : 'başlatılamadı';
       console.log(`${getTimestamp()} 🤖 Otomatik bot başlatma ${status}: ${result.message}`);
     }, 250);

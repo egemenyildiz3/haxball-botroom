@@ -1,6 +1,7 @@
 const { createChatFilter } = require('../chatFilter');
 
-function createRoomState() {
+function createRoomState(options = {}) {
+  const { chat = {}, t = null } = options;
   return {
     lastTouchPlayer: null,
     secondLastTouchPlayer: null,
@@ -24,7 +25,7 @@ function createRoomState() {
     mutedPlayers: new Map(),
     lastInputAt: new Map(),
     inactivityWarnings: new Set(),
-    chatFilter: createChatFilter(),
+    chatFilter: createChatFilter({ ...chat, t }),
   };
 }
 

@@ -333,7 +333,16 @@ function containsProfanity(text) {
     || COMPACT_PROFANITY.some((word) => compact.includes(word));
 }
 
-function createChatFilter({ cooldownMs = CHAT_COOLDOWN_MS } = {}) {
+function defaultT(key, vars = {}) {
+  const messages = {
+    'chat.tooLong': `⚠️ Mesaj çok uzun. En fazla ${vars.max} karakter yazabilirsin.`,
+    'chat.profanity': '⚠️ Küfürlü mesaj gönderemezsin.',
+    'chat.flood': `⚠️ Sohbette flood yapma. ${vars.seconds} sn sonra tekrar yazabilirsin.`,
+  };
+  return messages[key] || key;
+}
+
+function createChatFilter({ cooldownMs = CHAT_COOLDOWN_MS, maxLength = CHAT_MAX_LENGTH, t = defaultT } = {}) {
   const lastMessageAt = new Map();
   const lastCooldownWarningAt = new Map();
   const lastProfanityWarningAt = new Map();
@@ -343,11 +352,11 @@ function createChatFilter({ cooldownMs = CHAT_COOLDOWN_MS } = {}) {
     if (isPrivileged(player, loggedInPlayers)) return { allowed: true };
     if (isCommand(text)) return { allowed: true };
 
-    if (String(text || '').length > CHAT_MAX_LENGTH) {
+    if (String(text || '').length > maxLength) {
       return {
         allowed: false,
         reason: 'length',
-        message: `⚠️ Mesaj çok uzun. En fazla ${CHAT_MAX_LENGTH} karakter yazabilirsin.`,
+        message: t('chat.tooLong', { max: maxLength }),
         color: 0xFFCC00,
       };
     }
@@ -366,7 +375,7 @@ function createChatFilter({ cooldownMs = CHAT_COOLDOWN_MS } = {}) {
       return {
         allowed: false,
         reason: 'profanity',
-        message: '⚠️ Küfürlü mesaj engellendi. Lütfen sohbet diline dikkat et.',
+        message: t('chat.profanity'),
         color: 0xFFCC00,
       };
     }
@@ -392,7 +401,7 @@ function createChatFilter({ cooldownMs = CHAT_COOLDOWN_MS } = {}) {
       return {
         allowed: false,
         reason: 'cooldown',
-        message: `⚠️ Sohbette flood yapma. ${Math.ceil(remainingMs / 1000)} sn sonra tekrar yazabilirsin.`,
+        message: t('chat.flood', { seconds: Math.ceil(remainingMs / 1000) }),
         color: 0xFFCC00,
       };
     }

@@ -1,9 +1,5 @@
 const { sendMsg } = require('./helpers');
 
-const AFK_COOLDOWN_MS = 10 * 60 * 1000;
-const AFK_MIN_DURATION_MS = 30 * 1000;
-const AFK_MAX_DURATION_MS = 15 * 60 * 1000;
-const AFK_EARLY_WARNING_MS = 10 * 1000;
 const lastAfkAt = new Map();
 const afkStartedAt = new Map();
 const lastAfkEarlyWarningAt = new Map();
@@ -18,6 +14,10 @@ function minutesLeft(ms) {
 
 function scheduleAfkKick(ctx, key, startedAt) {
   const { room, player } = ctx;
+  const t = ctx.t || ((key) => (key === 'afk.kickReason' ? '😴 Uzun süre AFK kaldınız. 👋' : key));
+  const maxDurationMs = ctx.config && ctx.config.afk && typeof ctx.config.afk.maxDurationMs === 'number'
+    ? ctx.config.afk.maxDurationMs
+    : 15 * 60 * 1000;
 
   setTimeout(() => {
     if (!afkStartedAt.has(key) || afkStartedAt.get(key) !== startedAt) return;
@@ -39,19 +39,26 @@ function scheduleAfkKick(ctx, key, startedAt) {
 
     if (typeof room.kickPlayer === 'function') {
       try {
-        room.kickPlayer(player.id, '😴 Uzun süre AFK kaldınız. 👋', false);
+        room.kickPlayer(player.id, t('afk.kickReason'), false);
       } catch (e) {}
     }
-  }, AFK_MAX_DURATION_MS);
+  }, maxDurationMs);
 }
 
 function handlePlayers(ctx) {
   const { room, player, playerAssignments } = ctx;
+  const t = ctx.t || ((key, vars = {}) => (
+    key === 'player.none'
+      ? '👥 Odada başka oyuncu bulunmuyor.'
+      : key === 'player.list'
+        ? `👥 Odadaki Oyuncular (${vars.count}):\n${vars.players}`
+        : key
+  ));
   if (typeof room.getPlayerList !== 'function') return false;
 
   const players = room.getPlayerList().filter((p) => p.id !== 0);
   if (players.length === 0) {
-    sendMsg(room, '👥 Odada başka oyuncu bulunmuyor.', player.id, 0x00BFFF, 'normal');
+    sendMsg(room, t('player.none'), player.id, 0x00BFFF, 'normal');
     return false;
   }
 
@@ -62,14 +69,28 @@ function handlePlayers(ctx) {
     })
     .join('\n');
 
-  sendMsg(room, `👥 Odadaki Oyuncular (${players.length}):\n${playerListText}`, player.id, 0x00BFFF, 'normal');
+  sendMsg(room, t('player.list', { count: players.length, players: playerListText }), player.id, 0x00BFFF, 'normal');
   return false;
 }
 
 function handleAfk(ctx) {
   const { room, player, displayName, afkPlayers, rebalanceTeams, gameActive, isSuperAdmin } = ctx;
+  const t = ctx.t || ((key, vars = {}) => {
+    const messages = {
+      'afk.gameOnly': '⏸️ !afk komutu sadece maç devam ederken kullanılabilir.',
+      'afk.waitExit': `⏳ AFK modundan çıkmak için ${vars.seconds} sn daha beklemelisin.`,
+      'afk.back': `🔔 ${vars.name} artık AFK değil! Oyuna girmeye hazır.`,
+      'afk.cooldown': `⏳ !afk komutunu ${vars.minutes} dk sonra tekrar kullanabilirsin.`,
+      'afk.on': `💤 ${vars.name} AFK moduna geçti.`,
+    };
+    return messages[key] || key;
+  });
+  const afkConfig = (ctx.config && ctx.config.afk) || {};
+  const cooldownMs = typeof afkConfig.cooldownMs === 'number' ? afkConfig.cooldownMs : 10 * 60 * 1000;
+  const minDurationMs = typeof afkConfig.minDurationMs === 'number' ? afkConfig.minDurationMs : 30 * 1000;
+  const earlyWarningMs = typeof afkConfig.earlyWarningMs === 'number' ? afkConfig.earlyWarningMs : 10 * 1000;
   if (!gameActive) {
-    sendMsg(room, '⏸️ !afk komutu sadece maç devam ederken kullanılabilir.', player.id, 0xFFCC00, 'bold');
+    sendMsg(room, t('afk.gameOnly'), player.id, 0xFFCC00, 'bold');
     return false;
   }
 
@@ -78,14 +99,14 @@ function handleAfk(ctx) {
 
   if (afkPlayers.has(player.id)) {
     const startedAt = afkStartedAt.get(key) || 0;
-    const waitMs = AFK_MIN_DURATION_MS - (now - startedAt);
+    const waitMs = minDurationMs - (now - startedAt);
     const isAdmin = player.admin || isSuperAdmin;
 
     if (!isAdmin && waitMs > 0) {
       const lastWarning = lastAfkEarlyWarningAt.get(key) || 0;
-      if (now - lastWarning >= AFK_EARLY_WARNING_MS) {
+      if (now - lastWarning >= earlyWarningMs) {
         lastAfkEarlyWarningAt.set(key, now);
-        sendMsg(room, `⏳ AFK modundan çıkmak için ${Math.ceil(waitMs / 1000)} sn daha beklemelisin.`, player.id, 0xFFCC00, 'bold');
+        sendMsg(room, t('afk.waitExit', { seconds: Math.ceil(waitMs / 1000) }), player.id, 0xFFCC00, 'bold');
       }
       return false;
     }
@@ -93,14 +114,14 @@ function handleAfk(ctx) {
     afkPlayers.delete(player.id);
     afkStartedAt.delete(key);
     lastAfkEarlyWarningAt.delete(key);
-    sendMsg(room, `🔔 ${displayName} artık AFK değil! Oyuna girmeye hazır.`, null, 0x00FF7F, 'bold');
+    sendMsg(room, t('afk.back', { name: displayName }), null, 0x00FF7F, 'bold');
   } else {
     const isAdmin = player.admin || isSuperAdmin;
     const previous = lastAfkAt.get(key) || 0;
-    const waitMs = AFK_COOLDOWN_MS - (now - previous);
+    const waitMs = cooldownMs - (now - previous);
 
     if (!isAdmin && waitMs > 0) {
-      sendMsg(room, `⏳ !afk komutunu ${minutesLeft(waitMs)} dk sonra tekrar kullanabilirsin.`, player.id, 0xFFCC00, 'bold');
+      sendMsg(room, t('afk.cooldown', { minutes: minutesLeft(waitMs) }), player.id, 0xFFCC00, 'bold');
       return false;
     }
 
@@ -118,7 +139,7 @@ function handleAfk(ctx) {
         room.setPlayerTeam(player.id, 0);
       } catch (e) {}
     }
-    sendMsg(room, `💤 ${displayName} AFK moduna geçti.`, null, 0xFFCC00, 'bold');
+    sendMsg(room, t('afk.on', { name: displayName }), null, 0xFFCC00, 'bold');
   }
 
   if (typeof rebalanceTeams === 'function') {
@@ -129,11 +150,14 @@ function handleAfk(ctx) {
 
 function handleBye(ctx) {
   const { room, player, displayName } = ctx;
-  sendMsg(room, `👋 ${displayName} görüşürüz dedi. Yolun açık olsun ✨`, null, 0x00BFFF, 'bold');
+  const t = ctx.t || ((key, vars = {}) => (
+    key === 'bye.message' ? `👋 ${vars.name} görüşürüz dedi. Yolun açık olsun ✨` : key === 'bye.reason' ? '👋 Görüşürüz! ✨' : key
+  ));
+  sendMsg(room, t('bye.message', { name: displayName }), null, 0x00BFFF, 'bold');
 
   if (typeof room.kickPlayer === 'function') {
     try {
-      room.kickPlayer(player.id, '👋 Görüşürüz! ✨', false);
+      room.kickPlayer(player.id, t('bye.reason'), false);
     } catch (e) {}
   }
 
@@ -142,23 +166,41 @@ function handleBye(ctx) {
 
 function handleHelp(ctx) {
   const { room, player, isSuperAdmin } = ctx;
+  const t = ctx.t || ((key) => ({
+    'help.title': '📖 Spacebounce 4v4 - Komut listesi:',
+    'help.players': '• !oyuncular — Odadaki oyuncuları ve ID\'lerini listeler',
+    'help.stats': '• !s / !stats / !istatistik — İstatistiklerinizi gösterir',
+    'help.leaderboards': '• !golkralı / !asistkralı / !top — Liderlik tablolarını gösterir',
+    'help.afk': '• !afk — AFK modunu açar/kapatır',
+    'help.bb': '• !bb — Tatlı bir vedayla odadan ayrılır',
+    'help.adminRequest': '• !admin <açıklama> — Adminlere istek, talep veya şikayet gönderir',
+    'help.register': '• !kaydol <şifre> — Hesap oluşturur ve oturum açar',
+    'help.login': '• !giris <şifre> — Mevcut hesabınıza giriş yapar',
+    'help.bot': '• !bot aç [adet] / !bot kapat / !bot hepsi / !bot durum — Yapay zeka botunu yönetir (Admin)',
+    'help.auto': '• !oto aç / !oto kapat / !oto durum — Otomatik takım dağıtımı ve maç başlatmayı açar/kapatır (Kurucu)',
+    'help.kick': '• !kick <id/isim> [sebep] — Oyuncuyu odadan atar (Admin)',
+    'help.ban': '• !ban <id/isim> [sebep] — Oyuncuyu odadan banlar (Admin)',
+    'help.mute': '• !mute [id/isim] — Sohbeti veya bir oyuncuyu susturur (Admin)',
+    'help.blacklist': '• !blacklist <id/isim> [sebep] — Oyuncuyu veritabanı kara listesine ekler (Kurucu)',
+    'help.clearbans': '• !clearbans — Tüm banları temizler (Kurucu)',
+  }[key] || key));
   const helpText = [
-    '📖 Spacebounce 4v4 - Komut listesi:',
-    '• !oyuncular — Odadaki oyuncuları ve ID\'lerini listeler',
-    '• !s / !stats / !istatistik — İstatistiklerinizi gösterir',
-    '• !golkralı / !asistkralı / !top — Liderlik tablolarını gösterir',
-    '• !afk — AFK modunu açar/kapatır',
-    '• !bb — Tatlı bir vedayla odadan ayrılır',
-    '• !admin <açıklama> — Adminlere istek, talep veya şikayet gönderir',
-    '• !kaydol <şifre> — Hesap oluşturur ve oturum açar',
-    '• !giris <şifre> — Mevcut hesabınıza giriş yapar',
-    player.admin || isSuperAdmin ? '• !bot aç [adet] / !bot kapat / !bot hepsi / !bot durum — Yapay zeka botunu yönetir (Admin)' : '',
-    isSuperAdmin ? '• !oto aç / !oto kapat / !oto durum — Otomatik takım dağıtımı ve maç başlatmayı açar/kapatır (Kurucu)' : '',
-    player.admin || isSuperAdmin ? '• !kick <id/isim> [sebep] — Oyuncuyu odadan atar (Admin)' : '',
-    player.admin || isSuperAdmin ? '• !ban <id/isim> [sebep] — Oyuncuyu odadan banlar (Admin)' : '',
-    player.admin || isSuperAdmin ? '• !mute [id/isim] — Sohbeti veya bir oyuncuyu susturur (Admin)' : '',
-    isSuperAdmin ? '• !blacklist <id/isim> [sebep] — Oyuncuyu veritabanı kara listesine ekler (Kurucu)' : '',
-    isSuperAdmin ? '• !clearbans — Tüm banları temizler (Kurucu)' : '',
+    t('help.title'),
+    t('help.players'),
+    t('help.stats'),
+    t('help.leaderboards'),
+    t('help.afk'),
+    t('help.bb'),
+    t('help.adminRequest'),
+    t('help.register'),
+    t('help.login'),
+    player.admin || isSuperAdmin ? t('help.bot') : '',
+    isSuperAdmin ? t('help.auto') : '',
+    player.admin || isSuperAdmin ? t('help.kick') : '',
+    player.admin || isSuperAdmin ? t('help.ban') : '',
+    player.admin || isSuperAdmin ? t('help.mute') : '',
+    isSuperAdmin ? t('help.blacklist') : '',
+    isSuperAdmin ? t('help.clearbans') : '',
   ]
     .filter(Boolean)
     .join('\n');
