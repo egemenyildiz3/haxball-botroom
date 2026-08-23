@@ -12,8 +12,7 @@ function minutesLeft(ms) {
 }
 
 function routeRequestCommand(ctx) {
-  const { command } = ctx;
-  if (command !== '!admin') return null;
+  if (ctx.commandKey !== 'adminRequest') return null;
 
   const { room, player, args, cleanedName, db, DB_FILE, persistDatabase } = ctx;
   const t = ctx.t || ((key, vars = {}) => {

@@ -2,7 +2,7 @@ const { normalizeCmd } = require('../util');
 const { sendMsg } = require('./helpers');
 
 function routeAutoCommand(ctx) {
-  const { room, player, args, command, displayName, cleanedName, isSuperAdmin, autoManager } = ctx;
+  const { room, player, args, displayName, cleanedName, isSuperAdmin, autoManager } = ctx;
   const t = ctx.t || ((key, vars = {}) => {
     const messages = {
       'auto.needFounder': '❌ Bu komutu kullanmak için Kurucu olmalısın.',
@@ -15,7 +15,7 @@ function routeAutoCommand(ctx) {
     };
     return messages[key] || key;
   });
-  if (command !== '!oto' && command !== '!otomatik' && command !== '!auto') return null;
+  if (ctx.commandKey !== 'auto') return null;
 
   if (!isSuperAdmin) {
     sendMsg(room, t('auto.needFounder'), player.id, 0xFF5555, 'bold');
@@ -29,7 +29,7 @@ function routeAutoCommand(ctx) {
 
   const sub = normalizeCmd(args[1] || 'durum');
 
-  if (sub === 'kapat' || sub === 'off' || sub === 'kapali') {
+  if (sub === 'kapat' || sub === 'off' || sub === 'kapali' || sub === 'disable') {
     if (!autoManager.isEnabled()) {
       sendMsg(room, t('auto.alreadyOff'), player.id, 0xFFCC00, 'normal');
       return false;
@@ -43,7 +43,7 @@ function routeAutoCommand(ctx) {
       'bold'
     );
     console.log(`[AUTO] Otomatik yönetim kapatıldı -> ${cleanedName}`);
-  } else if (sub === 'ac' || sub === 'on' || sub === 'acik') {
+  } else if (sub === 'ac' || sub === 'on' || sub === 'acik' || sub === 'enable') {
     if (autoManager.isEnabled()) {
       sendMsg(room, t('auto.alreadyOn'), player.id, 0xFFCC00, 'normal');
       return false;

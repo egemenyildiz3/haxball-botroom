@@ -27,7 +27,7 @@ function isGlobalMuteSub(sub) {
 }
 
 function routeMuteCommand(ctx) {
-  const { room, player, args, command, displayName, isSuperAdmin } = ctx;
+  const { room, player, args, displayName, isSuperAdmin } = ctx;
   const t = ctx.t || ((key, vars = {}) => {
     const messages = {
       'mute.needAdmin': '❌ Sohbet kilidini sadece Admin değiştirebilir.',
@@ -36,7 +36,7 @@ function routeMuteCommand(ctx) {
     };
     return messages[key] || key;
   });
-  if (command !== '!mute' && command !== '!sohbet' && command !== '!chat') return null;
+  if (ctx.commandKey !== 'mute') return null;
 
   if (!player.admin && !isSuperAdmin) {
     sendMsg(room, t('mute.needAdmin'), player.id, 0xFF5555, 'bold');

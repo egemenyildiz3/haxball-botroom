@@ -7,6 +7,7 @@ const { routeBotCommand } = require('./botCommands');
 const { routeAutoCommand } = require('./autoCommands');
 const { routeRequestCommand } = require('./requestCommands');
 const { routeMuteCommand, muteKey, minutesLeft } = require('./muteCommands');
+const { resolveCommandKey } = require('./commandAliases');
 
 const COMMAND_ROUTERS = [
   routeAdminCommand,
@@ -109,7 +110,9 @@ function handlePlayerChat(room, player, msg, deps) {
     return true;
   }
 
-  if (command === '!t' || command === '!takim' || command === '!team') {
+  const commandKey = resolveCommandKey(command);
+
+  if (commandKey === 'teamRadio') {
     return sendTeamRadio(room, player, args.slice(1).join(' '), {
       displayName,
       loggedInPlayers: deps.loggedInPlayers,
@@ -165,6 +168,7 @@ function handlePlayerChat(room, player, msg, deps) {
     text,
     args,
     command,
+    commandKey,
     displayName,
     cleanedName,
     playerToken,

@@ -281,12 +281,12 @@ function handleLogin(ctx) {
 }
 
 function routeAccountCommand(ctx) {
-  if (ctx.command === '!s' || ctx.command === '!stats' || ctx.command === '!istatistik') return handleStats(ctx);
-  if (ctx.command === '!golkrali') return handleLeaderboard(ctx, 'goals');
-  if (ctx.command === '!asistkrali') return handleLeaderboard(ctx, 'assists');
-  if (ctx.command === '!top') return handleLeaderboard(ctx, 'wins');
-  if (ctx.command === '!kaydol' || ctx.command === '!kayit') return handleRegister(ctx);
-  if (ctx.command === '!giris') return handleLogin(ctx);
+  if (ctx.commandKey === 'stats') return handleStats(ctx);
+  if (ctx.commandKey === 'goals') return handleLeaderboard(ctx, 'goals');
+  if (ctx.commandKey === 'assists') return handleLeaderboard(ctx, 'assists');
+  if (ctx.commandKey === 'wins') return handleLeaderboard(ctx, 'wins');
+  if (ctx.commandKey === 'signup') return handleRegister(ctx);
+  if (ctx.commandKey === 'login') return handleLogin(ctx);
   return null;
 }
 

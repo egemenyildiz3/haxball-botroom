@@ -210,10 +210,10 @@ function handleHelp(ctx) {
 }
 
 function routePlayerCommand(ctx) {
-  if (ctx.command === '!oyuncular' || ctx.command === '!oyunculistesi' || ctx.command === '!players') return handlePlayers(ctx);
-  if (ctx.command === '!afk') return handleAfk(ctx);
-  if (ctx.command === '!bb' || ctx.command === '!bye' || ctx.command === '!cik') return handleBye(ctx);
-  if (ctx.command === '!yardim' || ctx.command === '!yardım' || ctx.command === '!help') return handleHelp(ctx);
+  if (ctx.commandKey === 'players') return handlePlayers(ctx);
+  if (ctx.commandKey === 'afk') return handleAfk(ctx);
+  if (ctx.commandKey === 'bye') return handleBye(ctx);
+  if (ctx.commandKey === 'help') return handleHelp(ctx);
   return null;
 }
 

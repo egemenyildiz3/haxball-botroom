@@ -33,12 +33,11 @@ function fallbackT(key, vars = {}) {
 }
 
 function routeAdminCommand(ctx) {
-  const { command } = ctx;
-  if (command === '!clearbans' || command === '!clear_bans' || command === '!unbanall') return handleClearBans(ctx);
-  if (command === '!blacklist' || command === '!blackban' || command === '!permaban') return handleBlacklist(ctx);
-  if (command === '!ban') return handleBan(ctx);
-  if (command === '!kick') return handleKick(ctx);
-  if (command === '!adminol') return handleAdminPassword(ctx);
+  if (ctx.commandKey === 'clearBans') return handleClearBans(ctx);
+  if (ctx.commandKey === 'blacklist') return handleBlacklist(ctx);
+  if (ctx.commandKey === 'ban') return handleBan(ctx);
+  if (ctx.commandKey === 'kick') return handleKick(ctx);
+  if (ctx.commandKey === 'adminLogin') return handleAdminPassword(ctx);
   return null;
 }
 
