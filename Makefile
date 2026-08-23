@@ -248,104 +248,23 @@ db-user-with-auth:
 		});"
 
 # KARA LISTE
-USERNAME ?= ayak müptelası
+USERNAME ?=
 AUTH ?=
-REASON ?= xxx
+REASON ?=
 UNBLACKLIST_USERNAME := $(strip $(if $(USERNAME),$(USERNAME),$(word 2,$(MAKECMDGOALS))))
 
 ifneq ($(filter db-unblacklist-player,$(MAKECMDGOALS)),)
 $(eval $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS)):;@:)
 endif
 
+# make db-blacklist-player USERNAME='FOK BALIĞI' REASON='dini küfür'
 db-blacklist-player:
-	docker exec -it $(CONTAINER) node -e '\
-		const fs = require("fs"); \
-		const initSqlJs = require("sql.js"); \
-		initSqlJs().then(SQL => { \
-			const dbPath = "./db/haxball-results.sqlite"; \
-			const db = new SQL.Database(fs.readFileSync(dbPath)); \
-			let targetUser = "$(USERNAME)".trim(); \
-			let targetAuth = "$(AUTH)".trim(); \
-			let reason = "$(REASON)".trim(); \
-			let ip = ""; \
-			const scalar = (query, params) => { const stmt = db.prepare(query); stmt.bind(params); const value = stmt.step() ? Object.values(stmt.getAsObject())[0] : ""; stmt.free(); return value || ""; }; \
-			const uidExists = (uid) => scalar("SELECT 1 FROM (SELECT player_uid FROM users UNION ALL SELECT player_uid FROM visited_users UNION ALL SELECT player_uid FROM blacklisted_users UNION ALL SELECT player_uid FROM istekler) WHERE player_uid = ? LIMIT 1", [uid]); \
-			const makeUid = () => { for (let i = 0; i < 10000; i++) { const uid = String(100000000 + Math.floor(Math.random() * 900000000)); if (!uidExists(uid)) return uid; } throw new Error("Unique player_uid üretilemedi"); }; \
-			const findUid = (username) => { if (!username) return ""; return scalar("SELECT player_uid FROM visited_users WHERE LOWER(TRIM(username)) = LOWER(TRIM(?)) AND player_uid IS NOT NULL AND TRIM(player_uid) != \"\" LIMIT 1", [username]) || scalar("SELECT player_uid FROM users WHERE LOWER(TRIM(username)) = LOWER(TRIM(?)) AND player_uid IS NOT NULL AND TRIM(player_uid) != \"\" LIMIT 1", [username]) || scalar("SELECT player_uid FROM istekler WHERE LOWER(TRIM(username)) = LOWER(TRIM(?)) AND player_uid IS NOT NULL AND TRIM(player_uid) != \"\" LIMIT 1", [username]) || ""; }; \
-			if (!targetAuth && targetUser) { \
-				const stmtV = db.prepare("SELECT auth_key FROM visited_users WHERE LOWER(username) = LOWER(?) AND auth_key IS NOT NULL AND auth_key != \"\""); \
-				stmtV.bind([targetUser]); \
-				if (stmtV.step()) targetAuth = stmtV.getAsObject().auth_key || ""; \
-				stmtV.free(); \
-				if (!targetAuth) { \
-					const stmtU = db.prepare("SELECT auth_key, last_ip FROM users WHERE LOWER(username) = LOWER(?)"); \
-					stmtU.bind([targetUser]); \
-					if (stmtU.step()) { \
-						const r = stmtU.getAsObject(); \
-						targetAuth = r.auth_key || ""; \
-						ip = r.last_ip || ""; \
-					} \
-					stmtU.free(); \
-				} \
-			} \
-			if (!targetUser && !targetAuth) { \
-				console.log("⚠️ HATA: Username veya Auth Key belirtilmedi!"); \
-				return; \
-			} \
-			const targetUid = findUid(targetUser) || makeUid(); \
-			const exists = db.prepare("SELECT 1 FROM blacklisted_users WHERE (username IS NOT NULL AND TRIM(username) != \"\" AND LOWER(TRIM(username)) = LOWER(TRIM(?))) OR (player_uid = ? AND player_uid IS NOT NULL AND TRIM(player_uid) != \"\") OR (auth_key = ? AND auth_key IS NOT NULL AND TRIM(auth_key) != \"\") LIMIT 1"); \
-			exists.bind([targetUser, targetUid, targetAuth]); \
-			const already = exists.step(); \
-			exists.free(); \
-			if (already) { \
-				console.log("ℹ️ Bu oyuncu zaten karalistede -> Kullanıcı: \"" + targetUser + "\""); \
-				return; \
-			} \
-			db.run("INSERT INTO blacklisted_users (username, player_uid, auth_key, ip, reason, banned_at) VALUES (?, ?, ?, ?, ?, ?)", [targetUser, targetUid, targetAuth, ip, reason, new Date().toISOString()]); \
-			fs.writeFileSync(dbPath, Buffer.from(db.export())); \
-			console.log("🚫 Blacklist Eklendi -> Kullanıcı: \"" + targetUser + "\" | UID: \"" + targetUid + "\" | Auth: \"" + targetAuth + "\" | Sebep: \"" + reason + "\""); \
-		});'
+	@if [ -z "$(USERNAME)$(AUTH)" ]; then echo "⚠️ HATA: USERNAME veya AUTH belirtilmedi! Örnek: make db-blacklist-player USERNAME='oyuncu' REASON='sebep'"; exit 1; fi
+	docker exec -e TARGET_USERNAME="$(USERNAME)" -e TARGET_AUTH="$(AUTH)" -e REASON="$(REASON)" -i $(CONTAINER) node < scripts/tools/dbBlacklistPlayer.js
 
 db-unblacklist-player: # USERNAME=player1
-	@if [ -z "$(UNBLACKLIST_USERNAME)" ]; then echo "⚠️ HATA: USERNAME belirtilmedi! Örnek: make db-unblacklist_player USERNAME='oyuncu' veya make db-unblacklist_player oyuncu"; exit 1; fi
-	docker exec -e TARGET_USERNAME="$(UNBLACKLIST_USERNAME)" -it $(CONTAINER) node -e '\
-		const fs = require("fs"); \
-		const initSqlJs = require("sql.js"); \
-		initSqlJs().then(SQL => { \
-			const dbPath = "./db/haxball-results.sqlite"; \
-			const db = new SQL.Database(fs.readFileSync(dbPath)); \
-			const targetUser = (process.env.TARGET_USERNAME || "").trim(); \
-			if (!targetUser) { \
-				console.log("⚠️ HATA: USERNAME belirtilmedi!"); \
-				return; \
-			} \
-			const auths = new Set(); \
-			const uids = new Set(); \
-			for (const query of [ \
-				"SELECT auth_key, player_uid FROM visited_users WHERE LOWER(username) = LOWER(?)", \
-				"SELECT auth_key, player_uid FROM users WHERE LOWER(username) = LOWER(?)", \
-				"SELECT auth_key, player_uid FROM blacklisted_users WHERE LOWER(username) = LOWER(?)", \
-				"SELECT \"\" AS auth_key, player_uid FROM istekler WHERE LOWER(username) = LOWER(?)" \
-			]) { \
-				const stmt = db.prepare(query); \
-				stmt.bind([targetUser]); \
-				while (stmt.step()) { const row = stmt.getAsObject(); if (row.auth_key) auths.add(row.auth_key); if (row.player_uid) uids.add(row.player_uid); } \
-				stmt.free(); \
-			} \
-			const authParams = Array.from(auths); \
-			const uidParams = Array.from(uids); \
-			const authSql = authParams.length ? " OR auth_key IN (" + authParams.map(() => "?").join(",") + ")" : ""; \
-			const uidSql = uidParams.length ? " OR player_uid IN (" + uidParams.map(() => "?").join(",") + ")" : ""; \
-			const params = [targetUser, ...authParams, ...uidParams]; \
-			const countStmt = db.prepare("SELECT COUNT(*) AS count FROM blacklisted_users WHERE LOWER(username) = LOWER(?)" + authSql + uidSql); \
-			countStmt.bind(params); \
-			countStmt.step(); \
-			const before = countStmt.getAsObject().count || 0; \
-			countStmt.free(); \
-			db.run("DELETE FROM blacklisted_users WHERE LOWER(username) = LOWER(?)" + authSql + uidSql, params); \
-			fs.writeFileSync(dbPath, Buffer.from(db.export())); \
-			console.log("✅ Blacklist kaldırıldı -> Kullanıcı: \"" + targetUser + "\" | Silinen kayıt: " + before); \
-		});'
+	@if [ -z "$(UNBLACKLIST_USERNAME)" ]; then echo "⚠️ HATA: USERNAME belirtilmedi! Örnek: make db-unblacklist-player USERNAME='oyuncu' veya make db-unblacklist-player oyuncu"; exit 1; fi
+	docker exec -e TARGET_USERNAME="$(UNBLACKLIST_USERNAME)" -i $(CONTAINER) node < scripts/tools/dbUnblacklistPlayer.js
 
 
 
