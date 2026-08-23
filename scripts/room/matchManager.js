@@ -83,6 +83,14 @@ function checkKickoffWatch(room, state, deps) {
   watch.triggered = true;
 }
 
+function formatDuration(seconds) {
+  const totalSeconds = Math.max(0, Math.round(seconds || 0));
+  const minutes = Math.floor(totalSeconds / 60);
+  const remainingSeconds = totalSeconds % 60;
+  if (minutes <= 0) return `${remainingSeconds} sn`;
+  return `${minutes} dk ${remainingSeconds} sn`;
+}
+
 function handlePlayerBallKick(state, player) {
   clearKickoffWatch(state, player);
 
@@ -257,7 +265,7 @@ async function handleGameStop(room, state, deps) {
   const endedAt = new Date().toISOString();
   const durationSeconds = state.currentGame ? (new Date(endedAt) - new Date(state.currentGame.started_at)) / 1000 : 0;
 
-  console.log(`[GAME STOP] Maç bitti! Skor - Kırmızı: ${scores.red} | Mavi: ${scores.blue} (Süre: ${Math.round(durationSeconds)}s)`);
+  console.log(`[GAME STOP] Maç bitti! Skor - Kırmızı: ${scores.red} | Mavi: ${scores.blue} (Süre: ${formatDuration(durationSeconds)})`);
 
   if (scores.red > 0 || scores.blue > 0) {
     saveGameResult(db, DB_FILE, scores, winnerTeam, loserTeam, state.currentGame, endedAt, durationSeconds, persistDatabase);
@@ -380,4 +388,5 @@ module.exports = {
   handleGameStart,
   handleGameStop,
   checkKickoffWatch,
+  formatDuration,
 };
