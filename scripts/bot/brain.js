@@ -83,7 +83,6 @@ const DEFAULTS = {
   supportSpread: 220, // destek oyuncusunun yanal açılma mesafesi
   botOnlyStuckTicks: 80, // sadece botlar varken yatay kilidi kaç tick sonra kır
   botOnlyNudge: 90, // kilit açmak için hedefe eklenecek küçük dikey sapma
-  forceBallStandOffRatio: 0.15, // watchdog devredeyken topun arkasında oyalanma
 
   // Savunmacının kale-top ekseninde nerede duracağı (0 = kalede, 1 = topun üstünde).
   // Defans oyuncusu kaleci gibi çizgide beklemesin; tehlikede geri gelsin ama
@@ -678,18 +677,19 @@ function decide(view, memory, config) {
   const ballToAim = aimKickDirection(toAim, view.ball.speed, activeCfg.kickStrength);
 
   let target;
-  if (role === 'attacker') {
+  if (view.forceBall) {
+    target = view.ball.pos;
+  } else if (role === 'attacker') {
     // Topun arkasına geç: vuruş yönü hedefe baksın
     const standOff = (view.self.radius || 15) + (view.ball.radius || 10);
-    const ratio = view.forceBall ? activeCfg.forceBallStandOffRatio : 0.95;
-    target = sub(intercept.point, scale(ballToAim, standOff * ratio));
+    target = sub(intercept.point, scale(ballToAim, standOff * 0.95));
   } else if (role === 'defender') {
     target = defenderTarget(view, activeCfg);
   } else {
     target = supportTarget(view, activeCfg, slot);
   }
 
-  target = botOnlyNudgeTarget(view, target, activeCfg, memory);
+  target = view.forceBall ? target : botOnlyNudgeTarget(view, target, activeCfg, memory);
 
   // Hücumcuysak topa hızla dalıyoruz; destekçiysek pozisyonda durmak istiyoruz.
   const nav = navigate(view.self, target, activeCfg, memory, { strike: role === 'attacker' });

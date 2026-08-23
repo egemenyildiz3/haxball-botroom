@@ -15,7 +15,7 @@ const { decide, configFromPhysics, makePersonality, describePersonality } = requ
 const FIRST_BOT_ID = 500; // gerçek oyuncu id'leriyle çakışmasın diye yüksek başlıyoruz
 const BOT_CONN_PREFIX = 'bot-conn-';
 const BOT_AUTH_PREFIX = 'bot-auth-';
-const KICKOFF_FORCE_MS = 8 * 1000;
+const KICKOFF_FORCE_MS = 15 * 1000;
 const DEFAULT_BOT_NAMES = [
   'Messi',
   'Ronaldo',
@@ -214,6 +214,15 @@ function createBotManager(options = {}) {
     return Math.sqrt(dx * dx + dy * dy);
   }
 
+  function directInputToBall(player, ball) {
+    if (!keyState || !player || !player.disc || !player.disc.pos || !ball || !ball.pos) return 0;
+    const dx = ball.pos.x - player.disc.pos.x;
+    const dy = ball.pos.y - player.disc.pos.y;
+    const dirX = Math.abs(dx) < 2 ? 0 : Math.sign(dx);
+    const dirY = Math.abs(dy) < 2 ? 0 : Math.sign(dy);
+    return keyState(dirX, dirY, false);
+  }
+
   /** Her fizik tick'inde tüm botların girdisini hesaplar ve gönderir. */
   function tick() {
     if (!raw || bots.size === 0) return;
@@ -380,7 +389,14 @@ function createBotManager(options = {}) {
       }
 
       chosen.bot.forceBallUntil = Date.now() + durationMs;
-      log(`🤖 [BOT] Santra watchdog: ${chosen.bot.name} topa gitmeye zorlandı (team=${teamId}).`);
+      const input = directInputToBall(chosen.player, ball);
+      if (input !== 0) {
+        chosen.bot.lastInput = input;
+        try { raw.fakeSendPlayerInput(input, chosen.bot.id); } catch (e) {}
+      }
+
+      const distance = distanceToBall(chosen.player, ball);
+      log(`🤖 [BOT] Santra watchdog: ${chosen.bot.name} topa gitmeye zorlandı (team=${teamId}, mesafe=${Math.round(distance)}).`);
       return true;
     },
 
