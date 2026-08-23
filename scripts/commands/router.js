@@ -21,6 +21,12 @@ const COMMAND_ROUTERS = [
 const NORMAL_CHAT_COLOR = 0xFFFFFF;
 const ADMIN_CHAT_COLOR = 0xCC99FF;
 
+function adminChatPrefix(isAdminChat, isSuperAdmin) {
+  if (isSuperAdmin) return '[KURUCU] ';
+  if (isAdminChat) return '[ADMIN] ';
+  return '';
+}
+
 function handlePlayerChat(room, player, msg, deps) {
   const text = String(msg || '').trim();
 
@@ -72,7 +78,7 @@ function handlePlayerChat(room, player, msg, deps) {
 
     sendMsg(
       room,
-      `💬 ${displayName}: ${chatText}`,
+      `💬 ${adminChatPrefix(isAdminChat, isSuperAdmin)}${displayName}: ${chatText}`,
       null,
       isAdminChat ? ADMIN_CHAT_COLOR : NORMAL_CHAT_COLOR,
       isAdminChat ? 'bold' : 'normal'
