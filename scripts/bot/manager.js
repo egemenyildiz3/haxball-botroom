@@ -250,6 +250,19 @@ function createBotManager(options = {}) {
     bots.delete(bot.name);
   }
 
+  function pruneMissingBots() {
+    if (!raw || typeof raw.getPlayer !== 'function') return 0;
+
+    let removed = 0;
+    for (const bot of [...bots.values()]) {
+      if (raw.getPlayer(bot.id)) continue;
+      bots.delete(bot.name);
+      removed++;
+      log(`🤖 [BOT] ${bot.name} odada görünmüyor; bot kaydı temizlendi.`);
+    }
+    return removed;
+  }
+
   return {
     /**
      * Oda açıldıktan sonra çağrılmalı. Ham oda nesnesini ve tick kancasını bağlar.
@@ -280,6 +293,27 @@ function createBotManager(options = {}) {
 
     count() {
       return bots.size;
+    },
+
+    ensureMinimum(minimum = 4) {
+      if (!raw) return { ok: false, message: 'Oda henüz hazır değil.', count: bots.size, pruned: 0, started: 0 };
+
+      const pruned = pruneMissingBots();
+      const target = Math.max(0, Math.min(maxBots, Number(minimum) || 0));
+      const missing = Math.max(0, target - bots.size);
+      let started = 0;
+
+      for (let i = 0; i < maxBots && started < missing; i++) {
+        if (!bots.has(expectedName(i)) && spawnOne(i)) started++;
+      }
+
+      return {
+        ok: bots.size >= target,
+        message: `Bot validation: ${bots.size}/${maxBots} bot odada. Temizlenen=${pruned}, eklenen=${started}.`,
+        count: bots.size,
+        pruned,
+        started,
+      };
     },
 
     forceClosestBotToBall(teamId, durationMs = KICKOFF_FORCE_MS) {

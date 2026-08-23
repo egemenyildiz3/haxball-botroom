@@ -7,6 +7,7 @@ const ROTATION_START_DELAY_MS = 250;
 const ROTATION_MOVE_DELAY_MS = 120;
 const ROTATION_END_DELAY_MS = 150;
 const KICKOFF_TOUCH_DELAY_MS = 10 * 1000;
+const MIN_BOTS_AFTER_GAME = 4;
 
 function shuffle(players) {
   const result = [...players];
@@ -280,6 +281,11 @@ async function handleGameStop(room, state, deps) {
     endTeamTransitionLock(room, state);
     console.log('[MATCH ROTATION] Otomatik yönetim kapalı - takım dağıtımı ve yeni maç atlandı.');
     return;
+  }
+
+  if (botManager && typeof botManager.ensureMinimum === 'function') {
+    const result = botManager.ensureMinimum(MIN_BOTS_AFTER_GAME);
+    console.log(`[MATCH ROTATION] ${result.message}`);
   }
 
   beginTeamTransitionLock(room, state);
