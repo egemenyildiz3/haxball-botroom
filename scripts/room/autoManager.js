@@ -51,8 +51,8 @@ function restoreAutoManageIfNoAdmins(room, state, deps, excludeId) {
   if (hasAdmin) return false;
 
   state.autoManageEnabled = true;
-  console.log('[AUTO] Odada Admin kalmadı - otomatik yönetim tekrar açıldı.');
-  sendMsg(room, '🔓 Odada Admin kalmadığı için otomatik yönetim tekrar açıldı.', null, 0x00FF7F, 'bold');
+  console.log('[AUTO] Odada Admin/Kurucu kalmadı - otomatik yönetim tekrar açıldı.');
+  sendMsg(room, '🔓 Odada Admin/Kurucu kalmadığı için otomatik yönetim tekrar açıldı.', null, 0x00FF7F, 'bold');
 
   rebalanceThenStart(room, state, deps);
   return true;
