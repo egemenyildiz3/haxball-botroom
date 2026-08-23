@@ -20,11 +20,63 @@ const COMMAND_ROUTERS = [
 
 const NORMAL_CHAT_COLOR = 0xFFFFFF;
 const ADMIN_CHAT_COLOR = 0xCC99FF;
+const TEAM_RADIO_COLORS = {
+  1: 0xFF7777,
+  2: 0x77A7FF,
+};
+const TEAM_RADIO_NAMES = {
+  1: 'KIRMIZI',
+  2: 'MAVİ',
+};
 
 function adminChatPrefix(isAdminChat, isSuperAdmin) {
   if (isSuperAdmin) return '[KURUCU] ';
   if (isAdminChat) return '[ADMIN] ';
   return '';
+}
+
+function playerTeamId(player) {
+  if (!player || !player.team) return 0;
+  if (typeof player.team === 'number') return player.team;
+  return player.team.id || 0;
+}
+
+function isAdminLike(player, loggedInPlayers) {
+  const userData = loggedInPlayers && loggedInPlayers.get(player.id);
+  return !!(player.admin || (userData && userData.isadmin === 1));
+}
+
+function sendTeamRadio(room, player, message, { displayName, loggedInPlayers }) {
+  const teamId = playerTeamId(player);
+
+  if (teamId !== 1 && teamId !== 2) {
+    sendMsg(room, '📻 Telsizi sadece sahadaki oyuncular kullanabilir.', player.id, 0xFFCC00, 'bold');
+    return false;
+  }
+
+  const radioText = message.trim().toLocaleLowerCase('tr-TR');
+  if (!radioText) {
+    sendMsg(room, '📻 Kullanım: !t <mesaj>', player.id, 0xFFCC00, 'bold');
+    return false;
+  }
+
+  if (typeof room.getPlayerList !== 'function') return false;
+
+  const color = TEAM_RADIO_COLORS[teamId] || 0x00BFFF;
+  const teamName = TEAM_RADIO_NAMES[teamId] || 'TAKIM';
+  const text = `📻 [${teamName} TELSİZ] ${displayName}: ${radioText}`;
+  const recipients = room.getPlayerList()
+    .filter((p) => p.id !== 0 && (playerTeamId(p) === teamId || isAdminLike(p, loggedInPlayers)));
+  const sent = new Set();
+
+  for (const recipient of recipients) {
+    if (sent.has(recipient.id)) continue;
+    sent.add(recipient.id);
+    sendMsg(room, text, recipient.id, color, 'bold');
+  }
+
+  console.log(`[TEAM-RADIO] team=${teamName} ${displayName}: ${radioText}`);
+  return false;
 }
 
 function handlePlayerChat(room, player, msg, deps) {
@@ -44,6 +96,13 @@ function handlePlayerChat(room, player, msg, deps) {
 
   if (text.startsWith('/')) {
     return true;
+  }
+
+  if (command === '!t' || command === '!takim' || command === '!team') {
+    return sendTeamRadio(room, player, args.slice(1).join(' '), {
+      displayName,
+      loggedInPlayers: deps.loggedInPlayers,
+    });
   }
 
   if (!text.startsWith('!')) {
