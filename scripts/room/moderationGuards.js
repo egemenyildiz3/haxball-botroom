@@ -55,6 +55,13 @@ function handlePlayerKicked(room, state, kickedPlayer, reason, ban, byPlayer, de
 
     sendMsg(room, `⚠️ Adminlerin ban yetkisi kapalıdır! ${kickedClean} üzerindeki ban kaldırıldı.`, null, 0xFF5555, 'bold');
   }
+
+  if (state.autoManageEnabled) {
+    setTimeout(() => {
+      rebalanceTeams(room, state, deps)
+        .catch((err) => console.warn('[AUTO] Kick/ban sonrası dengeleme başarısız:', err.message));
+    }, 250);
+  }
 }
 
 function handlePlayerAdminChange(room, state, changedPlayer, byPlayer, deps, sanitizePlayer) {
