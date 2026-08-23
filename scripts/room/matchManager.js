@@ -3,9 +3,9 @@ const { getCleanName } = require('../util');
 const { checkAndStartGame, rememberLockedTeams, beginTeamTransitionLock, endTeamTransitionLock, validateTeamDistribution } = require('./teamBalancer');
 const { desiredBotCount, desiredEvenActiveCount, isBotPlayer, sortRealPlayersFirst } = require('./botPolicy');
 
-const ROTATION_START_DELAY_MS = 500;
-const ROTATION_MOVE_DELAY_MS = 250;
-const ROTATION_END_DELAY_MS = 350;
+const ROTATION_START_DELAY_MS = 600;
+const ROTATION_MOVE_DELAY_MS = 300;
+const ROTATION_END_DELAY_MS = 450;
 const KICKOFF_TOUCH_DELAY_MS = 4 * 1000;
 const MIN_BOTS_AFTER_GAME = 4;
 
