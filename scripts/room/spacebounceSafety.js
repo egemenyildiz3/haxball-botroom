@@ -8,6 +8,7 @@ const MAP_BOUNDS = {
 };
 
 const SAFE_MARGIN = 80;
+const RECOVERY_DELAY_MS = 2 * 1000;
 
 function nearestSafeCorner(pos) {
   const left = {
@@ -28,12 +29,7 @@ function nearestSafeCorner(pos) {
   };
 }
 
-function repairOutOfBoundsBall(room, sendMsg) {
-  if (typeof room.getBallPosition !== 'function') return;
-
-  const ballPosition = room.getBallPosition();
-  if (!ballPosition) return;
-
+function isOutOfBoundsPosition(ballPosition) {
   let isOutOfBounds = ballPosition.y < MAP_BOUNDS.minY || ballPosition.y > MAP_BOUNDS.maxY;
 
   const isInsideGoalY = ballPosition.y > MAP_BOUNDS.goalMinY && ballPosition.y < MAP_BOUNDS.goalMaxY;
@@ -42,22 +38,46 @@ function repairOutOfBoundsBall(room, sendMsg) {
     isOutOfBounds = isOutOfBounds || ballPosition.x < MAP_BOUNDS.minX || ballPosition.x > MAP_BOUNDS.maxX;
   }
 
-  if (isOutOfBounds && typeof room.setDiscProperties === 'function') {
-    const { x, y } = nearestSafeCorner(ballPosition);
+  return isOutOfBounds;
+}
 
-    room.setDiscProperties(0, {
-      x,
-      y,
-      xspeed: 0,
-      yspeed: 0,
-    });
-    sendMsg(room, '⚠️ Dışarı çıkan top içeri çekildi.', null, 0xFFCC00, 'bold');
+function repairOutOfBoundsBall(room, state, sendMsg) {
+  if (typeof room.getBallPosition !== 'function') return;
+
+  const ballPosition = room.getBallPosition();
+  if (!ballPosition) return;
+
+  if (!isOutOfBoundsPosition(ballPosition)) {
+    state.ballRecovery = null;
+    return;
   }
+
+  if (!state.ballRecovery) {
+    state.ballRecovery = { startedAt: Date.now() };
+    sendMsg(room, '⚠️ Top dışarı çıktı, 2 saniye içinde içeri çekilecek.', null, 0xFFCC00, 'bold');
+    return;
+  }
+
+  if (Date.now() - state.ballRecovery.startedAt < RECOVERY_DELAY_MS) return;
+  if (typeof room.setDiscProperties !== 'function') return;
+
+  const { x, y } = nearestSafeCorner(ballPosition);
+
+  room.setDiscProperties(0, {
+    x,
+    y,
+    xspeed: 0,
+    yspeed: 0,
+  });
+  state.ballRecovery = null;
+  sendMsg(room, '⚠️ Dışarı çıkan top içeri çekildi.', null, 0xFFCC00, 'bold');
 }
 
 module.exports = {
   MAP_BOUNDS,
   SAFE_MARGIN,
+  RECOVERY_DELAY_MS,
   nearestSafeCorner,
+  isOutOfBoundsPosition,
   repairOutOfBoundsBall,
 };

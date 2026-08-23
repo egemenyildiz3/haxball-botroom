@@ -190,7 +190,7 @@ async function createRoom(room, deps) {
   room.onGameTick = function () {
     state.lastGameTickAt = Date.now();
     checkKickoffWatch(room, state, roomDeps);
-    repairOutOfBoundsBall(room, sendMsg);
+    repairOutOfBoundsBall(room, state, sendMsg);
   };
 
   room.onPlayerKicked = function (kickedPlayer, reason, ban, byPlayer) {
