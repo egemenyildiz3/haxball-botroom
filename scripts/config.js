@@ -39,6 +39,12 @@ function colorListFromEnv(name, fallback) {
   return raw.split(',').map((item) => parseColor(`${name}[]`, item));
 }
 
+function capabilitiesFromEnv(name, fallback) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return [...fallback];
+  return raw.split(',').map((item) => item.trim().toLowerCase()).filter(Boolean);
+}
+
 function languageFromEnv() {
   const language = (
     process.env.ROOM_LANGUAGE
@@ -64,9 +70,14 @@ const config = {
 
   adminRules: {
     password: process.env.HAXBALL_ADMIN_PASSWORD || '',
-    canBan: boolFromEnv('CONFIG_ADMIN_CAN_BAN', true),
-    canGiveAdmin: boolFromEnv('CONFIG_ADMIN_CAN_GIVE_ADMIN', false),
     allowMultipleJoin: boolFromEnv('CONFIG_ALLOW_MULTIPLE_JOIN', false),
+    roleCapabilities: {
+      owner: capabilitiesFromEnv('ROLE_OWNER_CAPABILITIES', ['*']),
+      admin: capabilitiesFromEnv('ROLE_ADMIN_CAPABILITIES', ['admin_chat', 'afk_exempt', 'auto', 'ban', 'blacklist', 'bot', 'clear_bans', 'duplicate_join_exempt', 'kick', 'mute', 'mute_exempt', 'native_admin']),
+      mod: capabilitiesFromEnv('ROLE_MOD_CAPABILITIES', ['admin_chat', 'afk_exempt', 'auto', 'kick', 'mute', 'mute_exempt', 'native_admin']),
+      vip: capabilitiesFromEnv('ROLE_VIP_CAPABILITIES', []),
+      player: capabilitiesFromEnv('ROLE_PLAYER_CAPABILITIES', []),
+    },
   },
 
   bot: {
@@ -134,6 +145,10 @@ function validateConfig(cfg = config) {
   }
   if (cfg.teamColors.red.colors.length === 0 || cfg.teamColors.blue.colors.length === 0) {
     throw new Error('TEAM_COLOR_*_COLORS en az bir renk içermeli.');
+  }
+  for (const [role, capabilities] of Object.entries(cfg.adminRules.roleCapabilities)) {
+    if (!Array.isArray(capabilities)) throw new Error(`${role} capabilities liste olmalı.`);
+    if (capabilities.some((capability) => !capability)) throw new Error(`${role} capabilities boş değer içeremez.`);
   }
   return cfg;
 }

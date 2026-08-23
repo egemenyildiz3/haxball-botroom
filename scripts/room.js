@@ -11,6 +11,7 @@ const { handlePlayerBallKick, handleTeamGoal, handleGameStart, handleGameStop, c
 const { attachTerminalInput } = require('./room/terminal');
 const { isProtectedBotIdentity } = require('./room/botPolicy');
 const { blockDuplicateJoin, blockInvalidJoinName } = require('./room/joinGuards');
+const { isOwner } = require('./roles');
 
 process.on('uncaughtException', (err) => {
   console.error('❌ [CRITICAL ERROR] Yakalanmamış İstisna:', err.message, err.stack);
@@ -106,9 +107,9 @@ function attachInactivityKick(room, state, deps) {
   }, checkMs);
 }
 
-function markSuperAdminAfkOnJoin(room, state, player, deps) {
+function markOwnerAfkOnJoin(room, state, player, deps) {
   const userData = deps.loggedInPlayers.get(player.id);
-  if (!userData || userData.isadmin !== 1) return false;
+  if (!isOwner(userData)) return false;
 
   state.afkPlayers.add(player.id);
   if (player.team !== 0 && typeof room.setPlayerTeam === 'function') {
@@ -116,7 +117,7 @@ function markSuperAdminAfkOnJoin(room, state, player, deps) {
   }
 
   deps.sendMsg(room, deps.t('superadmin.autoAfk'), player.id, 0xFFCC00, 'bold');
-  console.log(`${deps.getTimestamp()} [AFK] Superadmin girişte otomatik AFK yapıldı: ${getCleanName(player)} (ID: ${player.id})`);
+  console.log(`${deps.getTimestamp()} [AFK] Owner girişte otomatik AFK yapıldı: ${getCleanName(player)} (ID: ${player.id})`);
   return true;
 }
 
@@ -137,8 +138,6 @@ async function createRoom(room, deps) {
     ADMIN_PASSWORD,
     getTimestamp,
     sleep,
-    CONFIG_ADMIN_CAN_BAN = 1,
-    CONFIG_ADMIN_CAN_GIVE_ADMIN = 0,
     CONFIG_ALLOW_MULTIPLE_JOIN = 0,
     botManager = null,
     config,
@@ -159,8 +158,6 @@ async function createRoom(room, deps) {
     getTimestamp,
     sleep,
     SPEC_PROMOTION_COUNT,
-    CONFIG_ADMIN_CAN_BAN,
-    CONFIG_ADMIN_CAN_GIVE_ADMIN,
     CONFIG_ALLOW_MULTIPLE_JOIN,
     botManager,
     config,
@@ -251,7 +248,7 @@ async function createRoom(room, deps) {
 
     const updatedPlayer = sanitizePlayer(room, safePlayer, state);
     handleAutoLogin(room, updatedPlayer, { db, DB_FILE, loggedInPlayers, persistDatabase, t });
-    markSuperAdminAfkOnJoin(room, state, sanitizePlayer(room, updatedPlayer, state), roomDeps);
+    markOwnerAfkOnJoin(room, state, sanitizePlayer(room, updatedPlayer, state), roomDeps);
     await handlePlayerJoin(room, updatedPlayer, state, roomDeps);
   };
 

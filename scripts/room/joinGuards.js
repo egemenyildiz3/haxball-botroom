@@ -1,24 +1,24 @@
 const { getCleanName } = require('../util');
 const { sendMsg } = require('../commands/helpers');
 const { isProtectedBotIdentity } = require('./botPolicy');
+const { hasCapability } = require('../roles');
 
-function isSuperAdminAuth(db, auth) {
+function hasAuthCapability(db, auth, capability, roleCapabilities) {
   if (!auth) return false;
 
   try {
     const stmt = db.prepare(`
-      SELECT 1 FROM users
+      SELECT role FROM users
       WHERE auth_key = ?
         AND auth_key != ''
-        AND isadmin = 1
       LIMIT 1
     `);
     stmt.bind([auth]);
-    const found = stmt.step();
+    const row = stmt.step() ? stmt.getAsObject() : null;
     stmt.free();
-    return found;
+    return !!(row && hasCapability(row, capability, roleCapabilities));
   } catch (err) {
-    console.warn('[JOIN-GUARD] Superadmin auth kontrolü başarısız:', err.message);
+    console.warn('[JOIN-GUARD] Auth capability kontrolü başarısız:', err.message);
     return false;
   }
 }
@@ -74,14 +74,14 @@ function blockInvalidJoinName(room, player, deps) {
 }
 
 function blockDuplicateJoin(room, state, player, deps) {
-  const { db, getTimestamp, CONFIG_ALLOW_MULTIPLE_JOIN = 0, botManager, t = (key, vars = {}) => {
+  const { db, getTimestamp, CONFIG_ALLOW_MULTIPLE_JOIN = 0, botManager, config, t = (key, vars = {}) => {
     if (key === 'join.duplicate') return `⚠️ ${vars.name}, aynı bağlantı/auth ile zaten odada bir oturum açık!`;
     if (key === 'join.duplicateReason') return 'Aynı bağlantıdan zaten bir oturum var.';
     return key;
   } } = deps;
   if (Number(CONFIG_ALLOW_MULTIPLE_JOIN) === 1) return false;
   if (isProtectedBotIdentity(botManager, player)) return false;
-  if (isSuperAdminAuth(db, player.auth)) return false;
+  if (hasAuthCapability(db, player.auth, 'duplicate_join_exempt', config && config.adminRules && config.adminRules.roleCapabilities)) return false;
 
   const match = duplicateJoinMatch(room, player, state, botManager);
   if (!match) return false;
@@ -102,5 +102,5 @@ module.exports = {
   blockInvalidJoinName,
   blockDuplicateJoin,
   duplicateJoinMatch,
-  isSuperAdminAuth,
+  hasAuthCapability,
 };

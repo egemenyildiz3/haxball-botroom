@@ -8,6 +8,7 @@ const { routeAutoCommand } = require('./autoCommands');
 const { routeRequestCommand } = require('./requestCommands');
 const { routeMuteCommand, muteKey, minutesLeft } = require('./muteCommands');
 const { resolveCommandKey } = require('./commandAliases');
+const { hasCapability, isOwner, roleOfUser } = require('../roles');
 
 const COMMAND_ROUTERS = [
   routeAdminCommand,
@@ -25,7 +26,7 @@ const TEAM_RADIO_COLORS = {
 };
 
 function adminChatPrefix(isAdminChat, isSuperAdmin) {
-  if (isSuperAdmin) return '[KURUCU] ';
+  if (isSuperAdmin) return '[OWNER] ';
   if (isAdminChat) return '[ADMIN] ';
   return '';
 }
@@ -38,7 +39,7 @@ function playerTeamId(player) {
 
 function isAdminLike(player, loggedInPlayers) {
   const userData = loggedInPlayers && loggedInPlayers.get(player.id);
-  return !!(player.admin || (userData && userData.isadmin === 1));
+  return !!(player.admin || hasCapability(userData, 'admin_chat'));
 }
 
 function fallbackT(key, vars = {}) {
@@ -102,7 +103,9 @@ function handlePlayerChat(room, player, msg, deps) {
   const playerToken = player.auth || player.conn || '';
 
   const userData = deps.loggedInPlayers.get(player.id);
-  const isSuperAdmin = userData && userData.isadmin === 1;
+  const roleCapabilities = deps.config && deps.config.adminRules && deps.config.adminRules.roleCapabilities;
+  const isSuperAdmin = isOwner(userData);
+  const isRoleAdminChat = hasCapability(userData, 'admin_chat', roleCapabilities);
 
   console.log(`[CHAT] ${displayName} : ${text}`);
 
@@ -122,7 +125,7 @@ function handlePlayerChat(room, player, msg, deps) {
 
   if (!text.startsWith('!')) {
     const chatText = text.toLocaleLowerCase('tr-TR');
-    const isAdminChat = player.admin || isSuperAdmin;
+    const isAdminChat = player.admin || isRoleAdminChat;
 
     if (deps.chatMuted && !isAdminChat) {
       sendMsg(room, t('chat.muted'), player.id, 0xFFCC00, 'bold');
@@ -174,6 +177,9 @@ function handlePlayerChat(room, player, msg, deps) {
     playerToken,
     userData,
     isSuperAdmin,
+    role: roleOfUser(userData),
+    roleCapabilities,
+    hasCapability: (capability) => hasCapability(userData, capability, roleCapabilities),
   };
 
   for (const route of COMMAND_ROUTERS) {

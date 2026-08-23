@@ -30,7 +30,7 @@ function initDatabase(db) {
       player_uid TEXT NOT NULL,
       password TEXT NOT NULL,
       auth_key TEXT,
-      isadmin INTEGER DEFAULT 0,
+      role TEXT NOT NULL DEFAULT 'player',
       registered_at TEXT,
       last_ip TEXT,
       last_visited_at TEXT,
@@ -71,6 +71,10 @@ function initDatabase(db) {
       ON blacklisted_users(LOWER(TRIM(username)))
       WHERE username IS NOT NULL AND TRIM(username) != '';
     CREATE INDEX IF NOT EXISTS idx_istekler_player_uid ON istekler(player_uid);
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_users_player_uid ON users(player_uid);
+    CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
   `);
 }
 

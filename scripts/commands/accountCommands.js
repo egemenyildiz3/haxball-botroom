@@ -1,5 +1,6 @@
 const { sendMsg } = require('./helpers');
 const { getOrCreatePlayerUid } = require('../db');
+const { hasCapability, normalizeRole } = require('../roles');
 
 function fallbackT(key, vars = {}) {
   const messages = {
@@ -34,7 +35,19 @@ function fallbackT(key, vars = {}) {
   return messages[key] || key;
 }
 
-function handleAutoLogin(room, player, { db, DB_FILE, loggedInPlayers, persistDatabase, t = fallbackT }) {
+function applyNativeAdmin(room, player, userData, roleCapabilities) {
+  if (
+    player
+    && typeof room.setPlayerAdmin === 'function'
+    && hasCapability(userData, 'native_admin', roleCapabilities)
+  ) {
+    room.setPlayerAdmin(player.id, true);
+    return true;
+  }
+  return false;
+}
+
+function handleAutoLogin(room, player, { db, DB_FILE, loggedInPlayers, persistDatabase, config, t = fallbackT }) {
   if (!player || typeof player.id === 'undefined') return;
 
   const cleanedName = player.name ? player.name.replace(/^\[\d{3}\]\s*/, '').trim() : '';
@@ -43,7 +56,7 @@ function handleAutoLogin(room, player, { db, DB_FILE, loggedInPlayers, persistDa
   console.log(`[BACKEND-DB] AutoLogin sorgusu başlatıldı -> Kullanıcı: "${cleanedName}" | Token: "${playerToken || 'YOK'}"`);
 
   try {
-    const stmt = db.prepare('SELECT username, password, auth_key, isadmin, player_uid FROM users WHERE username = ?');
+    const stmt = db.prepare('SELECT username, password, auth_key, role, player_uid FROM users WHERE username = ?');
     stmt.bind([cleanedName]);
 
     if (stmt.step()) {
@@ -52,7 +65,9 @@ function handleAutoLogin(room, player, { db, DB_FILE, loggedInPlayers, persistDa
 
       if ((playerToken && dbAuth && playerToken === dbAuth) || dbAuth === '' || !dbAuth) {
         const playerUid = row.player_uid || getOrCreatePlayerUid(db, cleanedName, playerToken);
-        loggedInPlayers.set(player.id, { username: cleanedName, isadmin: row.isadmin, player_uid: playerUid });
+        const role = normalizeRole(row.role);
+        const userData = { username: cleanedName, role, player_uid: playerUid };
+        loggedInPlayers.set(player.id, userData);
 
         if (playerToken && playerToken !== dbAuth) {
           console.log(`[BACKEND-DB] Auth Key güncellemesi yapılıyor -> Kullanıcı: "${cleanedName}" | Yeni Token: "${playerToken}"`);
@@ -67,9 +82,8 @@ function handleAutoLogin(room, player, { db, DB_FILE, loggedInPlayers, persistDa
           console.log(`[BACKEND-DB] Otomatik giriş doğrulandı -> Kullanıcı: "${cleanedName}"`);
         }
 
-        if (row.isadmin === 1 && typeof room.setPlayerAdmin === 'function') {
-          room.setPlayerAdmin(player.id, true);
-          console.log(`[BACKEND-DB] Admin yetkisi atandı -> Kullanıcı: "${cleanedName}"`);
+        if (applyNativeAdmin(room, player, userData, config && config.adminRules && config.adminRules.roleCapabilities)) {
+          console.log(`[BACKEND-DB] Native admin yetkisi atandı -> Kullanıcı: "${cleanedName}" | Role: ${role}`);
         }
 
         sendMsg(room, t('account.autoLogin', { name: cleanedName }), player.id, 0x00FF7F, 'bold');
@@ -211,12 +225,12 @@ function handleRegister(ctx) {
       console.log(`[BACKEND-DB] Yeni kullanıcı ekleniyor -> Kullanıcı: "${cleanedName}" | Token: "${playerToken}"`);
 
       db.run(
-        'INSERT INTO users (username, player_uid, password, auth_key, isadmin, registered_at, last_ip, goals, assists, wins, losses) VALUES (?, ?, ?, ?, 0, ?, ?, 0, 0, 0, 0)',
-        [cleanedName, playerUid, password, playerToken, new Date().toISOString(), playerIp]
+        'INSERT INTO users (username, player_uid, password, auth_key, role, registered_at, last_ip, goals, assists, wins, losses) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0)',
+        [cleanedName, playerUid, password, playerToken, 'player', new Date().toISOString(), playerIp]
       );
 
       persistDatabase(db, DB_FILE);
-      loggedInPlayers.set(player.id, { username: cleanedName, isadmin: 0, player_uid: playerUid });
+      loggedInPlayers.set(player.id, { username: cleanedName, role: 'player', player_uid: playerUid });
 
       console.log(`[BACKEND-DB] Yeni kullanıcı başarıyla kaydedildi ve dosyaya yazıldı -> "${cleanedName}"`);
       sendMsg(room, t('account.registerSuccess'), player.id, 0x00FF7F, 'bold');
@@ -229,7 +243,7 @@ function handleRegister(ctx) {
 }
 
 function handleLogin(ctx) {
-  const { room, player, args, cleanedName, playerToken, loggedInPlayers, db, DB_FILE, persistDatabase } = ctx;
+  const { room, player, args, cleanedName, playerToken, loggedInPlayers, db, DB_FILE, persistDatabase, config } = ctx;
   const t = ctx.t || fallbackT;
   if (loggedInPlayers.has(player.id)) {
     sendMsg(room, t('account.alreadyLoggedIn'), player.id, 0x00FF7F, 'bold');
@@ -244,7 +258,7 @@ function handleLogin(ctx) {
 
   try {
     console.log(`[BACKEND-DB] Manuel giriş kontrolü -> Kullanıcı: "${cleanedName}"`);
-    const stmt = db.prepare('SELECT password, isadmin, player_uid FROM users WHERE username = ?');
+    const stmt = db.prepare('SELECT password, role, player_uid FROM users WHERE username = ?');
     stmt.bind([cleanedName]);
 
     if (stmt.step()) {
@@ -255,11 +269,12 @@ function handleLogin(ctx) {
         db.run('UPDATE users SET auth_key = ?, player_uid = COALESCE(NULLIF(player_uid, \'\'), ?) WHERE username = ?', [playerToken || null, playerUid, cleanedName]);
         persistDatabase(db, DB_FILE);
 
-        loggedInPlayers.set(player.id, { username: cleanedName, isadmin: row.isadmin, player_uid: playerUid });
+        const role = normalizeRole(row.role);
+        const userData = { username: cleanedName, role, player_uid: playerUid };
+        loggedInPlayers.set(player.id, userData);
 
-        if (row.isadmin === 1 && typeof room.setPlayerAdmin === 'function') {
-          room.setPlayerAdmin(player.id, true);
-          console.log(`[BACKEND-DB] Admin yetkisi aktifleştirildi -> "${cleanedName}"`);
+        if (applyNativeAdmin(room, player, userData, config && config.adminRules && config.adminRules.roleCapabilities)) {
+          console.log(`[BACKEND-DB] Native admin yetkisi aktifleştirildi -> "${cleanedName}" | Role: ${role}`);
         }
 
         console.log(`[BACKEND-DB] Manuel giriş başarılı -> "${cleanedName}"`);

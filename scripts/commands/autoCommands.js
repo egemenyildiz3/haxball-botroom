@@ -2,7 +2,7 @@ const { normalizeCmd } = require('../util');
 const { sendMsg } = require('./helpers');
 
 function routeAutoCommand(ctx) {
-  const { room, player, args, displayName, cleanedName, isSuperAdmin, autoManager } = ctx;
+  const { room, player, args, displayName, cleanedName, autoManager } = ctx;
   const t = ctx.t || ((key, vars = {}) => {
     const messages = {
       'auto.needFounder': '❌ Bu komutu kullanmak için Kurucu olmalısın.',
@@ -17,7 +17,7 @@ function routeAutoCommand(ctx) {
   });
   if (ctx.commandKey !== 'auto') return null;
 
-  if (!isSuperAdmin) {
+  if (!(typeof ctx.hasCapability === 'function' && ctx.hasCapability('auto'))) {
     sendMsg(room, t('auto.needFounder'), player.id, 0xFF5555, 'bold');
     return false;
   }

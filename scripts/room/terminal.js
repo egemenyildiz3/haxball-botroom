@@ -14,7 +14,7 @@ function attachTerminalInput(room, state, deps, autoManager) {
     const loggedInPlayers = new Map(deps.loggedInPlayers || []);
     loggedInPlayers.set(hostPlayer.id, {
       username: hostPlayer.name,
-      isadmin: 1,
+      role: 'owner',
       source: 'terminal',
     });
 

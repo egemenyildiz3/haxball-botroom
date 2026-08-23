@@ -74,7 +74,7 @@ function handlePlayers(ctx) {
 }
 
 function handleAfk(ctx) {
-  const { room, player, displayName, afkPlayers, rebalanceTeams, gameActive, isSuperAdmin } = ctx;
+  const { room, player, displayName, afkPlayers, rebalanceTeams, gameActive } = ctx;
   const t = ctx.t || ((key, vars = {}) => {
     const messages = {
       'afk.gameOnly': '⏸️ !afk komutu sadece maç devam ederken kullanılabilir.',
@@ -100,7 +100,7 @@ function handleAfk(ctx) {
   if (afkPlayers.has(player.id)) {
     const startedAt = afkStartedAt.get(key) || 0;
     const waitMs = minDurationMs - (now - startedAt);
-    const isAdmin = player.admin || isSuperAdmin;
+    const isAdmin = player.admin || (typeof ctx.hasCapability === 'function' && ctx.hasCapability('afk_exempt'));
 
     if (!isAdmin && waitMs > 0) {
       const lastWarning = lastAfkEarlyWarningAt.get(key) || 0;
@@ -116,7 +116,7 @@ function handleAfk(ctx) {
     lastAfkEarlyWarningAt.delete(key);
     sendMsg(room, t('afk.back', { name: displayName }), null, 0x00FF7F, 'bold');
   } else {
-    const isAdmin = player.admin || isSuperAdmin;
+    const isAdmin = player.admin || (typeof ctx.hasCapability === 'function' && ctx.hasCapability('afk_exempt'));
     const previous = lastAfkAt.get(key) || 0;
     const waitMs = cooldownMs - (now - previous);
 
@@ -165,7 +165,7 @@ function handleBye(ctx) {
 }
 
 function handleHelp(ctx) {
-  const { room, player, isSuperAdmin } = ctx;
+  const { room, player } = ctx;
   const t = ctx.t || ((key) => ({
     'help.title': '📖 Spacebounce 4v4 - Komut listesi:',
     'help.players': '• !oyuncular — Odadaki oyuncuları ve ID\'lerini listeler',
@@ -194,13 +194,13 @@ function handleHelp(ctx) {
     t('help.adminRequest'),
     t('help.register'),
     t('help.login'),
-    player.admin || isSuperAdmin ? t('help.bot') : '',
-    isSuperAdmin ? t('help.auto') : '',
-    player.admin || isSuperAdmin ? t('help.kick') : '',
-    player.admin || isSuperAdmin ? t('help.ban') : '',
-    player.admin || isSuperAdmin ? t('help.mute') : '',
-    isSuperAdmin ? t('help.blacklist') : '',
-    isSuperAdmin ? t('help.clearbans') : '',
+    player.admin || ctx.hasCapability('bot') ? t('help.bot') : '',
+    ctx.hasCapability('auto') ? t('help.auto') : '',
+    player.admin || ctx.hasCapability('kick') ? t('help.kick') : '',
+    player.admin || ctx.hasCapability('ban') ? t('help.ban') : '',
+    player.admin || ctx.hasCapability('mute') ? t('help.mute') : '',
+    ctx.hasCapability('blacklist') ? t('help.blacklist') : '',
+    ctx.hasCapability('clear_bans') ? t('help.clearbans') : '',
   ]
     .filter(Boolean)
     .join('\n');

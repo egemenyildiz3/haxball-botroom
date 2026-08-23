@@ -38,7 +38,7 @@ help:
 	@echo "  make db-visited_users-today : Bugün gelen visited_users kayıtlarını listeler"
 	@echo "  make db-user-with-auth USERNAME='oyuncu' : Oyuncunun auth bilgisini gösterir"
 	@echo "----------------------------------------------------------------------"
-	@echo "  make db-make-superadmin USERNAME='oyuncu' : Kullanıcıyı Kurucu yapar"
+	@echo "  make db-make-superadmin USERNAME='oyuncu' : Kullanıcı rolünü owner yapar"
 	@echo "  make db-blacklist-player USERNAME='oyuncu' REASON='sebep' : Kullanıcıyı kara listeye ekler"
 	@echo "  make db-unblacklist-player USERNAME='oyuncu' : Kullanıcıyı kara listeden çıkarır"
 	@echo "----------------------------------------------------------------------"
@@ -227,9 +227,9 @@ db-make-superadmin: #USERNAME=player1
 		initSqlJs().then(SQL => { \
 			const dbPath = './db/haxball-results.sqlite'; \
 			const db = new SQL.Database(fs.readFileSync(dbPath)); \
-			db.run('UPDATE users SET isadmin = 1 WHERE username = ?', ['$(USERNAME)']); \
+			db.run('UPDATE users SET role = ? WHERE username = ?', ['owner', '$(USERNAME)']); \
 			fs.writeFileSync(dbPath, Buffer.from(db.export())); \
-			console.log('$(USERNAME) kullanıcısı admin yapıldı.'); \
+			console.log('$(USERNAME) kullanıcısı owner yapıldı.'); \
 		});"
 
 

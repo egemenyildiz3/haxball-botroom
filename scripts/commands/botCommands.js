@@ -2,7 +2,7 @@ const { normalizeCmd } = require('../util');
 const { sendMsg } = require('./helpers');
 
 function routeBotCommand(ctx) {
-  const { room, player, args, isSuperAdmin, botManager } = ctx;
+  const { room, player, args, botManager } = ctx;
   const t = ctx.t || ((key) => ({
     'bot.needAdmin': '❌ Bot kontrolü için Admin olmalısın.',
     'bot.unavailable': '❌ Bot yöneticisi bu odada aktif değil.',
@@ -10,7 +10,7 @@ function routeBotCommand(ctx) {
   }[key] || key));
   if (ctx.commandKey !== 'bot') return null;
 
-  if (!player.admin && !isSuperAdmin) {
+  if (!player.admin && !(typeof ctx.hasCapability === 'function' && ctx.hasCapability('bot'))) {
     sendMsg(room, t('bot.needAdmin'), player.id, 0xFF5555, 'bold');
     return false;
   }

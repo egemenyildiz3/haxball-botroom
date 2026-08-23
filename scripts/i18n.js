@@ -168,12 +168,12 @@ const MESSAGES = {
     'help.register': '• !kaydol <şifre> — Hesap oluşturur ve oturum açar',
     'help.login': '• !giris <şifre> — Mevcut hesabınıza giriş yapar',
     'help.bot': '• !bot aç [adet] / !bot kapat / !bot hepsi / !bot durum — Yapay zeka botunu yönetir (Admin)',
-    'help.auto': '• !oto aç / !oto kapat / !oto durum — Otomatik takım dağıtımı ve maç başlatmayı açar/kapatır (Kurucu)',
+    'help.auto': '• !oto aç / !oto kapat / !oto durum — Otomatik takım dağıtımı ve maç başlatmayı açar/kapatır (Admin)',
     'help.kick': '• !kick <id/isim> [sebep] — Oyuncuyu odadan atar (Admin)',
     'help.ban': '• !ban <id/isim> [sebep] — Oyuncuyu odadan banlar (Admin)',
     'help.mute': '• !mute [id/isim] — Sohbeti veya bir oyuncuyu susturur (Admin)',
-    'help.blacklist': '• !blacklist <id/isim> [sebep] — Oyuncuyu veritabanı kara listesine ekler (Kurucu)',
-    'help.clearbans': '• !clearbans — Tüm banları temizler (Kurucu)',
+    'help.blacklist': '• !blacklist <id/isim> [sebep] — Oyuncuyu veritabanı kara listesine ekler (Admin)',
+    'help.clearbans': '• !clearbans — Tüm banları temizler (Admin)',
   },
 
   en: {
@@ -345,12 +345,12 @@ const MESSAGES = {
     'help.register': '• !signup <password> — Create account and login',
     'help.login': '• !login <password> — Login to your account',
     'help.bot': '• !bot add [count] / !bot remove / !bot all / !bot status — Manage AI bots (Admin)',
-    'help.auto': '• !auto on / !auto off / !auto status — Toggle automatic team management (Owner)',
+    'help.auto': '• !auto on / !auto off / !auto status — Toggle automatic team management (Admin)',
     'help.kick': '• !kick <id/name> [reason] — Kick a player (Admin)',
     'help.ban': '• !ban <id/name> [reason] — Ban a player (Admin)',
     'help.mute': '• !mute [id/name] — Mute chat or a player (Admin)',
-    'help.blacklist': '• !blacklist <id/name> [reason] — Add player to database blacklist (Owner)',
-    'help.clearbans': '• !clearbans — Clear all bans (Owner)',
+    'help.blacklist': '• !blacklist <id/name> [reason] — Add player to database blacklist (Admin)',
+    'help.clearbans': '• !clearbans — Clear all bans (Admin)',
   },
 };
 

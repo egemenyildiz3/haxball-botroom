@@ -20,9 +20,12 @@ services:
       - HAXBALL_LANGUAGE=${HAXBALL_LANGUAGE:-}
       - LANGUAGE=${LANGUAGE:-}
       - HAXBALL_ADMIN_PASSWORD=${HAXBALL_ADMIN_PASSWORD}
-      - CONFIG_ADMIN_CAN_BAN=${CONFIG_ADMIN_CAN_BAN:-1}
-      - CONFIG_ADMIN_CAN_GIVE_ADMIN=${CONFIG_ADMIN_CAN_GIVE_ADMIN:-0}
       - CONFIG_ALLOW_MULTIPLE_JOIN=${CONFIG_ALLOW_MULTIPLE_JOIN:-0}
+      - ROLE_OWNER_CAPABILITIES=${ROLE_OWNER_CAPABILITIES:-*}
+      - ROLE_ADMIN_CAPABILITIES=${ROLE_ADMIN_CAPABILITIES:-admin_chat,afk_exempt,auto,ban,blacklist,bot,clear_bans,duplicate_join_exempt,kick,mute,mute_exempt,native_admin}
+      - ROLE_MOD_CAPABILITIES=${ROLE_MOD_CAPABILITIES:-admin_chat,afk_exempt,auto,kick,mute,mute_exempt,native_admin}
+      - ROLE_VIP_CAPABILITIES=${ROLE_VIP_CAPABILITIES:-}
+      - ROLE_PLAYER_CAPABILITIES=${ROLE_PLAYER_CAPABILITIES:-}
       - TZ=${TZ:-Europe/Amsterdam}
       - HAXBALL_BOT_NAME=${HAXBALL_BOT_NAME:-SpaceBot}
       - HAXBALL_BOT_NAMES=${HAXBALL_BOT_NAMES:-Messi,Ronaldo,Neymar,Mbappe,Haaland,Zidane,Ronaldinho,Modric}

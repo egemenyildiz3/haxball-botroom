@@ -1,5 +1,6 @@
 const CHAT_COOLDOWN_MS = 3000;
 const CHAT_MAX_LENGTH = 60;
+const { hasCapability } = require('./roles');
 
 const PROFANITY_PATTERNS = [
   // Kisa / internet kufurleri
@@ -322,7 +323,7 @@ function isPrivileged(player, loggedInPlayers) {
   if (player && player.admin) return true;
 
   const userData = loggedInPlayers && loggedInPlayers.get(player.id);
-  return !!(userData && userData.isadmin === 1);
+  return hasCapability(userData, 'admin_chat') || hasCapability(userData, 'chat_filter_exempt');
 }
 
 function containsProfanity(text) {

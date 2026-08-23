@@ -118,8 +118,6 @@ async function startRoom() {
     leavingIntentions,
     getTimestamp,
     sleep,
-    CONFIG_ADMIN_CAN_BAN: config.adminRules.canBan ? 1 : 0,
-    CONFIG_ADMIN_CAN_GIVE_ADMIN: config.adminRules.canGiveAdmin ? 1 : 0,
     CONFIG_ALLOW_MULTIPLE_JOIN: config.adminRules.allowMultipleJoin ? 1 : 0,
     botManager,
     config,

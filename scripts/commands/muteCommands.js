@@ -1,5 +1,6 @@
 const { normalizeCmd } = require('../util');
 const { sendMsg, resolveTargetPlayer, candidateList } = require('./helpers');
+const { hasCapability } = require('../roles');
 
 const PLAYER_MUTE_MS = 10 * 60 * 1000;
 
@@ -27,7 +28,7 @@ function isGlobalMuteSub(sub) {
 }
 
 function routeMuteCommand(ctx) {
-  const { room, player, args, displayName, isSuperAdmin } = ctx;
+  const { room, player, args, displayName } = ctx;
   const t = ctx.t || ((key, vars = {}) => {
     const messages = {
       'mute.needAdmin': '❌ Sohbet kilidini sadece Admin değiştirebilir.',
@@ -38,7 +39,7 @@ function routeMuteCommand(ctx) {
   });
   if (ctx.commandKey !== 'mute') return null;
 
-  if (!player.admin && !isSuperAdmin) {
+  if (!player.admin && !(typeof ctx.hasCapability === 'function' && ctx.hasCapability('mute'))) {
     sendMsg(room, t('mute.needAdmin'), player.id, 0xFF5555, 'bold');
     return false;
   }
@@ -66,7 +67,7 @@ function routeMuteCommand(ctx) {
 }
 
 function muteTargetPlayer(ctx) {
-  const { room, player, args, playerAssignments, mutedPlayers, loggedInPlayers } = ctx;
+  const { room, player, args, playerAssignments, mutedPlayers, loggedInPlayers, roleCapabilities } = ctx;
   const t = ctx.t || ((key, vars = {}) => {
     const messages = {
       'mute.unavailable': '❌ Oyuncu susturma sistemi hazır değil.',
@@ -97,7 +98,7 @@ function muteTargetPlayer(ctx) {
   }
 
   const targetUserData = loggedInPlayers && loggedInPlayers.get(target.id);
-  if (target.admin || (targetUserData && targetUserData.isadmin === 1)) {
+  if (target.admin || hasCapability(targetUserData, 'mute_exempt', roleCapabilities)) {
     sendMsg(room, t('mute.adminProtected'), player.id, 0xFFCC00, 'bold');
     return false;
   }

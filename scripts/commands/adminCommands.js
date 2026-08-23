@@ -42,9 +42,9 @@ function routeAdminCommand(ctx) {
 }
 
 function handleClearBans(ctx) {
-  const { room, player, cleanedName, isSuperAdmin } = ctx;
+  const { room, player, cleanedName } = ctx;
   const t = ctx.t || fallbackT;
-  if (!isSuperAdmin) {
+  if (!(typeof ctx.hasCapability === 'function' && ctx.hasCapability('clear_bans'))) {
     sendMsg(room, t('common.founderOnly'), player.id, 0xFF5555, 'bold');
     return false;
   }
@@ -65,9 +65,9 @@ function handleClearBans(ctx) {
 }
 
 function handleBlacklist(ctx) {
-  const { room, player, args, cleanedName, isSuperAdmin, loggedInPlayers, playerAssignments, db, DB_FILE, persistDatabase, botManager } = ctx;
+  const { room, player, args, cleanedName, loggedInPlayers, playerAssignments, db, DB_FILE, persistDatabase, botManager } = ctx;
   const t = ctx.t || fallbackT;
-  if (!isSuperAdmin) {
+  if (!(typeof ctx.hasCapability === 'function' && ctx.hasCapability('blacklist'))) {
     sendMsg(room, t('common.founderOnly'), player.id, 0xFF5555, 'bold');
     return false;
   }
@@ -90,7 +90,7 @@ function handleBlacklist(ctx) {
   }
 
   const targetUserData = loggedInPlayers.get(target.id);
-  if (targetUserData && targetUserData.isadmin === 1) {
+  if (targetUserData && targetUserData.role === 'owner') {
     sendMsg(room, t('admin.blacklistFounderProtected'), player.id, 0xFF5555, 'bold');
     return false;
   }
@@ -141,15 +141,10 @@ function handleAdminPassword(ctx) {
 }
 
 function handleBan(ctx) {
-  const { room, player, args, isSuperAdmin, loggedInPlayers, playerAssignments, CONFIG_ADMIN_CAN_BAN, botManager } = ctx;
+  const { room, player, args, loggedInPlayers, playerAssignments, botManager } = ctx;
   const t = ctx.t || fallbackT;
-  if (!player.admin) {
+  if (!player.admin && !(typeof ctx.hasCapability === 'function' && ctx.hasCapability('ban'))) {
     sendMsg(room, t('admin.needAdmin'), player.id, 0xFF5555, 'bold');
-    return false;
-  }
-
-  if (Number(CONFIG_ADMIN_CAN_BAN) === 0 && !isSuperAdmin) {
-    sendMsg(room, t('admin.banDisabled'), player.id, 0xFF5555, 'bold');
     return false;
   }
 
@@ -171,7 +166,7 @@ function handleBan(ctx) {
   }
 
   const targetUserData = loggedInPlayers.get(target.id);
-  if (targetUserData && targetUserData.isadmin === 1) {
+  if (targetUserData && targetUserData.role === 'owner') {
     sendMsg(room, t('admin.banFounderProtected'), player.id, 0xFF5555, 'bold');
     return false;
   }
@@ -191,7 +186,7 @@ function handleBan(ctx) {
 function handleKick(ctx) {
   const { room, player, args, loggedInPlayers, playerAssignments } = ctx;
   const t = ctx.t || fallbackT;
-  if (!player.admin) {
+  if (!player.admin && !(typeof ctx.hasCapability === 'function' && ctx.hasCapability('kick'))) {
     sendMsg(room, t('admin.needAdmin'), player.id, 0xFF5555, 'bold');
     return false;
   }
@@ -209,7 +204,7 @@ function handleKick(ctx) {
   }
 
   const targetUserData = loggedInPlayers.get(target.id);
-  if (targetUserData && targetUserData.isadmin === 1) {
+  if (targetUserData && targetUserData.role === 'owner') {
     sendMsg(room, t('admin.kickFounderProtected'), player.id, 0xFF5555, 'bold');
     return false;
   }

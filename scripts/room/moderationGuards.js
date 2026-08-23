@@ -3,11 +3,12 @@ const { sendMsg } = require('../commands/helpers');
 const { restoreAutoManageIfNoAdmins } = require('./autoManager');
 const { rebalanceTeams } = require('./teamBalancer');
 const { isProtectedBotIdentity } = require('./botPolicy');
+const { hasCapability, isOwnerPlayer } = require('../roles');
 
 function handlePlayerKicked(room, state, kickedPlayer, reason, ban, byPlayer, deps, sanitizePlayer) {
   if (!byPlayer || byPlayer.id === 0) return;
 
-  const { loggedInPlayers, CONFIG_ADMIN_CAN_BAN, botManager, t = (key, vars = {}) => {
+  const { loggedInPlayers, config, botManager, t = (key, vars = {}) => {
     const messages = {
       'guard.botBanProtected': '🛡️ Bot oyuncular banlanamaz. Bot kaldırmak için !bot kapat veya !bot hepsi kullan.',
       'guard.ownerAttackPunished': `🛡️ ${vars.name}, Kurucuyu atmaya çalıştığı için cezalandırıldı!`,
@@ -36,7 +37,8 @@ function handlePlayerKicked(room, state, kickedPlayer, reason, ban, byPlayer, de
     return;
   }
 
-  const isOwnerKicked = loggedInPlayers.has(safeKicked.id) && loggedInPlayers.get(safeKicked.id).isadmin === 1;
+  const roleCapabilities = config && config.adminRules && config.adminRules.roleCapabilities;
+  const isOwnerKicked = isOwnerPlayer(safeKicked, loggedInPlayers);
 
   if (isOwnerKicked) {
     console.warn(`[SECURITY] ${byClean} (ID: ${safeBy.id}), Kurucu ${kickedClean}'ı atmaya çalıştı!`);
@@ -52,8 +54,9 @@ function handlePlayerKicked(room, state, kickedPlayer, reason, ban, byPlayer, de
     return;
   }
 
-  if (ban && Number(CONFIG_ADMIN_CAN_BAN) === 0) {
-    console.warn(`[SECURITY] ${byClean} ban atmaya çalıştı fakat CONFIG_ADMIN_CAN_BAN=0!`);
+  const byUser = loggedInPlayers && loggedInPlayers.get(safeBy.id);
+  if (ban && !hasCapability(byUser, 'ban', roleCapabilities)) {
+    console.warn(`[SECURITY] ${byClean} ban atmaya çalıştı fakat ban capability yok!`);
 
     try { room.clearBan(safeKicked.id); } catch (e) {}
 
@@ -76,19 +79,21 @@ function handlePlayerAdminChange(room, state, changedPlayer, byPlayer, deps, san
   if (state.isRebalancing) return;
   if (byPlayer && byPlayer.id === 0) return;
 
-  const { loggedInPlayers, CONFIG_ADMIN_CAN_GIVE_ADMIN, t = (key) => (
+  const { loggedInPlayers, config, t = (key) => (
     key === 'guard.adminGiveDisabled' ? '⚠️ Adminlerin başkasına yetki verme yetkisi kapalıdır!' : key
   ) } = deps;
   const safePlayer = sanitizePlayer(room, changedPlayer, state);
 
   if (byPlayer && safePlayer.admin) {
     const safeBy = sanitizePlayer(room, byPlayer, state);
+    const roleCapabilities = config && config.adminRules && config.adminRules.roleCapabilities;
 
-    if (Number(CONFIG_ADMIN_CAN_GIVE_ADMIN) === 0) {
-      const isBySuperAdmin = loggedInPlayers.has(safeBy.id) && loggedInPlayers.get(safeBy.id).isadmin === 1;
+    {
+      const byUser = loggedInPlayers.has(safeBy.id) ? loggedInPlayers.get(safeBy.id) : null;
+      const canGiveNativeAdmin = hasCapability(byUser, 'native_admin', roleCapabilities);
 
-      if (!isBySuperAdmin) {
-        console.warn(`[SECURITY] ${getCleanName(safeBy)} yetki vermeye çalıştı fakat CONFIG_ADMIN_CAN_GIVE_ADMIN=0!`);
+      if (!canGiveNativeAdmin) {
+        console.warn(`[SECURITY] ${getCleanName(safeBy)} yetki vermeye çalıştı fakat native_admin capability yok!`);
 
         try {
           room.setPlayerAdmin(safePlayer.id, false);
