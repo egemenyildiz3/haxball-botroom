@@ -1,9 +1,12 @@
 CONTAINER := haxball-headless
 DB_FILE := db/haxball-results.sqlite
-DB_BACKUP_DIR := /home/egemen/file-storage/haxball-botroom-db-backups
+FILE_STORAGE_DIR := /home/egemen/file-storage/haxball
+DB_BACKUP_DIR := $(FILE_STORAGE_DIR)/backups
+TOKEN_FILE := $(FILE_STORAGE_DIR)/spacebounce-botroom-token.txt
+CRON_LOG := $(DB_BACKUP_DIR)/cron.log
 BACKUP ?=
 
-.PHONY: help up down ps logs logs-f logs-backend logs-chat attach db-all db-users db-games db-visited_users db-istekler db-blacklist db-users-today db-visited_users-today db-ljungberg db-make-superadmin db-user-with-auth db-blacklist-player db-unblacklist-player db-backup db-backups db-restore
+.PHONY: help up down ps logs logs-f logs-backend logs-chat attach token-file-init cron-install-db-backup cron-show db-all db-users db-games db-visited_users db-istekler db-blacklist db-users-today db-visited_users-today db-ljungberg db-make-superadmin db-user-with-auth db-blacklist-player db-unblacklist-player db-backup db-backups db-restore
 
 help:
 	@echo "======================================================================"
@@ -20,6 +23,10 @@ help:
 	@echo "  make logs-backend  : Sadece [BACKEND-DB] veritabanı loglarını filtreler"
 	@echo "  make logs-chat     : Sadece [CHAT] loglarını filtreler"
 	@echo "  make attach        : Konteyner terminaline bağlanır"
+	@echo "----------------------------------------------------------------------"
+	@echo "  make token-file-init : .env içindeki tokenı file-storage token dosyasına yazar"
+	@echo "  make cron-install-db-backup : Her gün 12:00 DB backup cron satırını kurar/günceller"
+	@echo "  make cron-show     : Mevcut crontab kayıtlarını gösterir"
 	@echo "----------------------------------------------------------------------"
 	@echo "  make db-all        : SQLite tablolarını listeler"
 	@echo "  make db-users      : 'users' tablosundaki tüm kayıtları listeler"
@@ -67,6 +74,30 @@ logs-chat:
 
 attach:
 	docker attach haxball-headless
+
+# --- Operasyon / Token / Cron ---
+
+token-file-init:
+	@set -e; \
+	mkdir -p "$(FILE_STORAGE_DIR)"; \
+	token=$$(awk -F= '/^HAXBALL_TOKEN=/{print substr($$0, index($$0, "=") + 1)}' .env 2>/dev/null | tail -1 | sed 's/^"//; s/"$$//; s/^'\''//; s/'\''$$//'); \
+	if [ -z "$$token" ]; then echo "⚠️ HATA: .env içinde HAXBALL_TOKEN bulunamadı."; exit 1; fi; \
+	printf "%s\n" "$$token" > "$(TOKEN_FILE)"; \
+	chmod 600 "$(TOKEN_FILE)"; \
+	echo "✅ Token dosyası hazırlandı: $(TOKEN_FILE)"
+
+cron-install-db-backup:
+	@set -e; \
+	mkdir -p "$(DB_BACKUP_DIR)"; \
+	tmp=$$(mktemp); \
+	crontab -l 2>/dev/null | grep -v 'haxball-botroom.*make db-backup' > "$$tmp" || true; \
+	printf '%s\n' '0 12 * * * cd /home/egemen/homelab/haxball-botroom && /usr/bin/make db-backup >> $(CRON_LOG) 2>&1' >> "$$tmp"; \
+	crontab "$$tmp"; \
+	rm -f "$$tmp"; \
+	echo "✅ DB backup cron kuruldu: her gün 12:00 -> $(DB_BACKUP_DIR)"
+
+cron-show:
+	@crontab -l
 
 # --- SQLite Veritabanı Komutları ---
 

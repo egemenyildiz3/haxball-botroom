@@ -11,15 +11,34 @@ const { createTranslator } = require('./i18n');
 
 const MAP_FILE = path.join(__dirname, '..', 'maps', 'Spacebounce.hbs');
 const DB_FILE = path.join(__dirname, '..', 'db', 'haxball-results.sqlite');
-const TOKEN = process.env.HAXBALL_TOKEN;
+const DEFAULT_TOKEN_FILE = '/run/haxball/spacebounce-botroom-token.txt';
+
+function readToken() {
+  const envToken = String(process.env.HAXBALL_TOKEN || '').trim();
+  if (envToken) return envToken;
+
+  const tokenFile = String(process.env.HAXBALL_TOKEN_FILE || DEFAULT_TOKEN_FILE).trim();
+  if (!tokenFile) return '';
+
+  try {
+    return fs.readFileSync(tokenFile, 'utf8').trim();
+  } catch (err) {
+    if (err && err.code !== 'ENOENT') {
+      console.warn(`HAXBALL_TOKEN_FILE okunamadı (${tokenFile}): ${err.message}`);
+    }
+    return '';
+  }
+}
+
+const TOKEN = readToken();
 const t = createTranslator(config.room.language);
 
 let SQL = null;
 let db = null;
 
 if (!TOKEN) {
-  console.error('HAXBALL_TOKEN çevre değişkeni bulunamadı.');
-  console.error('Lütfen botu başlatmadan önce HAXBALL_TOKEN değişkenini tanımlayın.');
+  console.error('HAXBALL_TOKEN bulunamadı.');
+  console.error(`Lütfen HAXBALL_TOKEN env değişkenini veya HAXBALL_TOKEN_FILE dosyasını tanımlayın. Varsayılan dosya: ${DEFAULT_TOKEN_FILE}`);
   process.exit(1);
 }
 

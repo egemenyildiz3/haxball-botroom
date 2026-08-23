@@ -9,6 +9,7 @@ services:
     working_dir: /usr/src/app
     environment:
       - HAXBALL_TOKEN=${HAXBALL_TOKEN}
+      - HAXBALL_TOKEN_FILE=${HAXBALL_TOKEN_FILE:-/run/haxball/spacebounce-botroom-token.txt}
       - HAXBALL_ROOM_NAME=${HAXBALL_ROOM_NAME}
       - HAXBALL_MAX_PLAYERS=${HAXBALL_MAX_PLAYERS:-16}
       - HAXBALL_SCORE_LIMIT=${HAXBALL_SCORE_LIMIT:-3}
@@ -53,4 +54,5 @@ services:
     volumes:
       - ./db:/usr/src/app/db
       - ./maps:/usr/src/app/maps
+      - /home/egemen/file-storage/haxball:/run/haxball:ro
     command: npm start
