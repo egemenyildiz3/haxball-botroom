@@ -12,6 +12,35 @@ function persistDatabase(db, DB_FILE) {
   fs.writeFileSync(DB_FILE, Buffer.from(db.export()));
 }
 
+function tableColumns(db, tableName) {
+  const stmt = db.prepare(`PRAGMA table_info(${tableName})`);
+  const columns = new Set();
+  while (stmt.step()) {
+    const row = stmt.getAsObject();
+    if (row && row.name) columns.add(String(row.name));
+  }
+  stmt.free();
+  return columns;
+}
+
+function ensureRoleColumn(db) {
+  const columns = tableColumns(db, 'users');
+  if (columns.has('role')) return;
+
+  db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'player';");
+
+  if (columns.has('isadmin')) {
+    db.exec(`
+      UPDATE users
+      SET role = CASE
+        WHEN LOWER(TRIM(username)) IN ('loréx', 'ljungberg') THEN 'owner'
+        WHEN isadmin = 1 THEN 'admin'
+        ELSE 'player'
+      END
+    `);
+  }
+}
+
 function initDatabase(db) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS games (
@@ -72,6 +101,9 @@ function initDatabase(db) {
       WHERE username IS NOT NULL AND TRIM(username) != '';
     CREATE INDEX IF NOT EXISTS idx_istekler_player_uid ON istekler(player_uid);
   `);
+
+  ensureRoleColumn(db);
+
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_users_player_uid ON users(player_uid);
     CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
