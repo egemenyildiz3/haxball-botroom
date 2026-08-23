@@ -1,4 +1,5 @@
 const { sendMsg } = require('./helpers');
+const { getOrCreatePlayerUid } = require('../db');
 
 function handleAutoLogin(room, player, { db, DB_FILE, loggedInPlayers, persistDatabase }) {
   if (!player || typeof player.id === 'undefined') return;
@@ -9,7 +10,7 @@ function handleAutoLogin(room, player, { db, DB_FILE, loggedInPlayers, persistDa
   console.log(`[BACKEND-DB] AutoLogin sorgusu başlatıldı -> Kullanıcı: "${cleanedName}" | Token: "${playerToken || 'YOK'}"`);
 
   try {
-    const stmt = db.prepare('SELECT username, password, auth_key, isadmin FROM users WHERE username = ?');
+    const stmt = db.prepare('SELECT username, password, auth_key, isadmin, player_uid FROM users WHERE username = ?');
     stmt.bind([cleanedName]);
 
     if (stmt.step()) {
@@ -17,13 +18,18 @@ function handleAutoLogin(room, player, { db, DB_FILE, loggedInPlayers, persistDa
       const dbAuth = row.auth_key || '';
 
       if ((playerToken && dbAuth && playerToken === dbAuth) || dbAuth === '' || !dbAuth) {
-        loggedInPlayers.set(player.id, { username: cleanedName, isadmin: row.isadmin });
+        const playerUid = row.player_uid || getOrCreatePlayerUid(db, cleanedName, playerToken);
+        loggedInPlayers.set(player.id, { username: cleanedName, isadmin: row.isadmin, player_uid: playerUid });
 
         if (playerToken && playerToken !== dbAuth) {
           console.log(`[BACKEND-DB] Auth Key güncellemesi yapılıyor -> Kullanıcı: "${cleanedName}" | Yeni Token: "${playerToken}"`);
-          db.run('UPDATE users SET auth_key = ? WHERE username = ?', [playerToken, cleanedName]);
+          db.run('UPDATE users SET auth_key = ?, player_uid = COALESCE(NULLIF(player_uid, \'\'), ?) WHERE username = ?', [playerToken, playerUid, cleanedName]);
           persistDatabase(db, DB_FILE);
           console.log(`[BACKEND-DB] Auth Key veritabanına başarıyla işlendi -> "${cleanedName}"`);
+        } else if (!row.player_uid) {
+          db.run('UPDATE users SET player_uid = ? WHERE username = ?', [playerUid, cleanedName]);
+          persistDatabase(db, DB_FILE);
+          console.log(`[BACKEND-DB] Player UID veritabanına başarıyla işlendi -> "${cleanedName}" | UID: ${playerUid}`);
         } else {
           console.log(`[BACKEND-DB] Otomatik giriş doğrulandı -> Kullanıcı: "${cleanedName}"`);
         }
@@ -165,15 +171,16 @@ function handleRegister(ctx) {
     } else {
       stmt.free();
       const playerIp = player.ip || '';
+      const playerUid = getOrCreatePlayerUid(db, cleanedName, playerToken);
       console.log(`[BACKEND-DB] Yeni kullanıcı ekleniyor -> Kullanıcı: "${cleanedName}" | Token: "${playerToken}"`);
 
       db.run(
-        'INSERT INTO users (username, password, auth_key, registered_at, last_ip, isadmin, goals, assists, wins, losses) VALUES (?, ?, ?, ?, ?, 0, 0, 0, 0, 0)',
-        [cleanedName, password, playerToken, new Date().toISOString(), playerIp]
+        'INSERT INTO users (username, player_uid, password, auth_key, isadmin, registered_at, last_ip, goals, assists, wins, losses) VALUES (?, ?, ?, ?, 0, ?, ?, 0, 0, 0, 0)',
+        [cleanedName, playerUid, password, playerToken, new Date().toISOString(), playerIp]
       );
 
       persistDatabase(db, DB_FILE);
-      loggedInPlayers.set(player.id, { username: cleanedName, isadmin: 0 });
+      loggedInPlayers.set(player.id, { username: cleanedName, isadmin: 0, player_uid: playerUid });
 
       console.log(`[BACKEND-DB] Yeni kullanıcı başarıyla kaydedildi ve dosyaya yazıldı -> "${cleanedName}"`);
       sendMsg(room, `🎉 Hesabınız oluşturuldu ve giriş yapıldı!`, player.id, 0x00FF7F, 'bold');
@@ -200,17 +207,18 @@ function handleLogin(ctx) {
 
   try {
     console.log(`[BACKEND-DB] Manuel giriş kontrolü -> Kullanıcı: "${cleanedName}"`);
-    const stmt = db.prepare('SELECT password, isadmin FROM users WHERE username = ?');
+    const stmt = db.prepare('SELECT password, isadmin, player_uid FROM users WHERE username = ?');
     stmt.bind([cleanedName]);
 
     if (stmt.step()) {
       const row = stmt.getAsObject();
       if (row.password === password) {
+        const playerUid = row.player_uid || getOrCreatePlayerUid(db, cleanedName, playerToken);
         console.log(`[BACKEND-DB] Şifre doğru. Auth key güncelleniyor -> "${cleanedName}"`);
-        db.run('UPDATE users SET auth_key = ? WHERE username = ?', [playerToken || null, cleanedName]);
+        db.run('UPDATE users SET auth_key = ?, player_uid = COALESCE(NULLIF(player_uid, \'\'), ?) WHERE username = ?', [playerToken || null, playerUid, cleanedName]);
         persistDatabase(db, DB_FILE);
 
-        loggedInPlayers.set(player.id, { username: cleanedName, isadmin: row.isadmin });
+        loggedInPlayers.set(player.id, { username: cleanedName, isadmin: row.isadmin, player_uid: playerUid });
 
         if (row.isadmin === 1 && typeof room.setPlayerAdmin === 'function') {
           room.setPlayerAdmin(player.id, true);

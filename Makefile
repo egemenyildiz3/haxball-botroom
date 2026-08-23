@@ -128,7 +128,7 @@ db-istekler:
 		const initSqlJs = require('sql.js'); \
 		initSqlJs().then(SQL => { \
 			const db = new SQL.Database(fs.readFileSync('./db/haxball-results.sqlite')); \
-			const stmt = db.prepare('SELECT rowid, username, aciklama, date FROM istekler'); \
+			const stmt = db.prepare('SELECT rowid, username, player_uid, aciklama, date FROM istekler'); \
 			const rows = []; \
 			while (stmt.step()) rows.push(stmt.getAsObject()); \
 			stmt.free(); \
@@ -237,6 +237,10 @@ db-blacklist-player:
 			let targetAuth = "$(AUTH)".trim(); \
 			let reason = "$(REASON)".trim(); \
 			let ip = ""; \
+			const scalar = (query, params) => { const stmt = db.prepare(query); stmt.bind(params); const value = stmt.step() ? Object.values(stmt.getAsObject())[0] : ""; stmt.free(); return value || ""; }; \
+			const uidExists = (uid) => scalar("SELECT 1 FROM (SELECT player_uid FROM users UNION ALL SELECT player_uid FROM visited_users UNION ALL SELECT player_uid FROM blacklisted_users UNION ALL SELECT player_uid FROM istekler) WHERE player_uid = ? LIMIT 1", [uid]); \
+			const makeUid = () => { for (let i = 0; i < 10000; i++) { const uid = String(100000000 + Math.floor(Math.random() * 900000000)); if (!uidExists(uid)) return uid; } throw new Error("Unique player_uid üretilemedi"); }; \
+			const findUid = (username) => { if (!username) return ""; return scalar("SELECT player_uid FROM visited_users WHERE LOWER(TRIM(username)) = LOWER(TRIM(?)) AND player_uid IS NOT NULL AND TRIM(player_uid) != \"\" LIMIT 1", [username]) || scalar("SELECT player_uid FROM users WHERE LOWER(TRIM(username)) = LOWER(TRIM(?)) AND player_uid IS NOT NULL AND TRIM(player_uid) != \"\" LIMIT 1", [username]) || scalar("SELECT player_uid FROM istekler WHERE LOWER(TRIM(username)) = LOWER(TRIM(?)) AND player_uid IS NOT NULL AND TRIM(player_uid) != \"\" LIMIT 1", [username]) || ""; }; \
 			if (!targetAuth && targetUser) { \
 				const stmtV = db.prepare("SELECT auth_key FROM visited_users WHERE LOWER(username) = LOWER(?) AND auth_key IS NOT NULL AND auth_key != \"\""); \
 				stmtV.bind([targetUser]); \
@@ -257,17 +261,18 @@ db-blacklist-player:
 				console.log("⚠️ HATA: Username veya Auth Key belirtilmedi!"); \
 				return; \
 			} \
-			const exists = db.prepare("SELECT 1 FROM blacklisted_users WHERE username IS NOT NULL AND TRIM(username) != \"\" AND LOWER(TRIM(username)) = LOWER(TRIM(?)) LIMIT 1"); \
-			exists.bind([targetUser]); \
+			const targetUid = findUid(targetUser) || makeUid(); \
+			const exists = db.prepare("SELECT 1 FROM blacklisted_users WHERE (username IS NOT NULL AND TRIM(username) != \"\" AND LOWER(TRIM(username)) = LOWER(TRIM(?))) OR (player_uid = ? AND player_uid IS NOT NULL AND TRIM(player_uid) != \"\") OR (auth_key = ? AND auth_key IS NOT NULL AND TRIM(auth_key) != \"\") LIMIT 1"); \
+			exists.bind([targetUser, targetUid, targetAuth]); \
 			const already = exists.step(); \
 			exists.free(); \
 			if (already) { \
 				console.log("ℹ️ Bu oyuncu zaten karalistede -> Kullanıcı: \"" + targetUser + "\""); \
 				return; \
 			} \
-			db.run("INSERT INTO blacklisted_users (username, auth_key, ip, reason, banned_at) VALUES (?, ?, ?, ?, ?)", [targetUser, targetAuth, ip, reason, new Date().toISOString()]); \
+			db.run("INSERT INTO blacklisted_users (username, player_uid, auth_key, ip, reason, banned_at) VALUES (?, ?, ?, ?, ?, ?)", [targetUser, targetUid, targetAuth, ip, reason, new Date().toISOString()]); \
 			fs.writeFileSync(dbPath, Buffer.from(db.export())); \
-			console.log("🚫 Blacklist Eklendi -> Kullanıcı: \"" + targetUser + "\" | Auth: \"" + targetAuth + "\" | Sebep: \"" + reason + "\""); \
+			console.log("🚫 Blacklist Eklendi -> Kullanıcı: \"" + targetUser + "\" | UID: \"" + targetUid + "\" | Auth: \"" + targetAuth + "\" | Sebep: \"" + reason + "\""); \
 		});'
 
 db-unblacklist-player: # USERNAME=player1
@@ -284,24 +289,29 @@ db-unblacklist-player: # USERNAME=player1
 				return; \
 			} \
 			const auths = new Set(); \
+			const uids = new Set(); \
 			for (const query of [ \
-				"SELECT auth_key FROM visited_users WHERE LOWER(username) = LOWER(?) AND auth_key IS NOT NULL AND auth_key != \"\"", \
-				"SELECT auth_key FROM users WHERE LOWER(username) = LOWER(?) AND auth_key IS NOT NULL AND auth_key != \"\"" \
+				"SELECT auth_key, player_uid FROM visited_users WHERE LOWER(username) = LOWER(?)", \
+				"SELECT auth_key, player_uid FROM users WHERE LOWER(username) = LOWER(?)", \
+				"SELECT auth_key, player_uid FROM blacklisted_users WHERE LOWER(username) = LOWER(?)", \
+				"SELECT \"\" AS auth_key, player_uid FROM istekler WHERE LOWER(username) = LOWER(?)" \
 			]) { \
 				const stmt = db.prepare(query); \
 				stmt.bind([targetUser]); \
-				while (stmt.step()) auths.add(stmt.getAsObject().auth_key || ""); \
+				while (stmt.step()) { const row = stmt.getAsObject(); if (row.auth_key) auths.add(row.auth_key); if (row.player_uid) uids.add(row.player_uid); } \
 				stmt.free(); \
 			} \
 			const authParams = Array.from(auths); \
+			const uidParams = Array.from(uids); \
 			const authSql = authParams.length ? " OR auth_key IN (" + authParams.map(() => "?").join(",") + ")" : ""; \
-			const params = [targetUser, ...authParams]; \
-			const countStmt = db.prepare("SELECT COUNT(*) AS count FROM blacklisted_users WHERE LOWER(username) = LOWER(?)" + authSql); \
+			const uidSql = uidParams.length ? " OR player_uid IN (" + uidParams.map(() => "?").join(",") + ")" : ""; \
+			const params = [targetUser, ...authParams, ...uidParams]; \
+			const countStmt = db.prepare("SELECT COUNT(*) AS count FROM blacklisted_users WHERE LOWER(username) = LOWER(?)" + authSql + uidSql); \
 			countStmt.bind(params); \
 			countStmt.step(); \
 			const before = countStmt.getAsObject().count || 0; \
 			countStmt.free(); \
-			db.run("DELETE FROM blacklisted_users WHERE LOWER(username) = LOWER(?)" + authSql, params); \
+			db.run("DELETE FROM blacklisted_users WHERE LOWER(username) = LOWER(?)" + authSql + uidSql, params); \
 			fs.writeFileSync(dbPath, Buffer.from(db.export())); \
 			console.log("✅ Blacklist kaldırıldı -> Kullanıcı: \"" + targetUser + "\" | Silinen kayıt: " + before); \
 		});'
@@ -317,20 +327,7 @@ db-backup:
 	backup="$(DB_BACKUP_DIR)/haxball-results-$$ts.sqlite"; \
 	tmp="$$backup.tmp"; \
 	cp -p "$(DB_FILE)" "$$tmp"; \
-	node -e '\
-		const fs = require("fs"); \
-		const initSqlJs = require("sql.js"); \
-		const file = process.argv[1]; \
-		initSqlJs() \
-			.then(SQL => { \
-				const db = new SQL.Database(fs.readFileSync(file)); \
-				db.exec("SELECT name FROM sqlite_master LIMIT 1"); \
-				db.close(); \
-			}) \
-			.catch((err) => { \
-				console.error("⚠️ Backup doğrulaması başarısız:", err.message); \
-				process.exit(1); \
-			});' "$$tmp"; \
+	node -e 'const fs = require("fs"); const initSqlJs = require("sql.js"); const file = process.argv[1]; initSqlJs().then(SQL => { const db = new SQL.Database(fs.readFileSync(file)); db.exec("SELECT name FROM sqlite_master LIMIT 1"); db.close(); }).catch((err) => { console.error("⚠️ Backup doğrulaması başarısız:", err.message); process.exit(1); });' "$$tmp"; \
 	mv "$$tmp" "$$backup"; \
 	echo "✅ DB backup alındı: $$backup"
 
@@ -342,20 +339,7 @@ db-restore:
 	@if [ -z "$(BACKUP)" ]; then echo "⚠️ HATA: BACKUP belirtilmedi! Örnek: make db-restore BACKUP='$(DB_BACKUP_DIR)/haxball-results-YYYYMMDD-HHMMSS.sqlite'"; exit 1; fi
 	@if [ ! -f "$(BACKUP)" ]; then echo "⚠️ HATA: Backup bulunamadı: $(BACKUP)"; exit 1; fi
 	@if docker inspect -f '{{.State.Running}}' $(CONTAINER) 2>/dev/null | grep -q true; then echo "⚠️ HATA: Container çalışırken restore yapılmadı. Önce odayı bilinçli şekilde durdur."; exit 1; fi
-	@node -e '\
-		const fs = require("fs"); \
-		const initSqlJs = require("sql.js"); \
-		const file = process.argv[1]; \
-		initSqlJs() \
-			.then(SQL => { \
-				const db = new SQL.Database(fs.readFileSync(file)); \
-				db.exec("SELECT name FROM sqlite_master LIMIT 1"); \
-				db.close(); \
-			}) \
-			.catch((err) => { \
-				console.error("⚠️ Backup doğrulaması başarısız:", err.message); \
-				process.exit(1); \
-			});' "$(BACKUP)"
+	@node -e 'const fs = require("fs"); const initSqlJs = require("sql.js"); const file = process.argv[1]; initSqlJs().then(SQL => { const db = new SQL.Database(fs.readFileSync(file)); db.exec("SELECT name FROM sqlite_master LIMIT 1"); db.close(); }).catch((err) => { console.error("⚠️ Backup doğrulaması başarısız:", err.message); process.exit(1); });' "$(BACKUP)"
 	@mkdir -p "$(dir $(DB_FILE))"
 	@cp -p "$(BACKUP)" "$(DB_FILE)"
 	@echo "✅ DB restore edildi: $(BACKUP) -> $(DB_FILE)"

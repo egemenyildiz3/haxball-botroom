@@ -1,6 +1,6 @@
 const { sendMsg, resolveTargetPlayer, candidateList } = require('./helpers');
 const { isProtectedBotIdentity } = require('../room/botPolicy');
-const { isUsernameBlacklisted } = require('../db');
+const { getOrCreatePlayerUid, isUserBlacklisted } = require('../db');
 
 function routeAdminCommand(ctx) {
   const { command } = ctx;
@@ -70,14 +70,15 @@ function handleBlacklist(ctx) {
   const targetIp = target.ip || '';
 
   try {
-    if (isUsernameBlacklisted(db, targetCleanName)) {
+    if (isUserBlacklisted(db, targetCleanName, targetAuth)) {
       sendMsg(room, `ℹ️ ${targetCleanName} zaten karalistede.`, player.id, 0xFFCC00, 'bold');
       return false;
     }
 
+    const targetPlayerUid = getOrCreatePlayerUid(db, targetCleanName, targetAuth);
     db.run(
-      'INSERT INTO blacklisted_users (username, auth_key, ip, reason, banned_at) VALUES (?, ?, ?, ?, ?)',
-      [targetCleanName, targetAuth, targetIp, banReason, new Date().toISOString()]
+      'INSERT INTO blacklisted_users (username, player_uid, auth_key, ip, reason, banned_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [targetCleanName, targetPlayerUid, targetAuth, targetIp, banReason, new Date().toISOString()]
     );
     persistDatabase(db, DB_FILE);
 

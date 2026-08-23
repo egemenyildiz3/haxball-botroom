@@ -1,22 +1,19 @@
 const fs = require('fs');
 
+const PLAYER_UID_MIN = 100000000;
+const PLAYER_UID_MAX = 999999999;
+
 function loadOrCreateDatabase(SQL, DB_FILE) {
-  if (fs.existsSync(DB_FILE)) {
-    const fileContents = fs.readFileSync(DB_FILE);
-    return new SQL.Database(new Uint8Array(fileContents));
-  }
-  return new SQL.Database();
+  if (!fs.existsSync(DB_FILE)) return new SQL.Database();
+  return new SQL.Database(new Uint8Array(fs.readFileSync(DB_FILE)));
 }
 
 function persistDatabase(db, DB_FILE) {
-  const data = db.export();
-  fs.writeFileSync(DB_FILE, Buffer.from(data));
+  fs.writeFileSync(DB_FILE, Buffer.from(db.export()));
 }
 
 function initDatabase(db) {
   db.exec(`
-    DROP TABLE IF EXISTS game_players;
-
     CREATE TABLE IF NOT EXISTS games (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       started_at TEXT NOT NULL,
@@ -30,20 +27,31 @@ function initDatabase(db) {
 
     CREATE TABLE IF NOT EXISTS users (
       username TEXT PRIMARY KEY,
+      player_uid TEXT NOT NULL,
       password TEXT NOT NULL,
+      auth_key TEXT,
       isadmin INTEGER DEFAULT 0,
-      last_visited_at TEXT
+      registered_at TEXT,
+      last_ip TEXT,
+      last_visited_at TEXT,
+      goals INTEGER DEFAULT 0,
+      assists INTEGER DEFAULT 0,
+      wins INTEGER DEFAULT 0,
+      losses INTEGER DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS visited_users (
       username TEXT PRIMARY KEY,
+      player_uid TEXT NOT NULL UNIQUE,
       auth_key TEXT,
       first_visited_at TEXT NOT NULL,
       last_visited_at TEXT
     );
 
     CREATE TABLE IF NOT EXISTS blacklisted_users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT,
+      player_uid TEXT NOT NULL,
       auth_key TEXT,
       ip TEXT,
       reason TEXT,
@@ -52,141 +60,126 @@ function initDatabase(db) {
 
     CREATE TABLE IF NOT EXISTS istekler (
       username TEXT NOT NULL,
+      player_uid TEXT NOT NULL,
       aciklama TEXT NOT NULL,
       date TEXT NOT NULL
     );
-  `);
 
-  // Existing Alter Table Migrations
-  try { db.exec('ALTER TABLE users ADD COLUMN auth_key TEXT'); } catch (e) {}
-  try { db.exec('ALTER TABLE users ADD COLUMN registered_at TEXT'); } catch (e) {}
-  try { db.exec('ALTER TABLE users ADD COLUMN last_ip TEXT'); } catch (e) {}
-  try { db.exec('ALTER TABLE users ADD COLUMN isadmin INTEGER DEFAULT 0'); } catch (e) {}
-
-  // visited_users & last_visited_at Migrations
-  try { db.exec('ALTER TABLE users ADD COLUMN last_visited_at TEXT'); } catch (e) {}
-  try { db.exec('ALTER TABLE visited_users ADD COLUMN last_visited_at TEXT'); } catch (e) {}
-  try { db.exec('ALTER TABLE visited_users ADD COLUMN auth_key TEXT'); } catch (e) {}
-
-  // İstatistik Sütunları
-  try { db.exec('ALTER TABLE users ADD COLUMN goals INTEGER DEFAULT 0'); } catch (e) {}
-  try { db.exec('ALTER TABLE users ADD COLUMN assists INTEGER DEFAULT 0'); } catch (e) {}
-  try { db.exec('ALTER TABLE users ADD COLUMN wins INTEGER DEFAULT 0'); } catch (e) {}
-  try { db.exec('ALTER TABLE users ADD COLUMN losses INTEGER DEFAULT 0'); } catch (e) {}
-
-  migrateIsteklerDropIndexColumn(db);
-  migrateBlacklistedUsersIdempotent(db);
-}
-
-function tableColumns(db, tableName) {
-  const stmt = db.prepare(`PRAGMA table_info(${tableName})`);
-  const columns = [];
-  while (stmt.step()) columns.push(stmt.getAsObject().name);
-  stmt.free();
-  return columns;
-}
-
-function migrateIsteklerDropIndexColumn(db) {
-  try {
-    if (!tableColumns(db, 'istekler').includes('index')) return;
-
-    db.exec(`
-      BEGIN;
-      CREATE TABLE istekler_new (
-        username TEXT NOT NULL,
-        aciklama TEXT NOT NULL,
-        date TEXT NOT NULL
-      );
-      INSERT INTO istekler_new (username, aciklama, date)
-      SELECT username, aciklama, date FROM istekler ORDER BY "index";
-      DROP TABLE istekler;
-      ALTER TABLE istekler_new RENAME TO istekler;
-      COMMIT;
-    `);
-  } catch (err) {
-    try { db.exec('ROLLBACK'); } catch (e) {}
-    console.warn('[BACKEND-DB] istekler index kolon migrasyonu başarısız:', err.message);
-  }
-}
-
-function migrateBlacklistedUsersIdempotent(db) {
-  try { db.exec('ALTER TABLE blacklisted_users ADD COLUMN ip TEXT'); } catch (e) {}
-  try { db.exec('ALTER TABLE blacklisted_users ADD COLUMN reason TEXT'); } catch (e) {}
-  try { db.exec('ALTER TABLE blacklisted_users ADD COLUMN banned_at TEXT'); } catch (e) {}
-
-  try {
-    db.exec(`
-      DELETE FROM blacklisted_users
-      WHERE rowid NOT IN (
-        SELECT MIN(rowid)
-        FROM blacklisted_users
-        WHERE username IS NOT NULL AND TRIM(username) != ''
-        GROUP BY LOWER(TRIM(username))
-      )
-      AND username IS NOT NULL
-      AND TRIM(username) != '';
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_blacklisted_users_username_unique
+    CREATE INDEX IF NOT EXISTS idx_users_player_uid ON users(player_uid);
+    CREATE INDEX IF NOT EXISTS idx_blacklisted_users_player_uid ON blacklisted_users(player_uid);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_blacklisted_users_username_unique
       ON blacklisted_users(LOWER(TRIM(username)))
       WHERE username IS NOT NULL AND TRIM(username) != '';
-    `);
-  } catch (err) {
-    console.warn('[BACKEND-DB] blacklist unique username migrasyonu başarısız:', err.message);
-  }
+    CREATE INDEX IF NOT EXISTS idx_istekler_player_uid ON istekler(player_uid);
+  `);
 }
 
-function isUsernameBlacklisted(db, username) {
-  if (!username) return false;
+function scalar(db, query, params = []) {
+  const stmt = db.prepare(query);
+  stmt.bind(params);
+  let value = null;
+  if (stmt.step()) {
+    const row = stmt.getAsObject();
+    value = row[Object.keys(row)[0]];
+  }
+  stmt.free();
+  return value || null;
+}
 
-  try {
-    const stmt = db.prepare(`
-      SELECT 1 FROM blacklisted_users
-      WHERE username IS NOT NULL
-        AND TRIM(username) != ''
-        AND LOWER(TRIM(username)) = LOWER(TRIM(?))
+function randomPlayerUid() {
+  return String(PLAYER_UID_MIN + Math.floor(Math.random() * (PLAYER_UID_MAX - PLAYER_UID_MIN + 1)));
+}
+
+function playerUidExists(db, playerUid) {
+  if (!playerUid) return false;
+
+  return !!scalar(db, `
+    SELECT 1 FROM (
+      SELECT player_uid FROM visited_users
+      UNION ALL SELECT player_uid FROM users
+      UNION ALL SELECT player_uid FROM blacklisted_users
+      UNION ALL SELECT player_uid FROM istekler
+    )
+    WHERE player_uid = ?
+    LIMIT 1
+  `, [playerUid]);
+}
+
+function generateUniquePlayerUid(db) {
+  for (let attempt = 0; attempt < 1000; attempt++) {
+    const candidate = randomPlayerUid();
+    if (!playerUidExists(db, candidate)) return candidate;
+  }
+
+  throw new Error('Unique player_uid üretilemedi.');
+}
+
+function findPlayerUid(db, username, authKey = '') {
+  const cleanUsername = String(username || '').trim();
+  const cleanAuth = String(authKey || '').trim();
+
+  if (cleanUsername) {
+    const found = scalar(db, `
+      SELECT player_uid FROM (
+        SELECT username, player_uid FROM visited_users
+        UNION ALL SELECT username, player_uid FROM users
+        UNION ALL SELECT username, player_uid FROM blacklisted_users
+        UNION ALL SELECT username, player_uid FROM istekler
+      )
+      WHERE LOWER(TRIM(username)) = LOWER(TRIM(?))
+        AND player_uid IS NOT NULL
+        AND TRIM(player_uid) != ''
       LIMIT 1
-    `);
-    stmt.bind([username]);
-    const found = stmt.step();
-    stmt.free();
-    return found;
-  } catch (err) {
-    console.warn('[BACKEND-DB] Username blacklist kontrolü hatası:', err.message);
-    return false;
+    `, [cleanUsername]);
+    if (found) return String(found);
   }
+
+  if (!cleanUsername && cleanAuth) {
+    const found = scalar(db, `
+      SELECT player_uid FROM (
+        SELECT auth_key, player_uid FROM visited_users
+        UNION ALL SELECT auth_key, player_uid FROM users
+        UNION ALL SELECT auth_key, player_uid FROM blacklisted_users
+      )
+      WHERE auth_key = ?
+        AND player_uid IS NOT NULL
+        AND TRIM(player_uid) != ''
+      LIMIT 1
+    `, [cleanAuth]);
+    if (found) return String(found);
+  }
+
+  return null;
 }
 
-/**
- * Kullanıcının karalistede (blacklisted_users) olup olmadığını kontrol eder.
- */
+function getOrCreatePlayerUid(db, username, authKey = '') {
+  return findPlayerUid(db, username, authKey) || generateUniquePlayerUid(db);
+}
+
 function isUserBlacklisted(db, username, authKey) {
   if (!username && !authKey) return false;
 
   try {
+    const playerUid = findPlayerUid(db, username, authKey);
     const stmt = db.prepare(`
       SELECT 1 FROM blacklisted_users
-      WHERE (username = ? AND username != '')
+      WHERE (player_uid = ? AND player_uid IS NOT NULL AND TRIM(player_uid) != '')
+         OR (username IS NOT NULL AND TRIM(username) != '' AND LOWER(TRIM(username)) = LOWER(TRIM(?)))
          OR (auth_key = ? AND auth_key != '')
       LIMIT 1
     `);
-
-    stmt.bind([username || '', authKey || '']);
-    const isBlacklisted = stmt.step();
+    stmt.bind([playerUid || '', username || '', authKey || '']);
+    const found = stmt.step();
     stmt.free();
-
-    return isBlacklisted;
+    return found;
   } catch (err) {
     console.warn('[BACKEND-DB] Blacklist kontrolü hatası:', err.message);
     return false;
   }
 }
 
-/**
- * Odaya giren kullanıcıları visited_users ve users tablolarına kaydeder/günceller.
- */
 function logVisitedUser(db, DB_FILE, username, authKey, persistFn) {
   if (!username) return;
-
-  // Parametrelerin kayması ihtimaline karşı persistFn kontrolü
   if (typeof authKey === 'function') {
     persistFn = authKey;
     authKey = '';
@@ -194,26 +187,28 @@ function logVisitedUser(db, DB_FILE, username, authKey, persistFn) {
 
   try {
     const now = new Date().toISOString();
-
-    // 1. visited_users tablosuna ekle veya var olan kullanıcının auth_key / last_visited_at alanlarını güncelle
+    const playerUid = getOrCreatePlayerUid(db, username, authKey);
     const stmtVisited = db.prepare(`
-      INSERT INTO visited_users (username, auth_key, first_visited_at, last_visited_at)
-      VALUES (?, ?, ?, ?)
+      INSERT INTO visited_users (username, player_uid, auth_key, first_visited_at, last_visited_at)
+      VALUES (?, ?, ?, ?, ?)
       ON CONFLICT(username) DO UPDATE SET
         auth_key = COALESCE(NULLIF(excluded.auth_key, ''), visited_users.auth_key),
-        last_visited_at = excluded.last_visited_at
+        last_visited_at = excluded.last_visited_at,
+        player_uid = COALESCE(NULLIF(visited_users.player_uid, ''), excluded.player_uid)
     `);
-    stmtVisited.run([username, authKey || '', now, now]);
+    stmtVisited.run([username, playerUid, authKey || '', now, now]);
     stmtVisited.free();
 
-    // 2. Eğer kullanıcı users tablosunda kayıtlı ise onun da last_visited_at alanını güncelle
-    const stmtUser = db.prepare('UPDATE users SET last_visited_at = ? WHERE username = ?');
-    stmtUser.run([now, username]);
+    const stmtUser = db.prepare(`
+      UPDATE users
+      SET last_visited_at = ?,
+          player_uid = COALESCE(NULLIF(player_uid, ''), ?)
+      WHERE username = ?
+    `);
+    stmtUser.run([now, playerUid, username]);
     stmtUser.free();
 
-    if (typeof persistFn === 'function') {
-      persistFn(db, DB_FILE);
-    }
+    if (typeof persistFn === 'function') persistFn(db, DB_FILE);
   } catch (err) {
     console.warn('[BACKEND-DB] Visited user kaydedilemedi:', err.message);
   }
@@ -229,16 +224,7 @@ function saveGameResult(db, DB_FILE, scores, winnerTeam, loserTeam, game, endedA
       INSERT INTO games (started_at, ended_at, score_red, score_blue, winner_team, loser_team, duration_seconds)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `.replace(/\s+/g, ' '));
-
-    insertGame.run([
-      game.started_at,
-      endedAt,
-      scores.red,
-      scores.blue,
-      winnerTeam,
-      loserTeam,
-      durationSeconds,
-    ]);
+    insertGame.run([game.started_at, endedAt, scores.red, scores.blue, winnerTeam, loserTeam, durationSeconds]);
     insertGame.free();
 
     const updateUserStats = db.prepare(`
@@ -251,22 +237,13 @@ function saveGameResult(db, DB_FILE, scores, winnerTeam, loserTeam, game, endedA
     `.replace(/\s+/g, ' '));
 
     for (const player of game.players) {
+      if (!player.cleanName) continue;
       const isWin = winnerTeam !== null && player.team === winnerTeam ? 1 : 0;
       const isLoss = loserTeam !== null && player.team === loserTeam ? 1 : 0;
-
-      if (player.cleanName) {
-        updateUserStats.run([
-          player.goals || 0,
-          player.assists || 0,
-          isWin,
-          isLoss,
-          player.cleanName,
-        ]);
-      }
+      updateUserStats.run([player.goals || 0, player.assists || 0, isWin, isLoss, player.cleanName]);
     }
 
     updateUserStats.free();
-
     db.exec('COMMIT');
     persistFn(db, DB_FILE);
   } catch (error) {
@@ -282,14 +259,12 @@ function saveAdminRequest(db, DB_FILE, username, aciklama, persistFn) {
 
   try {
     const date = new Date().toISOString();
-    const stmt = db.prepare('INSERT INTO istekler (username, aciklama, date) VALUES (?, ?, ?)');
-    stmt.run([username, aciklama, date]);
+    const playerUid = getOrCreatePlayerUid(db, username);
+    const stmt = db.prepare('INSERT INTO istekler (username, player_uid, aciklama, date) VALUES (?, ?, ?, ?)');
+    stmt.run([username, playerUid, aciklama, date]);
     stmt.free();
 
-    if (typeof persistFn === 'function') {
-      persistFn(db, DB_FILE);
-    }
-
+    if (typeof persistFn === 'function') persistFn(db, DB_FILE);
     return { ok: true, date };
   } catch (err) {
     console.warn('[BACKEND-DB] İstek kaydedilemedi:', err.message);
@@ -301,8 +276,8 @@ module.exports = {
   loadOrCreateDatabase,
   persistDatabase,
   initDatabase,
-  isUsernameBlacklisted,
   isUserBlacklisted,
+  getOrCreatePlayerUid,
   logVisitedUser,
   saveGameResult,
   saveAdminRequest,
