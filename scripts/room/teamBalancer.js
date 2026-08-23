@@ -126,7 +126,7 @@ async function validateTeamDistribution(room, state, deps = {}) {
     if (activePlayers.length > desiredActiveCount) {
       const heavyTeam = redCount >= blueCount ? 1 : 2;
       const heavyPlayers = heavyTeam === 1 ? redPlayers : bluePlayers;
-      const excessBot = activePlayers
+      const excessBot = heavyPlayers
         .filter((p) => isBot(p) && canMoveForBotBalance(p, state))
         .sort((a, b) => (playerJoinOrder.get(b.id) ?? 0) - (playerJoinOrder.get(a.id) ?? 0))[0];
       const excessPlayer = excessBot || pickMovable(heavyPlayers, state, isBot, true);

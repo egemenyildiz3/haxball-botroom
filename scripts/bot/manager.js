@@ -357,7 +357,10 @@ function createBotManager(options = {}) {
     },
 
     forceClosestBotToBall(teamId, durationMs = KICKOFF_FORCE_MS) {
-      if (!raw || !raw.gameState || !raw.gameState.physicsState) return false;
+      if (!raw || !raw.gameState || !raw.gameState.physicsState) {
+        log(`🤖 [BOT] Santra watchdog atlandı: raw oyun durumu hazır değil (team=${teamId}).`);
+        return false;
+      }
 
       const ball = raw.gameState.physicsState.discs[0];
       const candidates = [...bots.values()]
@@ -366,7 +369,14 @@ function createBotManager(options = {}) {
         .sort((a, b) => distanceToBall(a.player, ball) - distanceToBall(b.player, ball));
 
       const chosen = candidates[0];
-      if (!chosen) return false;
+      if (!chosen) {
+        const teamBots = [...bots.values()]
+          .map((bot) => ({ bot, player: raw.getPlayer(bot.id) }))
+          .filter(({ player }) => player)
+          .map(({ bot, player }) => `${bot.name}:team=${player.team && player.team.id}`);
+        log(`🤖 [BOT] Santra watchdog atlandı: team=${teamId} için uygun bot yok. Botlar=[${teamBots.join(', ')}]`);
+        return false;
+      }
 
       chosen.bot.forceBallUntil = Date.now() + durationMs;
       log(`🤖 [BOT] Santra watchdog: ${chosen.bot.name} topa gitmeye zorlandı (team=${teamId}).`);

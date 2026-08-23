@@ -126,11 +126,33 @@ async function testSwapsHumansAndBotsToFixBotDistribution() {
   assert.deepEqual(botCounts(room.players, botIds), { red: 2, blue: 2 });
 }
 
+async function testBenchesBotFromHeavyTeamAfterLeave() {
+  const botIds = new Set([501, 502, 503]);
+  const players = [
+    makePlayer(1, 1),
+    makePlayer(2, 1),
+    makePlayer(3, 2),
+    makePlayer(4, 2),
+    makePlayer(502, 2, true),
+    makePlayer(503, 2, true),
+    // This red bot is intentionally last in join order; old logic picked it
+    // globally even though Blue was the heavy team.
+    makePlayer(501, 1, true),
+  ];
+
+  const room = await validate(players, botIds);
+  assert.deepEqual(teamCounts(room.players), { red: 3, blue: 3, spec: 1 });
+  assert.equal(room.players.find((p) => p.id === 501).team, 1);
+  assert.ok([502, 503].includes(room.moves[0].id));
+  assert.equal(room.moves[0].team, 0);
+}
+
 async function run() {
   await testPromotesSpectatorToFixOddTeams();
   await testBenchesHeavyTeamWhenNoPromotionExists();
   await testMovesHeavyTeamPlayerWhenEvenButUnequal();
   await testSwapsHumansAndBotsToFixBotDistribution();
+  await testBenchesBotFromHeavyTeamAfterLeave();
   console.log('teamBalancer validation tests passed');
 }
 

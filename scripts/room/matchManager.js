@@ -6,7 +6,7 @@ const { desiredBotCount, desiredEvenActiveCount, isBotPlayer, sortRealPlayersFir
 const ROTATION_START_DELAY_MS = 500;
 const ROTATION_MOVE_DELAY_MS = 250;
 const ROTATION_END_DELAY_MS = 350;
-const KICKOFF_TOUCH_DELAY_MS = 10 * 1000;
+const KICKOFF_TOUCH_DELAY_MS = 4 * 1000;
 const MIN_BOTS_AFTER_GAME = 4;
 
 function shuffle(players) {
@@ -63,12 +63,13 @@ function clearKickoffWatch(state, player = null) {
 }
 
 function checkKickoffWatch(room, state, deps) {
-  const { botManager, getTimestamp } = deps;
+  const { botManager } = deps;
   const watch = state.kickoffWatch;
   if (!watch || watch.triggered || !state.currentGame) return;
   if (Date.now() - watch.startedAt < KICKOFF_TOUCH_DELAY_MS) return;
   if (!botManager || typeof botManager.forceClosestBotToBall !== 'function') {
     watch.triggered = true;
+    console.log('[KICKOFF-WATCH] Bot manager hazır değil; santra müdahalesi atlandı.');
     return;
   }
 
@@ -82,6 +83,7 @@ function checkKickoffWatch(room, state, deps) {
   }
 
   watch.triggered = true;
+  console.log(`[KICKOFF-WATCH] Santra müdahalesi tetiklendi ama team=${teams.join(',')} için uygun bot bulunamadı.`);
 }
 
 function formatDuration(seconds) {
@@ -177,6 +179,7 @@ function scoreVars(t, scores) {
 }
 
 function handleTeamGoal(room, state, team, { getTimestamp, sendMsg, t = fallbackT }) {
+  state.ballRecovery = null;
   const liveScores = typeof room.getScores === 'function' ? room.getScores() : null;
 
   if (state.currentGame) {
@@ -263,6 +266,7 @@ function handleGameStart(room, state, { sendMsg, t = fallbackT }) {
   if (typeof room.getPlayerList !== 'function') return;
 
   endTeamTransitionLock(room, state);
+  state.ballRecovery = null;
   state.lastTouchPlayer = null;
   state.secondLastTouchPlayer = null;
   state.touchHistory = [];
@@ -319,6 +323,7 @@ async function handleGameStop(room, state, deps) {
   }
 
   state.currentGame = null;
+  state.ballRecovery = null;
   clearKickoffWatch(state);
 
   if (!state.autoManageEnabled) {
