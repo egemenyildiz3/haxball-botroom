@@ -25,7 +25,7 @@ const DEFAULT_CONFIG = {
 
   bot: {
     baseName: 'SpaceBot',
-    names: ['Salah', 'Greenwood', 'Osimhen', 'Trossard', 'Messi', 'Ronaldo', 'Hakimi', 'Kimmich'],
+    names: ['Salah', 'Škriniar', 'Osimhen', 'Trossard', 'Messi', 'Ronaldo', 'Hakimi', 'Kimmich'],
     max: 8,
     avatar: '🤖',
     autostart: 4,
