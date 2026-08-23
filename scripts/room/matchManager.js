@@ -331,28 +331,30 @@ async function handleGameStop(room, state, deps) {
     return;
   }
 
-  if (botManager && typeof botManager.ensureMinimum === 'function') {
-    const result = botManager.ensureMinimum(MIN_BOTS_AFTER_GAME);
-    console.log(`[MATCH ROTATION] ${result.message}`);
-  }
-
-  beginTeamTransitionLock(room, state);
-
-  await sleep(800);
-  if (!state.autoManageEnabled) {
-    endTeamTransitionLock(room, state);
-    return;
-  }
-  await sleep(ROTATION_START_DELAY_MS);
-  if (!state.autoManageEnabled) {
-    endTeamTransitionLock(room, state);
-    return;
-  }
-
-  state.isRebalancing = true;
-  state.manualPlacements.clear();
+  state.matchRotationPending = true;
 
   try {
+    if (botManager && typeof botManager.ensureMinimum === 'function') {
+      const result = botManager.ensureMinimum(MIN_BOTS_AFTER_GAME);
+      console.log(`[MATCH ROTATION] ${result.message}`);
+    }
+
+    beginTeamTransitionLock(room, state);
+
+    await sleep(800);
+    if (!state.autoManageEnabled) {
+      endTeamTransitionLock(room, state);
+      return;
+    }
+    await sleep(ROTATION_START_DELAY_MS);
+    if (!state.autoManageEnabled) {
+      endTeamTransitionLock(room, state);
+      return;
+    }
+
+    state.isRebalancing = true;
+    state.manualPlacements.clear();
+
     const allPlayers = room.getPlayerList();
     const activeNonAfkPlayers = allPlayers.filter((p) => p.id !== 0 && !state.afkPlayers.has(p.id));
     const isBot = (p) => isBotPlayer(botManager, p);
@@ -429,6 +431,7 @@ async function handleGameStop(room, state, deps) {
     await sleep(ROTATION_END_DELAY_MS);
   } finally {
     state.isRebalancing = false;
+    state.matchRotationPending = false;
   }
 
   await sleep(300);

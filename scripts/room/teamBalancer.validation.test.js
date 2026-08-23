@@ -1,5 +1,5 @@
 const assert = require('assert/strict');
-const { validateTeamDistribution } = require('./teamBalancer');
+const { checkAndStartGame, validateTeamDistribution, pickExtraActiveBots } = require('./teamBalancer');
 
 function makeState() {
   return {
@@ -147,12 +147,56 @@ async function testBenchesBotFromHeavyTeamAfterLeave() {
   assert.equal(room.moves[0].team, 0);
 }
 
+function testDoesNotStartGameDuringMatchRotation() {
+  const state = makeState();
+  state.matchRotationPending = true;
+  state.startGamePending = false;
+  state.currentGame = null;
+
+  const room = makeRoom([
+    makePlayer(1, 1),
+    makePlayer(2, 2),
+  ]);
+  let starts = 0;
+  room.startGame = () => { starts++; };
+
+  checkAndStartGame(room, state);
+  assert.equal(starts, 0);
+  assert.equal(state.startGamePending, false);
+}
+
+function testExtraBotComesFromHeavyTeam() {
+  const botIds = new Set([501, 502, 503, 504]);
+  const state = makeState();
+  const players = [
+    makePlayer(1, 1),
+    makePlayer(501, 1, true),
+    makePlayer(502, 1, true),
+    makePlayer(503, 2, true),
+    makePlayer(504, 2, true),
+  ];
+  const isBot = (p) => botIds.has(p.id);
+  const joinOrder = new Map([
+    [1, 1],
+    [501, 2],
+    [502, 3],
+    [503, 4],
+    [504, 5],
+  ]);
+
+  const [bench] = pickExtraActiveBots(players, state, isBot, 3, joinOrder);
+  assert.ok(bench);
+  assert.equal(bench.team, 1);
+}
+
 async function run() {
   await testPromotesSpectatorToFixOddTeams();
   await testBenchesHeavyTeamWhenNoPromotionExists();
   await testMovesHeavyTeamPlayerWhenEvenButUnequal();
   await testSwapsHumansAndBotsToFixBotDistribution();
   await testBenchesBotFromHeavyTeamAfterLeave();
+  testDoesNotStartGameDuringMatchRotation();
+  testExtraBotComesFromHeavyTeam();
   console.log('teamBalancer validation tests passed');
 }
 

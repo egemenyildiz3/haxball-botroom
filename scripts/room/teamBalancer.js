@@ -47,6 +47,41 @@ function pickBenchCandidate(players, state, isBot) {
   return pickMovable(players, state, isBot, true);
 }
 
+function pickExtraActiveBots(players, state, isBot, targetBotCount, playerJoinOrder) {
+  const selected = [];
+  const mutablePlayers = [...players];
+
+  while (mutablePlayers.filter((p) => (p.team === 1 || p.team === 2) && isBot(p)).length > targetBotCount) {
+    const redPlayers = activeTeamPlayers(mutablePlayers, state, 1);
+    const bluePlayers = activeTeamPlayers(mutablePlayers, state, 2);
+    const redBots = redPlayers.filter(isBot);
+    const blueBots = bluePlayers.filter(isBot);
+
+    const heavyTeam = redPlayers.length > bluePlayers.length
+      ? 1
+      : bluePlayers.length > redPlayers.length
+        ? 2
+        : (redBots.length >= blueBots.length ? 1 : 2);
+
+    const heavyBots = (heavyTeam === 1 ? redBots : blueBots)
+      .filter((p) => canMoveForBotBalance(p, state))
+      .sort((a, b) => (playerJoinOrder.get(b.id) ?? 0) - (playerJoinOrder.get(a.id) ?? 0));
+
+    const fallbackBots = mutablePlayers
+      .filter((p) => (p.team === 1 || p.team === 2) && isBot(p) && canMoveForBotBalance(p, state))
+      .sort((a, b) => (playerJoinOrder.get(b.id) ?? 0) - (playerJoinOrder.get(a.id) ?? 0));
+
+    const bot = heavyBots[0] || fallbackBots[0];
+    if (!bot) break;
+
+    selected.push(bot);
+    const index = mutablePlayers.findIndex((p) => p.id === bot.id);
+    if (index !== -1) mutablePlayers[index] = { ...mutablePlayers[index], team: 0 };
+  }
+
+  return selected;
+}
+
 async function balanceBotDistribution(room, state, isBot, sleep = fallbackSleep) {
   if (typeof room.getPlayerList !== 'function' || typeof room.setPlayerTeam !== 'function') return;
 
@@ -256,6 +291,7 @@ function endTeamTransitionLock(room, state) {
 
 function checkAndStartGame(room, state) {
   if (!state.autoManageEnabled) return;
+  if (state.matchRotationPending) return;
   if (typeof room.getPlayerList !== 'function') return;
   if (state.startGamePending) return;
 
@@ -350,9 +386,7 @@ async function runRebalanceOnce(room, state, { playerJoinOrder, botManager, slee
   }
 
   if (activeBots.length > targetBotCount) {
-    const extraBots = activeBots
-      .sort((a, b) => (playerJoinOrder.get(b.id) ?? 0) - (playerJoinOrder.get(a.id) ?? 0))
-      .slice(0, activeBots.length - targetBotCount);
+    const extraBots = pickExtraActiveBots(players, state, isBot, targetBotCount, playerJoinOrder);
     for (const bot of extraBots) {
       if (!state.autoManageEnabled) return;
       try { room.setPlayerTeam(bot.id, 0); } catch (e) {}
@@ -461,4 +495,5 @@ module.exports = {
   endTeamTransitionLock,
   balanceBotDistribution,
   validateTeamDistribution,
+  pickExtraActiveBots,
 };
