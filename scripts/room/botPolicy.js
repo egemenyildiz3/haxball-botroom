@@ -20,6 +20,12 @@ function desiredBotCount(realCount, botCount, maxActivePlayers = 8) {
   return Math.min(botCount, Math.max(0, maxActivePlayers - Math.min(realCount, maxActivePlayers)));
 }
 
+function desiredEvenActiveCount(realCount, botCount, maxActivePlayers = 8) {
+  const botTarget = desiredBotCount(realCount, botCount, maxActivePlayers);
+  const desired = Math.min(maxActivePlayers, realCount + botTarget);
+  return desired % 2 === 0 ? desired : Math.max(0, desired - 1);
+}
+
 function sortRealPlayersFirst(botManager, playerJoinOrder) {
   return (a, b) => {
     const botDelta = Number(isBotPlayer(botManager, a)) - Number(isBotPlayer(botManager, b));
@@ -32,5 +38,6 @@ module.exports = {
   isBotPlayer,
   isProtectedBotIdentity,
   desiredBotCount,
+  desiredEvenActiveCount,
   sortRealPlayersFirst,
 };

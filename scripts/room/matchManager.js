@@ -1,7 +1,7 @@
 const { saveGameResult } = require('../db');
 const { getCleanName } = require('../util');
 const { checkAndStartGame, rememberLockedTeams, beginTeamTransitionLock, endTeamTransitionLock, validateTeamDistribution } = require('./teamBalancer');
-const { desiredBotCount, isBotPlayer, sortRealPlayersFirst } = require('./botPolicy');
+const { desiredBotCount, desiredEvenActiveCount, isBotPlayer, sortRealPlayersFirst } = require('./botPolicy');
 
 const ROTATION_START_DELAY_MS = 250;
 const ROTATION_MOVE_DELAY_MS = 120;
@@ -311,7 +311,7 @@ async function handleGameStop(room, state, deps) {
     const realPlayers = activeNonAfkPlayers.filter((p) => !isBot(p));
     const botPlayers = activeNonAfkPlayers.filter(isBot);
     const targetBotCount = desiredBotCount(realPlayers.length, botPlayers.length);
-    const desiredActiveCount = Math.min(8, realPlayers.length + targetBotCount);
+    const desiredActiveCount = desiredEvenActiveCount(realPlayers.length, botPlayers.length, 8);
     const sortByPriority = sortRealPlayersFirst(botManager, playerJoinOrder);
 
     if (realPlayers.length <= 8) {
@@ -333,8 +333,8 @@ async function handleGameStop(room, state, deps) {
         .slice(0, desiredActiveCount);
 
       const totalPlayers = availableSpecs.length;
-      const redCount = Math.min(4, Math.ceil(totalPlayers / 2));
-      const blueCount = Math.min(4, totalPlayers - redCount);
+      const redCount = Math.min(4, totalPlayers / 2);
+      const blueCount = Math.min(4, totalPlayers / 2);
       const assignments = mixedTeamAssignments(availableSpecs, redCount, blueCount, isBot);
 
       for (const { player: p, team: targetTeam } of assignments) {

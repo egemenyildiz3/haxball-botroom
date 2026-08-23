@@ -1,4 +1,4 @@
-const { desiredBotCount, isBotPlayer } = require('./botPolicy');
+const { desiredBotCount, desiredEvenActiveCount, isBotPlayer } = require('./botPolicy');
 
 const REBALANCE_START_DELAY_MS = 250;
 const REBALANCE_MOVE_DELAY_MS = 120;
@@ -112,7 +112,7 @@ async function validateTeamDistribution(room, state, deps = {}) {
     const realPlayers = eligiblePlayers.filter((p) => !isBot(p));
     const botPlayers = eligiblePlayers.filter(isBot);
     const targetBotCount = desiredBotCount(realPlayers.length, botPlayers.length, MAX_ACTIVE_PLAYERS);
-    const desiredActiveCount = Math.min(MAX_ACTIVE_PLAYERS, realPlayers.length + targetBotCount);
+    const desiredActiveCount = desiredEvenActiveCount(realPlayers.length, botPlayers.length, MAX_ACTIVE_PLAYERS);
     const redPlayers = activeTeamPlayers(players, state, 1);
     const bluePlayers = activeTeamPlayers(players, state, 2);
     const activePlayers = [...redPlayers, ...bluePlayers];
@@ -157,17 +157,41 @@ async function validateTeamDistribution(room, state, deps = {}) {
       }
     }
 
-    if (desiredActiveCount >= 2 && Math.abs(redCount - blueCount) > 1) {
+    if (desiredActiveCount >= 2 && redCount !== blueCount) {
       const fromRed = redCount > blueCount;
-      const fromPlayers = fromRed ? redPlayers : bluePlayers;
+      const targetTeam = fromRed ? 2 : 1;
       const toCount = fromRed ? blueCount : redCount;
+
+      if (activePlayers.length < desiredActiveCount && toCount < MAX_TEAM_SIZE) {
+        const activeBotCount = activePlayers.filter(isBot).length;
+        const botSlotsRemaining = Math.max(0, targetBotCount - activeBotCount);
+        const promotable = spectatorsByType(players, state, playerJoinOrder, isBot, false)[0]
+          || spectatorsByType(players, state, playerJoinOrder, isBot, true).slice(0, botSlotsRemaining)[0];
+
+        if (promotable) {
+          try {
+            console.warn(`[TEAM-VALIDATOR] ${reason}: eksik takım tamamlandı, ${promotable.name} team=${targetTeam}.`);
+            room.setPlayerTeam(promotable.id, targetTeam);
+            await sleep(REBALANCE_MOVE_DELAY_MS);
+            continue;
+          } catch (e) {
+            break;
+          }
+        }
+      }
+
+      if (Math.abs(redCount - blueCount) <= 1) {
+        await balanceBotDistribution(room, state, isBot, sleep);
+        return;
+      }
+
+      const fromPlayers = fromRed ? redPlayers : bluePlayers;
       if (toCount >= MAX_TEAM_SIZE) break;
 
       const movable = pickMovable(fromPlayers, state, isBot, true);
       if (!movable) break;
 
       try {
-        const targetTeam = fromRed ? 2 : 1;
         console.warn(`[TEAM-VALIDATOR] ${reason}: takım sayısı düzeltildi, ${movable.name} team=${targetTeam}.`);
         room.setPlayerTeam(movable.id, targetTeam);
         await sleep(REBALANCE_MOVE_DELAY_MS);
@@ -280,7 +304,7 @@ async function runRebalanceOnce(room, state, { playerJoinOrder, botManager, slee
   let botPlayers = autoEligiblePlayers.filter(isBot);
   let targetBotCount = desiredBotCount(realPlayers.length, botPlayers.length);
   let activeBots = botPlayers.filter((p) => p.team === 1 || p.team === 2);
-  let desiredActiveCount = Math.min(MAX_ACTIVE_PLAYERS, realPlayers.length + targetBotCount);
+  let desiredActiveCount = desiredEvenActiveCount(realPlayers.length, botPlayers.length, MAX_ACTIVE_PLAYERS);
   const activePlayers = players.filter((p) => p.id !== 0 && (p.team === 1 || p.team === 2) && !state.afkPlayers.has(p.id));
   const waitingHumans = spectatorsByType(players, state, playerJoinOrder, isBot, false);
   const joinDelay = waitingHumans.length > 0 && activeBots.length > targetBotCount
@@ -296,7 +320,7 @@ async function runRebalanceOnce(room, state, { playerJoinOrder, botManager, slee
     botPlayers = autoEligiblePlayers.filter(isBot);
     targetBotCount = desiredBotCount(realPlayers.length, botPlayers.length);
     activeBots = botPlayers.filter((p) => p.team === 1 || p.team === 2);
-    desiredActiveCount = Math.min(MAX_ACTIVE_PLAYERS, realPlayers.length + targetBotCount);
+    desiredActiveCount = desiredEvenActiveCount(realPlayers.length, botPlayers.length, MAX_ACTIVE_PLAYERS);
   }
 
   if (activeBots.length > targetBotCount) {
