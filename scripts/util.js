@@ -1,32 +1,13 @@
 function getTimestamp() {
-  if (typeof Temporal !== 'undefined' && typeof Temporal.Now !== 'undefined') {
-    return Temporal.Now.zonedDateTimeISO('Europe/Amsterdam').toString({ fractionalSecondDigits: 3, timeZoneName: 'never' });
-  }
-
-  const now = new Date();
   const formatter = new Intl.DateTimeFormat('sv-SE', {
     timeZone: 'Europe/Amsterdam',
     hour12: false,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
   });
 
-  const parts = formatter.formatToParts(now).reduce((acc, part) => {
-    acc[part.type] = part.value;
-    return acc;
-  }, {});
-
-  const offset = now.getTimezoneOffset();
-  const sign = offset <= 0 ? '+' : '-';
-  const absOffset = Math.abs(offset);
-  const hoursOffset = String(Math.floor(absOffset / 60)).padStart(2, '0');
-  const minutesOffset = String(absOffset % 60).padStart(2, '0');
-
-  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}.${String(now.getMilliseconds()).padStart(3, '0')}${sign}${hoursOffset}:${minutesOffset}`;
+  return formatter.format(new Date());
 }
 
 function sanitizeStadiumFileContents(contents) {
