@@ -1,0 +1,140 @@
+const assert = require('assert/strict');
+const { validateTeamDistribution } = require('./teamBalancer');
+
+function makeState() {
+  return {
+    autoManageEnabled: true,
+    afkPlayers: new Set(),
+    manualPlacements: new Map(),
+  };
+}
+
+function makePlayer(id, team, bot = false) {
+  return {
+    id,
+    team,
+    name: bot ? `SpaceBot Test ${id}` : `Player ${id}`,
+  };
+}
+
+function makeRoom(players) {
+  return {
+    players,
+    moves: [],
+    getPlayerList() {
+      return this.players;
+    },
+    setPlayerTeam(id, team) {
+      const player = this.players.find((p) => p.id === id);
+      if (!player) throw new Error(`player ${id} not found`);
+      player.team = team;
+      this.moves.push({ id, team });
+    },
+  };
+}
+
+function makeBotManager(botIds) {
+  return {
+    isBotPlayer(id) {
+      return botIds.has(id);
+    },
+  };
+}
+
+function teamCounts(players) {
+  return {
+    red: players.filter((p) => p.team === 1).length,
+    blue: players.filter((p) => p.team === 2).length,
+    spec: players.filter((p) => p.team === 0).length,
+  };
+}
+
+function botCounts(players, botIds) {
+  return {
+    red: players.filter((p) => p.team === 1 && botIds.has(p.id)).length,
+    blue: players.filter((p) => p.team === 2 && botIds.has(p.id)).length,
+  };
+}
+
+async function validate(players, botIds = new Set()) {
+  const room = makeRoom(players);
+  await validateTeamDistribution(room, makeState(), {
+    botManager: makeBotManager(botIds),
+    playerJoinOrder: new Map(players.map((p, index) => [p.id, index + 1])),
+    sleep: async () => {},
+    reason: 'test',
+  });
+  return room;
+}
+
+async function testPromotesSpectatorToFixOddTeams() {
+  const players = [
+    makePlayer(1, 1),
+    makePlayer(2, 1),
+    makePlayer(3, 1),
+    makePlayer(4, 2),
+    makePlayer(5, 2),
+    makePlayer(6, 0),
+  ];
+
+  const room = await validate(players);
+  assert.deepEqual(teamCounts(room.players), { red: 3, blue: 3, spec: 0 });
+}
+
+async function testBenchesHeavyTeamWhenNoPromotionExists() {
+  const players = [
+    makePlayer(1, 1),
+    makePlayer(2, 1),
+    makePlayer(3, 1),
+    makePlayer(4, 2),
+    makePlayer(5, 2),
+  ];
+
+  const room = await validate(players);
+  assert.deepEqual(teamCounts(room.players), { red: 2, blue: 2, spec: 1 });
+}
+
+async function testMovesHeavyTeamPlayerWhenEvenButUnequal() {
+  const players = [
+    makePlayer(1, 1),
+    makePlayer(2, 1),
+    makePlayer(3, 1),
+    makePlayer(4, 1),
+    makePlayer(5, 2),
+    makePlayer(6, 2),
+  ];
+
+  const room = await validate(players);
+  assert.deepEqual(teamCounts(room.players), { red: 3, blue: 3, spec: 0 });
+}
+
+async function testSwapsHumansAndBotsToFixBotDistribution() {
+  const botIds = new Set([501, 502, 503, 504]);
+  const players = [
+    makePlayer(501, 1, true),
+    makePlayer(502, 1, true),
+    makePlayer(503, 1, true),
+    makePlayer(1, 1),
+    makePlayer(504, 2, true),
+    makePlayer(2, 2),
+    makePlayer(3, 2),
+    makePlayer(4, 2),
+  ];
+
+  const room = await validate(players, botIds);
+  assert.deepEqual(teamCounts(room.players), { red: 4, blue: 4, spec: 0 });
+  assert.deepEqual(botCounts(room.players, botIds), { red: 2, blue: 2 });
+}
+
+async function run() {
+  await testPromotesSpectatorToFixOddTeams();
+  await testBenchesHeavyTeamWhenNoPromotionExists();
+  await testMovesHeavyTeamPlayerWhenEvenButUnequal();
+  await testSwapsHumansAndBotsToFixBotDistribution();
+  console.log('teamBalancer validation tests passed');
+}
+
+run().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

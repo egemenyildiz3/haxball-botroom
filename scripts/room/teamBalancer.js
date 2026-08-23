@@ -43,6 +43,10 @@ function pickMovable(players, state, isBot, preferBot = false) {
   return ordered.find((p) => canMoveForBotBalance(p, state)) || ordered[0] || null;
 }
 
+function pickBenchCandidate(players, state, isBot) {
+  return pickMovable(players, state, isBot, true);
+}
+
 async function balanceBotDistribution(room, state, isBot, sleep = fallbackSleep) {
   if (typeof room.getPlayerList !== 'function' || typeof room.setPlayerTeam !== 'function') return;
 
@@ -180,13 +184,35 @@ async function validateTeamDistribution(room, state, deps = {}) {
         }
       }
 
-      if (Math.abs(redCount - blueCount) <= 1) {
-        await balanceBotDistribution(room, state, isBot, sleep);
-        return;
+      const fromPlayers = fromRed ? redPlayers : bluePlayers;
+
+      if (Math.abs(redCount - blueCount) === 1) {
+        const benchPlayer = pickBenchCandidate(fromPlayers, state, isBot);
+        if (!benchPlayer) break;
+
+        try {
+          console.warn(`[TEAM-VALIDATOR] ${reason}: tek sayılı aktif oyuncu düzeltildi, ${benchPlayer.name} spec'e alındı.`);
+          room.setPlayerTeam(benchPlayer.id, 0);
+          await sleep(REBALANCE_MOVE_DELAY_MS);
+          continue;
+        } catch (e) {
+          break;
+        }
       }
 
-      const fromPlayers = fromRed ? redPlayers : bluePlayers;
-      if (toCount >= MAX_TEAM_SIZE) break;
+      if (toCount >= MAX_TEAM_SIZE) {
+        const benchPlayer = pickBenchCandidate(fromPlayers, state, isBot);
+        if (!benchPlayer) break;
+
+        try {
+          console.warn(`[TEAM-VALIDATOR] ${reason}: dolu takım dengesi düzeltildi, ${benchPlayer.name} spec'e alındı.`);
+          room.setPlayerTeam(benchPlayer.id, 0);
+          await sleep(REBALANCE_MOVE_DELAY_MS);
+          continue;
+        } catch (e) {
+          break;
+        }
+      }
 
       const movable = pickMovable(fromPlayers, state, isBot, true);
       if (!movable) break;
