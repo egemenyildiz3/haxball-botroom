@@ -9,7 +9,7 @@ function createRoomState() {
     lastGameTickAt: null,
     kickoffWatch: null,
     ballRecovery: null,
-    nextJoinNumber: 100,
+    joinIdsByPlayer: new Map(),
     nextJoinOrder: 1,
     playerAuths: new Map(),
     afkPlayers: new Set([0]),

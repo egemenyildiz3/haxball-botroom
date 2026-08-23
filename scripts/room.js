@@ -362,6 +362,7 @@ function handlePlayerLeave(room, player, state, deps) {
 
   if (player && typeof player.id !== 'undefined') {
     playerAssignments.delete(player.id);
+    state.joinIdsByPlayer.delete(player.id);
     playerJoinOrder.delete(player.id);
     loggedInPlayers.delete(player.id);
     state.afkPlayers.delete(player.id);
