@@ -124,6 +124,7 @@ function markSuperAdminAfkOnJoin(room, state, player, deps) {
     try { room.setPlayerTeam(player.id, 0); } catch (e) {}
   }
 
+  deps.sendMsg(room, '💤 Kurucu olduğunuz için girişte otomatik AFK moduna alındınız.', player.id, 0xFFCC00, 'bold');
   console.log(`${deps.getTimestamp()} [AFK] Superadmin girişte otomatik AFK yapıldı: ${getCleanName(player)} (ID: ${player.id})`);
   return true;
 }
