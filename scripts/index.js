@@ -27,7 +27,7 @@ const CONFIG_ALLOW_MULTIPLE_JOIN = Number(process.env.CONFIG_ALLOW_MULTIPLE_JOIN
 const BOT_NAME = process.env.HAXBALL_BOT_NAME || 'SpaceBot';
 const BOT_MAX = Number(process.env.HAXBALL_BOT_MAX || 8);
 const BOT_AVATAR = process.env.HAXBALL_BOT_AVATAR || '🤖';
-const BOT_AUTOSTART = Number(process.env.HAXBALL_BOT_AUTOSTART ?? 3);
+const BOT_AUTOSTART = Number(process.env.HAXBALL_BOT_AUTOSTART ?? 4);
 
 let SQL = null;
 let db = null;
