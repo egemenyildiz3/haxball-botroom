@@ -3,9 +3,9 @@ const { getCleanName } = require('../util');
 const { checkAndStartGame, rememberLockedTeams, beginTeamTransitionLock, endTeamTransitionLock, validateTeamDistribution } = require('./teamBalancer');
 const { desiredBotCount, isBotPlayer, sortRealPlayersFirst } = require('./botPolicy');
 
-const ROTATION_START_DELAY_MS = 700;
-const ROTATION_MOVE_DELAY_MS = 350;
-const ROTATION_END_DELAY_MS = 500;
+const ROTATION_START_DELAY_MS = 250;
+const ROTATION_MOVE_DELAY_MS = 120;
+const ROTATION_END_DELAY_MS = 150;
 const KICKOFF_TOUCH_DELAY_MS = 10 * 1000;
 
 function shuffle(players) {
@@ -284,7 +284,7 @@ async function handleGameStop(room, state, deps) {
 
   beginTeamTransitionLock(room, state);
 
-  await sleep(2000);
+  await sleep(800);
   if (!state.autoManageEnabled) {
     endTeamTransitionLock(room, state);
     return;
@@ -377,7 +377,7 @@ async function handleGameStop(room, state, deps) {
     state.isRebalancing = false;
   }
 
-  await sleep(1000);
+  await sleep(300);
   if (!state.autoManageEnabled) return;
   checkAndStartGame(room, state);
 }
