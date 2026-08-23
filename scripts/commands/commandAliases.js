@@ -17,6 +17,7 @@ const COMMAND_ALIASES = {
   bot: ['!bot'],
   auto: ['!auto', '!oto', '!otomatik'],
   mute: ['!mute', '!sohbet', '!chat'],
+  unmute: ['!unmute', '!unmutex', '!susturac', '!susturaç'],
   kick: ['!kick'],
   ban: ['!ban'],
   blacklist: ['!blacklist', '!blackban', '!permaban'],

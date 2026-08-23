@@ -180,7 +180,8 @@ function handleHelp(ctx) {
     'help.auto': '• !oto aç / !oto kapat / !oto durum — Otomatik takım dağıtımı ve maç başlatmayı açar/kapatır (Kurucu)',
     'help.kick': '• !kick <id/isim> [sebep] — Oyuncuyu odadan atar (Admin)',
     'help.ban': '• !ban <id/isim> [sebep] — Oyuncuyu odadan banlar (Admin)',
-    'help.mute': '• !mute [id/isim] — Sohbeti veya bir oyuncuyu susturur (Admin)',
+    'help.mute': '• !mute [id/isim] [dk] — Sohbeti veya bir oyuncuyu susturur (Admin)',
+    'help.unmute': '• !unmute <id/isim> — Susturulan oyuncunun tekrar yazmasını sağlar',
     'help.blacklist': '• !blacklist <id/isim> [sebep] — Oyuncuyu veritabanı kara listesine ekler (Kurucu)',
     'help.clearbans': '• !clearbans — Tüm banları temizler (Kurucu)',
   }[key] || key));
@@ -199,6 +200,7 @@ function handleHelp(ctx) {
     player.admin || ctx.hasCapability('kick') ? t('help.kick') : '',
     player.admin || ctx.hasCapability('ban') ? t('help.ban') : '',
     player.admin || ctx.hasCapability('mute') ? t('help.mute') : '',
+    ctx.hasCapability('unmute') ? t('help.unmute') : '',
     ctx.hasCapability('blacklist') ? t('help.blacklist') : '',
     ctx.hasCapability('clear_bans') ? t('help.clearbans') : '',
   ]

@@ -15,6 +15,7 @@ const DEFAULT_ROLE_CAPABILITIES = {
     'mute',
     'mute_exempt',
     'native_admin',
+    'unmute',
   ],
   mod: [
     'admin_chat',
@@ -24,8 +25,10 @@ const DEFAULT_ROLE_CAPABILITIES = {
     'mute',
     'mute_exempt',
     'native_admin',
+    'unmute',
   ],
   vip: [
+    'unmute',
   ],
   player: [],
 };

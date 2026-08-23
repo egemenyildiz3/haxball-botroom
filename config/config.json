@@ -1,0 +1,64 @@
+{
+  "room": {
+    "name": "🛰️ TESLA 🛰️ SPACEBOUNCE 4v4 🛰️ AI 🪐",
+    "maxPlayers": 18,
+    "scoreLimit": 3,
+    "timeLimit": 4,
+    "promotionCount": 4,
+    "public": true,
+    "language": "en"
+  },
+  "adminRules": {
+    "allowMultipleJoin": false,
+    "roleCapabilities": {
+      "owner": ["*"],
+      "admin": ["admin_chat", "afk_exempt", "auto", "ban", "blacklist", "bot", "clear_bans", "duplicate_join_exempt", "kick", "mute", "mute_exempt", "native_admin", "unmute"],
+      "mod": ["admin_chat", "afk_exempt", "auto", "kick", "mute", "mute_exempt", "native_admin", "unmute"],
+      "vip": ["unmute"],
+      "player": []
+    }
+  },
+  "bot": {
+    "baseName": "SpaceBot",
+    "names": ["Salah", "Škriniar", "Osimhen", "Trossard", "Messi", "Ronaldo", "Hakimi", "Kimmich"],
+    "max": 8,
+    "avatar": "🤖",
+    "autostart": 4
+  },
+  "chat": {
+    "cooldownMs": 3000,
+    "maxLength": 60,
+    "adminColor": "CC99FF",
+    "normalColor": "FFFFFF"
+  },
+  "adminRequests": {
+    "cooldownMs": 900000,
+    "announceMs": 300000
+  },
+  "afk": {
+    "cooldownMs": 600000,
+    "minDurationMs": 30000,
+    "maxDurationMs": 900000,
+    "earlyWarningMs": 10000
+  },
+  "inactivity": {
+    "kickMs": 30000,
+    "warningMs": 25000,
+    "checkMs": 1000
+  },
+  "autoManagement": {
+    "restoreCheckMs": 30000
+  },
+  "teamColors": {
+    "red": {
+      "angle": 60,
+      "text": "E3E3E3",
+      "colors": ["C90209"]
+    },
+    "blue": {
+      "angle": 60,
+      "text": "E3E3E3",
+      "colors": ["0272BD"]
+    }
+  }
+}
