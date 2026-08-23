@@ -3,6 +3,8 @@ const { desiredBotCount, isBotPlayer } = require('./botPolicy');
 const REBALANCE_START_DELAY_MS = 700;
 const REBALANCE_MOVE_DELAY_MS = 350;
 const REBALANCE_END_DELAY_MS = 500;
+const PLAYER_REPLACES_BOT_DELAY_MS = 3 * 1000;
+const PLAYER_EMPTY_SLOT_DELAY_MS = 1 * 1000;
 const START_RETRY_DELAY_MS = 1000;
 const START_RETRY_COUNT = 5;
 const MAX_TEAM_SIZE = 4;
@@ -273,12 +275,30 @@ async function runRebalanceOnce(room, state, { playerJoinOrder, botManager, slee
   }
 
   const isBot = (p) => isBotPlayer(botManager, p);
-  const autoEligiblePlayers = players.filter((p) => isAutoEligiblePlayer(p, state));
-  const realPlayers = autoEligiblePlayers.filter((p) => !isBot(p));
-  const botPlayers = autoEligiblePlayers.filter(isBot);
-  const targetBotCount = desiredBotCount(realPlayers.length, botPlayers.length);
+  let autoEligiblePlayers = players.filter((p) => isAutoEligiblePlayer(p, state));
+  let realPlayers = autoEligiblePlayers.filter((p) => !isBot(p));
+  let botPlayers = autoEligiblePlayers.filter(isBot);
+  let targetBotCount = desiredBotCount(realPlayers.length, botPlayers.length);
+  let activeBots = botPlayers.filter((p) => p.team === 1 || p.team === 2);
+  let desiredActiveCount = Math.min(MAX_ACTIVE_PLAYERS, realPlayers.length + targetBotCount);
+  const activePlayers = players.filter((p) => p.id !== 0 && (p.team === 1 || p.team === 2) && !state.afkPlayers.has(p.id));
+  const waitingHumans = spectatorsByType(players, state, playerJoinOrder, isBot, false);
+  const joinDelay = waitingHumans.length > 0 && activeBots.length > targetBotCount
+    ? PLAYER_REPLACES_BOT_DELAY_MS
+    : (waitingHumans.length > 0 && activePlayers.length < desiredActiveCount ? PLAYER_EMPTY_SLOT_DELAY_MS : 0);
 
-  const activeBots = botPlayers.filter((p) => p.team === 1 || p.team === 2);
+  if (joinDelay > 0) {
+    await sleep(joinDelay);
+    if (!state.autoManageEnabled) return;
+    players = room.getPlayerList();
+    autoEligiblePlayers = players.filter((p) => isAutoEligiblePlayer(p, state));
+    realPlayers = autoEligiblePlayers.filter((p) => !isBot(p));
+    botPlayers = autoEligiblePlayers.filter(isBot);
+    targetBotCount = desiredBotCount(realPlayers.length, botPlayers.length);
+    activeBots = botPlayers.filter((p) => p.team === 1 || p.team === 2);
+    desiredActiveCount = Math.min(MAX_ACTIVE_PLAYERS, realPlayers.length + targetBotCount);
+  }
+
   if (activeBots.length > targetBotCount) {
     const extraBots = activeBots
       .sort((a, b) => (playerJoinOrder.get(b.id) ?? 0) - (playerJoinOrder.get(a.id) ?? 0))
@@ -300,7 +320,6 @@ async function runRebalanceOnce(room, state, { playerJoinOrder, botManager, slee
     ...spectatorsByType(players, state, playerJoinOrder, isBot, true).slice(0, botSlotsRemaining),
   ];
 
-  const desiredActiveCount = Math.min(MAX_ACTIVE_PLAYERS, realPlayers.length + targetBotCount);
   const maxTeamSize = Math.min(MAX_TEAM_SIZE, Math.max(1, Math.ceil(desiredActiveCount / 2)));
 
   let redCount = redPlayers.length;
