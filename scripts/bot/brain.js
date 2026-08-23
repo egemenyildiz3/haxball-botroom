@@ -83,6 +83,7 @@ const DEFAULTS = {
   supportSpread: 220, // destek oyuncusunun yanal açılma mesafesi
   botOnlyStuckTicks: 80, // sadece botlar varken yatay kilidi kaç tick sonra kır
   botOnlyNudge: 90, // kilit açmak için hedefe eklenecek küçük dikey sapma
+  forceBallStandOffRatio: 0.15, // watchdog devredeyken topun arkasında oyalanma
 
   // Savunmacının kale-top ekseninde nerede duracağı (0 = kalede, 1 = topun üstünde).
   // Defans oyuncusu kaleci gibi çizgide beklemesin; tehlikede geri gelsin ama
@@ -680,7 +681,8 @@ function decide(view, memory, config) {
   if (role === 'attacker') {
     // Topun arkasına geç: vuruş yönü hedefe baksın
     const standOff = (view.self.radius || 15) + (view.ball.radius || 10);
-    target = sub(intercept.point, scale(ballToAim, standOff * 0.95));
+    const ratio = view.forceBall ? activeCfg.forceBallStandOffRatio : 0.95;
+    target = sub(intercept.point, scale(ballToAim, standOff * ratio));
   } else if (role === 'defender') {
     target = defenderTarget(view, activeCfg);
   } else {
@@ -733,9 +735,11 @@ function decide(view, memory, config) {
   }
 
   // Kaleye yakınsak isabet şartı ara; uzaktaysak topa vur ve ileri gönder.
-  const wantKick = inKickRange && safeDirection && (
+  const forceKick = view.forceBall && inKickRange && safeDirection;
+
+  const wantKick = forceKick || (inKickRange && safeDirection && (
     inShootingRange ? onTarget : forwardness >= activeCfg.clearConeCos
-  );
+  ));
 
   const nearKickRange = distToBall <= kickRange + activeCfg.preKickReleaseMargin;
   const likelyKickSoon = role === 'attacker' && nearKickRange && safeDirection && (
