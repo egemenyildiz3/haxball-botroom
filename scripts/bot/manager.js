@@ -16,6 +16,16 @@ const FIRST_BOT_ID = 500; // gerçek oyuncu id'leriyle çakışmasın diye yüks
 const BOT_CONN_PREFIX = 'bot-conn-';
 const BOT_AUTH_PREFIX = 'bot-auth-';
 const KICKOFF_FORCE_MS = 8 * 1000;
+const DEFAULT_BOT_NAMES = [
+  'Messi',
+  'Ronaldo',
+  'Neymar',
+  'Mbappe',
+  'Haaland',
+  'Zidane',
+  'Ronaldinho',
+  'Modric',
+];
 
 const boundsCache = new WeakMap();
 
@@ -46,6 +56,9 @@ function fieldBounds(stadium) {
 
 function createBotManager(options = {}) {
   const baseName = options.botName || 'SpaceBot';
+  const botNames = Array.isArray(options.botNames) && options.botNames.length > 0
+    ? options.botNames
+    : DEFAULT_BOT_NAMES;
   const maxBots = Number(options.maxBots || 8);
   const avatar = options.avatar || '🤖';
   const log = options.log || ((msg) => console.log(msg));
@@ -80,7 +93,8 @@ function createBotManager(options = {}) {
   const bots = new Map(); // name -> { id, name, memory, lastInput }
 
   function expectedName(index) {
-    return index === 0 ? baseName : `${baseName} ${index + 1}`;
+    const suffix = botNames[index];
+    return suffix ? `${baseName} ${suffix}` : `${baseName} ${index + 1}`;
   }
 
   function isExpectedBotName(cleanName) {

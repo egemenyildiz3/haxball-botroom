@@ -28,6 +28,10 @@ const BOT_NAME = process.env.HAXBALL_BOT_NAME || 'SpaceBot';
 const BOT_MAX = Number(process.env.HAXBALL_BOT_MAX || 8);
 const BOT_AVATAR = process.env.HAXBALL_BOT_AVATAR || '🤖';
 const BOT_AUTOSTART = Number(process.env.HAXBALL_BOT_AUTOSTART ?? 4);
+const BOT_NAMES = (process.env.HAXBALL_BOT_NAMES || '')
+  .split(',')
+  .map((name) => name.trim())
+  .filter(Boolean);
 
 let SQL = null;
 let db = null;
@@ -64,6 +68,7 @@ async function startRoom() {
 
   const botManager = createBotManager({
     botName: BOT_NAME,
+    botNames: BOT_NAMES,
     maxBots: BOT_MAX,
     avatar: BOT_AVATAR,
   });

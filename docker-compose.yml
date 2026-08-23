@@ -21,6 +21,7 @@ services:
       - CONFIG_ALLOW_MULTIPLE_JOIN=${CONFIG_ALLOW_MULTIPLE_JOIN:-0}
       - TZ=${TZ:-Europe/Amsterdam}
       - HAXBALL_BOT_NAME=${HAXBALL_BOT_NAME:-SpaceBot}
+      - HAXBALL_BOT_NAMES=${HAXBALL_BOT_NAMES:-Messi,Ronaldo,Neymar,Mbappe,Haaland,Zidane,Ronaldinho,Modric}
       - HAXBALL_BOT_MAX=${HAXBALL_BOT_MAX:-8}
       - HAXBALL_BOT_AVATAR=${HAXBALL_BOT_AVATAR:-🤖}
       - HAXBALL_BOT_AUTOSTART=${HAXBALL_BOT_AUTOSTART:-4}
