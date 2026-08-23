@@ -7,7 +7,7 @@ function routeAdminCommand(ctx) {
   if (command === '!blacklist' || command === '!blackban' || command === '!permaban') return handleBlacklist(ctx);
   if (command === '!ban') return handleBan(ctx);
   if (command === '!kick') return handleKick(ctx);
-  if (ctx.ADMIN_PASSWORD && ctx.text === `!admin ${ctx.ADMIN_PASSWORD}`) return handleAdminPassword(ctx);
+  if (command === '!adminol') return handleAdminPassword(ctx);
   return null;
 }
 
@@ -86,7 +86,14 @@ function handleBlacklist(ctx) {
 }
 
 function handleAdminPassword(ctx) {
-  const { room, player } = ctx;
+  const { room, player, args, ADMIN_PASSWORD } = ctx;
+  const password = args.slice(1).join(' ').trim();
+
+  if (!ADMIN_PASSWORD || password !== ADMIN_PASSWORD) {
+    sendMsg(room, '❌ Admin şifresi hatalı.', player.id, 0xFF5555, 'bold');
+    return false;
+  }
+
   if (typeof room.setPlayerAdmin === 'function') {
     room.setPlayerAdmin(player.id, true);
     sendMsg(room, '👑 Admin yetkisi verildi.', player.id, 0xFFD700, 'bold');
