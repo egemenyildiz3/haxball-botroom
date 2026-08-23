@@ -332,6 +332,7 @@ function createBotManager(options = {}) {
     isProtectedBotIdentity,
 
     count() {
+      pruneMissingBots();
       return bots.size;
     },
 
@@ -387,6 +388,9 @@ function createBotManager(options = {}) {
       if (!raw) {
         return { ok: false, message: t('bot.roomNotReadyRetry') };
       }
+
+      pruneMissingBots();
+
       if (bots.size >= maxBots) {
         return { ok: false, message: t('bot.maxReached', { max: maxBots }) };
       }
@@ -426,6 +430,7 @@ function createBotManager(options = {}) {
 
     status() {
       if (!raw) return t('bot.statusNotReady');
+      pruneMissingBots();
       if (bots.size === 0) return t('bot.statusOff');
       const list = [...bots.values()].map((b) => `${b.name} [${translateTrait(b.trait)}]`).join(', ');
       return t('bot.status', { count: bots.size, max: maxBots, list });

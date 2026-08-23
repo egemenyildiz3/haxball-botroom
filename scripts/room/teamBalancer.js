@@ -47,6 +47,37 @@ function pickBenchCandidate(players, state, isBot) {
   return pickMovable(players, state, isBot, true);
 }
 
+function pickExcessActivePlayer(heavyPlayers, redPlayers, bluePlayers, state, isBot, playerJoinOrder) {
+  const candidates = heavyPlayers.filter((p) => canMoveForBotBalance(p, state));
+  if (candidates.length === 0) return null;
+
+  const redCount = redPlayers.length;
+  const blueCount = bluePlayers.length;
+  const redBots = botCount(redPlayers, isBot);
+  const blueBots = botCount(bluePlayers, isBot);
+
+  return candidates
+    .map((player) => {
+      const fromRed = player.team === 1;
+      const nextRedCount = redCount - (fromRed ? 1 : 0);
+      const nextBlueCount = blueCount - (fromRed ? 0 : 1);
+      const nextRedBots = redBots - (fromRed && isBot(player) ? 1 : 0);
+      const nextBlueBots = blueBots - (!fromRed && isBot(player) ? 1 : 0);
+      const botDiff = Math.abs(nextRedBots - nextBlueBots);
+      const teamDiff = Math.abs(nextRedCount - nextBlueCount);
+
+      return {
+        player,
+        // Bot diff > 1 usually triggers a follow-up cross-team bot move, which feels bad in the room.
+        score: (botDiff > 1 ? 100 : botDiff * 10)
+          + teamDiff
+          + (isBot(player) ? 0 : 5)
+          - ((playerJoinOrder.get(player.id) ?? 0) / 100000),
+      };
+    })
+    .sort((a, b) => a.score - b.score)[0].player;
+}
+
 function pickExtraActiveBots(players, state, isBot, targetBotCount, playerJoinOrder) {
   const selected = [];
   const mutablePlayers = [...players];
@@ -161,10 +192,14 @@ async function validateTeamDistribution(room, state, deps = {}) {
     if (activePlayers.length > desiredActiveCount) {
       const heavyTeam = redCount >= blueCount ? 1 : 2;
       const heavyPlayers = heavyTeam === 1 ? redPlayers : bluePlayers;
-      const excessBot = heavyPlayers
-        .filter((p) => isBot(p) && canMoveForBotBalance(p, state))
-        .sort((a, b) => (playerJoinOrder.get(b.id) ?? 0) - (playerJoinOrder.get(a.id) ?? 0))[0];
-      const excessPlayer = excessBot || pickMovable(heavyPlayers, state, isBot, true);
+      const excessPlayer = pickExcessActivePlayer(
+        heavyPlayers,
+        redPlayers,
+        bluePlayers,
+        state,
+        isBot,
+        playerJoinOrder
+      );
 
       if (!excessPlayer) break;
       try {
