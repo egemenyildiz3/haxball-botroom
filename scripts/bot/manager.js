@@ -63,6 +63,25 @@ function createBotManager(options = {}) {
   const avatar = options.avatar || '🤖';
   const log = options.log || ((msg) => console.log(msg));
   const brainConfig = options.brainConfig || {};
+  const t = options.t || ((key, vars = {}) => {
+    const messages = {
+      'bot.roomNotReady': 'Oda henüz hazır değil.',
+      'bot.roomNotReadyRetry': 'Oda henüz hazır değil, birkaç saniye sonra tekrar deneyin.',
+      'bot.maxReached': `Zaten en fazla sayıda bot sahada (${vars.max}).`,
+      'bot.startFailed': 'Yeni bot eklenemedi.',
+      'bot.started': `🤖 ${vars.count} bot sahaya eklendi. (toplam ${vars.total})`,
+      'bot.none': 'Şu anda sahada bot yok.',
+      'bot.notFound': `"${vars.name}" adında bir bot yok.`,
+      'bot.stoppedOne': `🤖 ${vars.name} sahadan çıkarıldı.`,
+      'bot.stoppedAll': `🤖 ${vars.count} bot sahadan çıkarıldı.`,
+      'bot.stoppedLast': `🤖 ${vars.name} sahadan çıkarıldı. (toplam ${vars.total})`,
+      'bot.statusNotReady': '🤖 Bot durumu: oda henüz hazır değil.',
+      'bot.statusOff': '🤖 Bot durumu: kapalı. (!bot aç ile ekleyebilirsin)',
+      'bot.status': `🤖 Bot durumu: ${vars.count}/${vars.max} sahada → ${vars.list}`,
+      'bot.validation': `Bot validation: ${vars.count}/${vars.max} bot odada. Temizlenen=${vars.pruned}, eklenen=${vars.started}.`,
+    };
+    return messages[key] || key;
+  });
 
   let raw = null; // node-haxball ham oda nesnesi
   let keyState = null; // API.Utils.keyState
@@ -123,6 +142,13 @@ function createBotManager(options = {}) {
   function isProtectedBotIdentity(player) {
     if (!player) return false;
     return isBotPlayer(player.id) || isBotAuth(player.auth) || isBotConn(player.conn);
+  }
+
+  function translateTrait(trait) {
+    return String(trait || '')
+      .split('/')
+      .map((part) => t(`bot.trait.${part}`, {}, part))
+      .join('/');
   }
 
   /** Ham oda durumundan brain.js'in beklediği görünümü kurar. */
@@ -310,7 +336,7 @@ function createBotManager(options = {}) {
     },
 
     ensureMinimum(minimum = 4) {
-      if (!raw) return { ok: false, message: 'Oda henüz hazır değil.', count: bots.size, pruned: 0, started: 0 };
+      if (!raw) return { ok: false, message: t('bot.roomNotReady'), count: bots.size, pruned: 0, started: 0 };
 
       const pruned = pruneMissingBots();
       const target = Math.max(0, Math.min(maxBots, Number(minimum) || 0));
@@ -323,7 +349,7 @@ function createBotManager(options = {}) {
 
       return {
         ok: bots.size >= target,
-        message: `Bot validation: ${bots.size}/${maxBots} bot odada. Temizlenen=${pruned}, eklenen=${started}.`,
+        message: t('bot.validation', { count: bots.size, max: maxBots, pruned, started }),
         count: bots.size,
         pruned,
         started,
@@ -349,10 +375,10 @@ function createBotManager(options = {}) {
 
     start(requested = 1) {
       if (!raw) {
-        return { ok: false, message: 'Oda henüz hazır değil, birkaç saniye sonra tekrar deneyin.' };
+        return { ok: false, message: t('bot.roomNotReadyRetry') };
       }
       if (bots.size >= maxBots) {
-        return { ok: false, message: `Zaten en fazla sayıda bot sahada (${maxBots}).` };
+        return { ok: false, message: t('bot.maxReached', { max: maxBots }) };
       }
 
       const want = Math.max(1, Math.min(maxBots, Number(requested) || 1));
@@ -361,38 +387,38 @@ function createBotManager(options = {}) {
         if (!bots.has(expectedName(i)) && spawnOne(i)) started++;
       }
 
-      if (started === 0) return { ok: false, message: 'Yeni bot eklenemedi.' };
-      return { ok: true, message: `🤖 ${started} bot sahaya eklendi. (toplam ${bots.size})` };
+      if (started === 0) return { ok: false, message: t('bot.startFailed') };
+      return { ok: true, message: t('bot.started', { count: started, total: bots.size }) };
     },
 
     stop(name) {
-      if (bots.size === 0) return { ok: false, message: 'Şu anda sahada bot yok.' };
+      if (bots.size === 0) return { ok: false, message: t('bot.none') };
 
       if (name) {
         const bot = bots.get(name);
-        if (!bot) return { ok: false, message: `"${name}" adında bir bot yok.` };
+        if (!bot) return { ok: false, message: t('bot.notFound', { name }) };
         removeOne(bot);
-        return { ok: true, message: `🤖 ${name} sahadan çıkarıldı.` };
+        return { ok: true, message: t('bot.stoppedOne', { name }) };
       }
 
       const stopped = bots.size;
       for (const bot of [...bots.values()]) removeOne(bot);
-      return { ok: true, message: `🤖 ${stopped} bot sahadan çıkarıldı.` };
+      return { ok: true, message: t('bot.stoppedAll', { count: stopped }) };
     },
 
     stopLast() {
-      if (bots.size === 0) return { ok: false, message: 'Şu anda sahada bot yok.' };
+      if (bots.size === 0) return { ok: false, message: t('bot.none') };
 
       const bot = [...bots.values()].at(-1);
       removeOne(bot);
-      return { ok: true, message: `🤖 ${bot.name} sahadan çıkarıldı. (toplam ${bots.size})` };
+      return { ok: true, message: t('bot.stoppedLast', { name: bot.name, total: bots.size }) };
     },
 
     status() {
-      if (!raw) return '🤖 Bot durumu: oda henüz hazır değil.';
-      if (bots.size === 0) return '🤖 Bot durumu: kapalı. (!bot aç ile ekleyebilirsin)';
-      const list = [...bots.values()].map((b) => `${b.name} [${b.trait}]`).join(', ');
-      return `🤖 Bot durumu: ${bots.size}/${maxBots} sahada → ${list}`;
+      if (!raw) return t('bot.statusNotReady');
+      if (bots.size === 0) return t('bot.statusOff');
+      const list = [...bots.values()].map((b) => `${b.name} [${translateTrait(b.trait)}]`).join(', ');
+      return t('bot.status', { count: bots.size, max: maxBots, list });
     },
 
     diagnostics() {

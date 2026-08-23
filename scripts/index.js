@@ -71,6 +71,7 @@ async function startRoom() {
     botNames: config.bot.names,
     maxBots: config.bot.max,
     avatar: config.bot.avatar,
+    t,
   });
 
   // Host kapanırken bot process'leri ortada kalmasın

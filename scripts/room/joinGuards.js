@@ -48,7 +48,7 @@ function duplicateJoinMatch(room, player, state, botManager) {
 }
 
 function blockInvalidJoinName(room, player, deps) {
-  const { getTimestamp, botManager } = deps;
+  const { getTimestamp, botManager, t = (key) => key } = deps;
   if (isProtectedBotIdentity(botManager, player)) return false;
 
   const name = String(player.name || '');
@@ -56,9 +56,9 @@ function blockInvalidJoinName(room, player, deps) {
   let reason = '';
 
   if (name !== trimmedName) {
-    reason = 'İsminizin başında veya sonunda boşluk olamaz.';
+    reason = t('join.nameTrim');
   } else if (name.toLowerCase().includes('spacebot')) {
-    reason = 'SpaceBot ismi sadece oda botlarına özeldir.';
+    reason = t('join.spaceBotName');
   }
 
   if (!reason) return false;
@@ -74,7 +74,11 @@ function blockInvalidJoinName(room, player, deps) {
 }
 
 function blockDuplicateJoin(room, state, player, deps) {
-  const { db, getTimestamp, CONFIG_ALLOW_MULTIPLE_JOIN = 0, botManager } = deps;
+  const { db, getTimestamp, CONFIG_ALLOW_MULTIPLE_JOIN = 0, botManager, t = (key, vars = {}) => {
+    if (key === 'join.duplicate') return `⚠️ ${vars.name}, aynı bağlantı/auth ile zaten odada bir oturum açık!`;
+    if (key === 'join.duplicateReason') return 'Aynı bağlantıdan zaten bir oturum var.';
+    return key;
+  } } = deps;
   if (Number(CONFIG_ALLOW_MULTIPLE_JOIN) === 1) return false;
   if (isProtectedBotIdentity(botManager, player)) return false;
   if (isSuperAdminAuth(db, player.auth)) return false;
@@ -87,8 +91,8 @@ function blockDuplicateJoin(room, state, player, deps) {
   console.log(`${getTimestamp()} [DUPLICATE] Aynı ${match.reason} ile çift giriş engellendi: ${cleanName} (mevcut: ${existingName})`);
 
   try {
-    sendMsg(room, `⚠️ ${cleanName}, aynı bağlantı/auth ile zaten odada bir oturum açık!`, player.id, 0xFF5555, 'bold');
-    room.kickPlayer(player.id, 'Aynı bağlantıdan zaten bir oturum var.', false);
+    sendMsg(room, t('join.duplicate', { name: cleanName }), player.id, 0xFF5555, 'bold');
+    room.kickPlayer(player.id, t('join.duplicateReason'), false);
   } catch (e) {}
 
   return true;

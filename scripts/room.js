@@ -186,7 +186,7 @@ async function createRoom(room, deps) {
   room.onGameTick = function () {
     state.lastGameTickAt = Date.now();
     checkKickoffWatch(room, state, roomDeps);
-    repairOutOfBoundsBall(room, state, sendMsg);
+    repairOutOfBoundsBall(room, state, sendMsg, t);
   };
 
   room.onPlayerKicked = function (kickedPlayer, reason, ban, byPlayer) {
@@ -280,7 +280,7 @@ async function createRoom(room, deps) {
   };
 
   room.onTeamGoal = function (team) {
-    handleTeamGoal(room, state, team, { getTimestamp, sendMsg });
+    handleTeamGoal(room, state, team, { getTimestamp, sendMsg, t });
   };
 
   room.onGameStart = function () {
@@ -289,7 +289,7 @@ async function createRoom(room, deps) {
         markPlayerInput(state, player, botManager);
       }
     }
-    handleGameStart(room, state, { sendMsg, playerAssignments });
+    handleGameStart(room, state, { sendMsg, playerAssignments, t });
   };
 
   room.onGameStop = function () {

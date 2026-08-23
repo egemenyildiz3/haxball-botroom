@@ -7,7 +7,15 @@ const { isProtectedBotIdentity } = require('./botPolicy');
 function handlePlayerKicked(room, state, kickedPlayer, reason, ban, byPlayer, deps, sanitizePlayer) {
   if (!byPlayer || byPlayer.id === 0) return;
 
-  const { loggedInPlayers, CONFIG_ADMIN_CAN_BAN, botManager } = deps;
+  const { loggedInPlayers, CONFIG_ADMIN_CAN_BAN, botManager, t = (key, vars = {}) => {
+    const messages = {
+      'guard.botBanProtected': '🛡️ Bot oyuncular banlanamaz. Bot kaldırmak için !bot kapat veya !bot hepsi kullan.',
+      'guard.ownerAttackPunished': `🛡️ ${vars.name}, Kurucuyu atmaya çalıştığı için cezalandırıldı!`,
+      'guard.ownerAttackReason': 'Kurucuya yetki uygulamaya çalıştığınız için banlandınız!',
+      'guard.adminBanDisabled': `⚠️ Adminlerin ban yetkisi kapalıdır! ${vars.name} üzerindeki ban kaldırıldı.`,
+    };
+    return messages[key] || key;
+  } } = deps;
   const safeKicked = sanitizePlayer(room, kickedPlayer, state);
   const safeBy = sanitizePlayer(room, byPlayer, state);
   const kickedClean = getCleanName(safeKicked);
@@ -24,7 +32,7 @@ function handlePlayerKicked(room, state, kickedPlayer, reason, ban, byPlayer, de
       if (typeof room.setPlayerAdmin === 'function') room.setPlayerAdmin(safeBy.id, false);
     } catch (e) {}
 
-    sendMsg(room, `🛡️ Bot oyuncular banlanamaz. Bot kaldırmak için !bot kapat veya !bot hepsi kullan.`, safeBy.id, 0xFFCC00, 'bold');
+    sendMsg(room, t('guard.botBanProtected'), safeBy.id, 0xFFCC00, 'bold');
     return;
   }
 
@@ -37,10 +45,10 @@ function handlePlayerKicked(room, state, kickedPlayer, reason, ban, byPlayer, de
 
     try {
       room.setPlayerAdmin(safeBy.id, false);
-      room.kickPlayer(safeBy.id, "Kurucuya yetki uygulamaya çalıştığınız için banlandınız!", true);
+      room.kickPlayer(safeBy.id, t('guard.ownerAttackReason'), true);
     } catch (e) {}
 
-    sendMsg(room, `🛡️ ${byClean}, Kurucuyu atmaya çalıştığı için cezalandırıldı!`, null, 0xFF5555, 'bold');
+    sendMsg(room, t('guard.ownerAttackPunished', { name: byClean }), null, 0xFF5555, 'bold');
     return;
   }
 
@@ -53,7 +61,7 @@ function handlePlayerKicked(room, state, kickedPlayer, reason, ban, byPlayer, de
       room.setPlayerAdmin(safeBy.id, false);
     } catch (e) {}
 
-    sendMsg(room, `⚠️ Adminlerin ban yetkisi kapalıdır! ${kickedClean} üzerindeki ban kaldırıldı.`, null, 0xFF5555, 'bold');
+    sendMsg(room, t('guard.adminBanDisabled', { name: kickedClean }), null, 0xFF5555, 'bold');
   }
 
   if (state.autoManageEnabled) {
@@ -68,7 +76,9 @@ function handlePlayerAdminChange(room, state, changedPlayer, byPlayer, deps, san
   if (state.isRebalancing) return;
   if (byPlayer && byPlayer.id === 0) return;
 
-  const { loggedInPlayers, CONFIG_ADMIN_CAN_GIVE_ADMIN } = deps;
+  const { loggedInPlayers, CONFIG_ADMIN_CAN_GIVE_ADMIN, t = (key) => (
+    key === 'guard.adminGiveDisabled' ? '⚠️ Adminlerin başkasına yetki verme yetkisi kapalıdır!' : key
+  ) } = deps;
   const safePlayer = sanitizePlayer(room, changedPlayer, state);
 
   if (byPlayer && safePlayer.admin) {
@@ -84,7 +94,7 @@ function handlePlayerAdminChange(room, state, changedPlayer, byPlayer, deps, san
           room.setPlayerAdmin(safePlayer.id, false);
         } catch (e) {}
 
-        sendMsg(room, `⚠️ Adminlerin başkasına yetki verme yetkisi kapalıdır!`, safeBy.id, 0xFF5555, 'bold');
+        sendMsg(room, t('guard.adminGiveDisabled'), safeBy.id, 0xFF5555, 'bold');
         return;
       }
     }
@@ -94,6 +104,9 @@ function handlePlayerAdminChange(room, state, changedPlayer, byPlayer, deps, san
 }
 
 function handlePlayerTeamChange(room, state, changedPlayer, byPlayer, deps, sanitizePlayer) {
+  const { t = (key) => (
+    key === 'guard.afkTeamBlocked' ? '💤 AFK modundasınız. Sahaya girmek için sohbetten !afk yazmalısınız.' : key
+  ) } = deps;
   const safePlayer = sanitizePlayer(room, changedPlayer, state);
   const changedByHost = !byPlayer || byPlayer.id === 0;
 
@@ -115,7 +128,7 @@ function handlePlayerTeamChange(room, state, changedPlayer, byPlayer, deps, sani
     try {
       room.setPlayerTeam(safePlayer.id, 0);
       if (safePlayer.id !== 0) {
-        sendMsg(room, '💤 AFK modundasınız. Sahaya girmek için sohbetten !afk yazmalısınız.', safePlayer.id, 0xFF5555, 'bold');
+        sendMsg(room, t('guard.afkTeamBlocked'), safePlayer.id, 0xFF5555, 'bold');
       }
     } catch (e) {}
     return;

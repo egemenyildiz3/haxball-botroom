@@ -148,7 +148,35 @@ function goalAttribution(state, team) {
   return { scorer, assister, ownGoalPlayer: null };
 }
 
-function handleTeamGoal(room, state, team, { getTimestamp, sendMsg }) {
+function fallbackT(key, vars = {}) {
+  const messages = {
+    'team.red': 'KIRMIZI',
+    'team.blue': 'MAVİ',
+    'team.redName': 'Kırmızı',
+    'team.blueName': 'Mavi',
+    'match.assist': `Asist: ${vars.name}`,
+    'match.goal': `⚽ GOL! ${vars.scorer}${vars.assist} [${vars.time}] | ${vars.redTeam} ${vars.redScore} - ${vars.blueScore} ${vars.blueTeam}`,
+    'match.ownGoal': `🤡 KENDİ KALESİNE GOL! ${vars.player} topu kendi ağlarına gönderdi [${vars.time}] | ${vars.redTeam} ${vars.redScore} - ${vars.blueScore} ${vars.blueTeam}`,
+    'match.teamGoal': `⚽ GOL! ${vars.team} Takım gol attı [${vars.time}] | ${vars.redTeam} ${vars.redScore} - ${vars.blueScore} ${vars.blueTeam}`,
+    'match.started': '🚀 Maç başladı! Herkese başarılar ve iyi oyunlar!',
+    'match.redWon': '🔴 Kırmızı Takım Kazandı!',
+    'match.blueWon': '🔵 Mavi Takım Kazandı!',
+    'match.draw': '🤝 Berabere Bitti!',
+    'match.finished': `🏆 MAÇ BİTTİ! ${vars.result} Skor: ${vars.redTeam} ${vars.redScore} - ${vars.blueScore} ${vars.blueTeam}`,
+  };
+  return messages[key] || key;
+}
+
+function scoreVars(t, scores) {
+  return {
+    redTeam: t('team.red'),
+    blueTeam: t('team.blue'),
+    redScore: scores.red,
+    blueScore: scores.blue,
+  };
+}
+
+function handleTeamGoal(room, state, team, { getTimestamp, sendMsg, t = fallbackT }) {
   const liveScores = typeof room.getScores === 'function' ? room.getScores() : null;
 
   if (state.currentGame) {
@@ -190,7 +218,7 @@ function handleTeamGoal(room, state, team, { getTimestamp, sendMsg }) {
     }
 
     if (assistPlayer) {
-      assistText = ` (Asist: ${assistPlayer.name})`;
+      assistText = ` (${t('match.assist', { name: assistPlayer.name })})`;
 
       if (state.currentGame) {
         let assister = state.currentGame.players.find((p) => p.id === assistPlayer.id);
@@ -201,12 +229,25 @@ function handleTeamGoal(room, state, team, { getTimestamp, sendMsg }) {
         assister.assists = (assister.assists || 0) + 1;
       }
     }
-    announcement = `⚽ GOL! ${goalScorer.name}${assistText} [${timeStr}] | KIRMIZI ${scores.red} - ${scores.blue} MAVİ`;
+    announcement = t('match.goal', {
+      scorer: goalScorer.name,
+      assist: assistText,
+      time: timeStr,
+      ...scoreVars(t, scores),
+    });
   } else if (ownGoalPlayer) {
     color = 0xFF5555;
-    announcement = `🤡 KENDİ KALESİNE GOL! ${ownGoalPlayer.name} topu kendi ağlarına gönderdi [${timeStr}] | KIRMIZI ${scores.red} - ${scores.blue} MAVİ`;
+    announcement = t('match.ownGoal', {
+      player: ownGoalPlayer.name,
+      time: timeStr,
+      ...scoreVars(t, scores),
+    });
   } else {
-    announcement = `⚽ GOL! ${team === 1 ? 'Kırmızı' : 'Mavi'} Takım gol attı [${timeStr}] | KIRMIZI ${scores.red} - ${scores.blue} MAVİ`;
+    announcement = t('match.teamGoal', {
+      team: team === 1 ? t('team.redName') : t('team.blueName'),
+      time: timeStr,
+      ...scoreVars(t, scores),
+    });
   }
 
   console.log(`[GOAL] ${announcement}`);
@@ -218,7 +259,7 @@ function handleTeamGoal(room, state, team, { getTimestamp, sendMsg }) {
   startKickoffWatch(state, kickoffTeamAfterGoal(team));
 }
 
-function handleGameStart(room, state, { sendMsg }) {
+function handleGameStart(room, state, { sendMsg, t = fallbackT }) {
   if (typeof room.getPlayerList !== 'function') return;
 
   endTeamTransitionLock(room, state);
@@ -242,11 +283,11 @@ function handleGameStart(room, state, { sendMsg }) {
   startKickoffWatch(state);
 
   console.log(`[GAME START] Maç başladı! Aktif oyuncu sayısı: ${state.currentGame.players.length}`);
-  sendMsg(room, '🚀 Maç başladı! Herkese başarılar ve iyi oyunlar!', null, 0x00FF7F, 'bold');
+  sendMsg(room, t('match.started'), null, 0x00FF7F, 'bold');
 }
 
 async function handleGameStop(room, state, deps) {
-  const { db, DB_FILE, persistDatabase, sendMsg, playerJoinOrder, sleep, SPEC_PROMOTION_COUNT, botManager } = deps;
+  const { db, DB_FILE, persistDatabase, sendMsg, playerJoinOrder, sleep, SPEC_PROMOTION_COUNT, botManager, t = fallbackT } = deps;
 
   const liveScores = typeof room.getScores === 'function' ? room.getScores() : null;
   let scores = { red: 0, blue: 0, time: 0 };
@@ -270,8 +311,11 @@ async function handleGameStop(room, state, deps) {
 
   if (scores.red > 0 || scores.blue > 0) {
     saveGameResult(db, DB_FILE, scores, winnerTeam, loserTeam, state.currentGame, endedAt, durationSeconds, persistDatabase);
-    const winMsg = winnerTeam === 1 ? '🔴 Kırmızı Takım Kazandı!' : winnerTeam === 2 ? '🔵 Mavi Takım Kazandı!' : '🤝 Berabere Bitti!';
-    sendMsg(room, `🏆 MAÇ BİTTİ! ${winMsg} Skor: KIRMIZI ${scores.red} - ${scores.blue} MAVİ`, null, 0xFFD700, 'bold');
+    const winMsg = winnerTeam === 1 ? t('match.redWon') : winnerTeam === 2 ? t('match.blueWon') : t('match.draw');
+    sendMsg(room, t('match.finished', {
+      result: winMsg,
+      ...scoreVars(t, scores),
+    }), null, 0xFFD700, 'bold');
   }
 
   state.currentGame = null;

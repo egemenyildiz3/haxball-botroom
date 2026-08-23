@@ -41,7 +41,15 @@ function isOutOfBoundsPosition(ballPosition) {
   return isOutOfBounds;
 }
 
-function repairOutOfBoundsBall(room, state, sendMsg) {
+function fallbackT(key) {
+  const messages = {
+    'ball.outWarning': '⚠️ Top dışarı çıktı, 2 saniye içinde içeri çekilecek.',
+    'ball.recovered': '⚠️ Dışarı çıkan top içeri çekildi.',
+  };
+  return messages[key] || key;
+}
+
+function repairOutOfBoundsBall(room, state, sendMsg, t = fallbackT) {
   if (typeof room.getBallPosition !== 'function') return;
 
   const ballPosition = room.getBallPosition();
@@ -54,7 +62,7 @@ function repairOutOfBoundsBall(room, state, sendMsg) {
 
   if (!state.ballRecovery) {
     state.ballRecovery = { startedAt: Date.now() };
-    sendMsg(room, '⚠️ Top dışarı çıktı, 2 saniye içinde içeri çekilecek.', null, 0xFFCC00, 'bold');
+    sendMsg(room, t('ball.outWarning'), null, 0xFFCC00, 'bold');
     return;
   }
 
@@ -70,7 +78,7 @@ function repairOutOfBoundsBall(room, state, sendMsg) {
     yspeed: 0,
   });
   state.ballRecovery = null;
-  sendMsg(room, '⚠️ Dışarı çıkan top içeri çekildi.', null, 0xFFCC00, 'bold');
+  sendMsg(room, t('ball.recovered'), null, 0xFFCC00, 'bold');
 }
 
 module.exports = {
