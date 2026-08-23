@@ -44,7 +44,10 @@ function initDatabase(db) {
 
     CREATE TABLE IF NOT EXISTS blacklisted_users (
       username TEXT,
-      auth_key TEXT
+      auth_key TEXT,
+      ip TEXT,
+      reason TEXT,
+      banned_at TEXT
     );
 
     CREATE TABLE IF NOT EXISTS istekler (
@@ -72,6 +75,7 @@ function initDatabase(db) {
   try { db.exec('ALTER TABLE users ADD COLUMN losses INTEGER DEFAULT 0'); } catch (e) {}
 
   migrateIsteklerDropIndexColumn(db);
+  migrateBlacklistedUsersIdempotent(db);
 }
 
 function tableColumns(db, tableName) {
@@ -102,6 +106,52 @@ function migrateIsteklerDropIndexColumn(db) {
   } catch (err) {
     try { db.exec('ROLLBACK'); } catch (e) {}
     console.warn('[BACKEND-DB] istekler index kolon migrasyonu başarısız:', err.message);
+  }
+}
+
+function migrateBlacklistedUsersIdempotent(db) {
+  try { db.exec('ALTER TABLE blacklisted_users ADD COLUMN ip TEXT'); } catch (e) {}
+  try { db.exec('ALTER TABLE blacklisted_users ADD COLUMN reason TEXT'); } catch (e) {}
+  try { db.exec('ALTER TABLE blacklisted_users ADD COLUMN banned_at TEXT'); } catch (e) {}
+
+  try {
+    db.exec(`
+      DELETE FROM blacklisted_users
+      WHERE rowid NOT IN (
+        SELECT MIN(rowid)
+        FROM blacklisted_users
+        WHERE username IS NOT NULL AND TRIM(username) != ''
+        GROUP BY LOWER(TRIM(username))
+      )
+      AND username IS NOT NULL
+      AND TRIM(username) != '';
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_blacklisted_users_username_unique
+      ON blacklisted_users(LOWER(TRIM(username)))
+      WHERE username IS NOT NULL AND TRIM(username) != '';
+    `);
+  } catch (err) {
+    console.warn('[BACKEND-DB] blacklist unique username migrasyonu başarısız:', err.message);
+  }
+}
+
+function isUsernameBlacklisted(db, username) {
+  if (!username) return false;
+
+  try {
+    const stmt = db.prepare(`
+      SELECT 1 FROM blacklisted_users
+      WHERE username IS NOT NULL
+        AND TRIM(username) != ''
+        AND LOWER(TRIM(username)) = LOWER(TRIM(?))
+      LIMIT 1
+    `);
+    stmt.bind([username]);
+    const found = stmt.step();
+    stmt.free();
+    return found;
+  } catch (err) {
+    console.warn('[BACKEND-DB] Username blacklist kontrolü hatası:', err.message);
+    return false;
   }
 }
 
@@ -251,6 +301,7 @@ module.exports = {
   loadOrCreateDatabase,
   persistDatabase,
   initDatabase,
+  isUsernameBlacklisted,
   isUserBlacklisted,
   logVisitedUser,
   saveGameResult,
