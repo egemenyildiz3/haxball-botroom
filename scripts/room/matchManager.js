@@ -204,7 +204,7 @@ function handleTeamGoal(room, state, team, { getTimestamp, sendMsg, t = fallback
   const timeStr = `${minutes}:${seconds}`;
 
   let announcement = '';
-  let color = 0x55FF55;
+  const color = team === 1 ? 0xFF6666 : 0x66A3FF;
 
   const { scorer: goalScorer, assister: assistPlayer, ownGoalPlayer } = goalAttribution(state, team);
 
@@ -239,7 +239,6 @@ function handleTeamGoal(room, state, team, { getTimestamp, sendMsg, t = fallback
       ...scoreVars(t, scores),
     });
   } else if (ownGoalPlayer) {
-    color = 0xFF5555;
     announcement = t('match.ownGoal', {
       player: ownGoalPlayer.name,
       time: timeStr,
