@@ -48,7 +48,6 @@ function initDatabase(db) {
     );
 
     CREATE TABLE IF NOT EXISTS istekler (
-      "index" INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT NOT NULL,
       aciklama TEXT NOT NULL,
       date TEXT NOT NULL
@@ -71,6 +70,39 @@ function initDatabase(db) {
   try { db.exec('ALTER TABLE users ADD COLUMN assists INTEGER DEFAULT 0'); } catch (e) {}
   try { db.exec('ALTER TABLE users ADD COLUMN wins INTEGER DEFAULT 0'); } catch (e) {}
   try { db.exec('ALTER TABLE users ADD COLUMN losses INTEGER DEFAULT 0'); } catch (e) {}
+
+  migrateIsteklerDropIndexColumn(db);
+}
+
+function tableColumns(db, tableName) {
+  const stmt = db.prepare(`PRAGMA table_info(${tableName})`);
+  const columns = [];
+  while (stmt.step()) columns.push(stmt.getAsObject().name);
+  stmt.free();
+  return columns;
+}
+
+function migrateIsteklerDropIndexColumn(db) {
+  try {
+    if (!tableColumns(db, 'istekler').includes('index')) return;
+
+    db.exec(`
+      BEGIN;
+      CREATE TABLE istekler_new (
+        username TEXT NOT NULL,
+        aciklama TEXT NOT NULL,
+        date TEXT NOT NULL
+      );
+      INSERT INTO istekler_new (username, aciklama, date)
+      SELECT username, aciklama, date FROM istekler ORDER BY "index";
+      DROP TABLE istekler;
+      ALTER TABLE istekler_new RENAME TO istekler;
+      COMMIT;
+    `);
+  } catch (err) {
+    try { db.exec('ROLLBACK'); } catch (e) {}
+    console.warn('[BACKEND-DB] istekler index kolon migrasyonu başarısız:', err.message);
+  }
 }
 
 /**
