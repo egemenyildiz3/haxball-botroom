@@ -1,8 +1,8 @@
 const { desiredBotCount, desiredEvenActiveCount, isBotPlayer } = require('./botPolicy');
 
-const REBALANCE_START_DELAY_MS = 250;
-const REBALANCE_MOVE_DELAY_MS = 120;
-const REBALANCE_END_DELAY_MS = 150;
+const REBALANCE_START_DELAY_MS = 500;
+const REBALANCE_MOVE_DELAY_MS = 250;
+const REBALANCE_END_DELAY_MS = 350;
 const PLAYER_REPLACES_BOT_DELAY_MS = 3 * 1000;
 const PLAYER_EMPTY_SLOT_DELAY_MS = 1 * 1000;
 const START_RETRY_DELAY_MS = 1000;
