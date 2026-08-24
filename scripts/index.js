@@ -10,7 +10,7 @@ const config = require('./config');
 const { createTranslator } = require('./i18n');
 const { createLogger } = require('./logger');
 
-const DEFAULT_TOKEN_FILE = '/run/haxball/spacebounce-botroom-token.txt';
+const DEFAULT_TOKEN_FILE = '/run/haxball/spacebounce-v4-token.txt';
 const logger = createLogger(config.logging);
 logger.installConsole();
 
