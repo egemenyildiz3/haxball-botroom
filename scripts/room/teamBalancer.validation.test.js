@@ -159,9 +159,26 @@ async function testAvoidsFollowUpBotSwapWhenBenchingExtraPlayer() {
 
   const room = await validate(players, botIds);
   assert.deepEqual(teamCounts(room.players), { red: 2, blue: 2, spec: 1 });
-  assert.deepEqual(botCounts(room.players, botIds), { red: 1, blue: 2 });
-  assert.equal(room.moves.length, 1);
-  assert.equal(room.moves[0].team, 0);
+  assert.deepEqual(botCounts(room.players, botIds), { red: 1, blue: 1 });
+  assert.equal(room.players.find((p) => p.id === 501).team, 0);
+}
+
+async function testSpectatorHumanReplacesBotWhenTeamsAlreadyEven() {
+  const botIds = new Set([501, 502, 503, 504]);
+  const players = [
+    makePlayer(1, 1),
+    makePlayer(501, 1, true),
+    makePlayer(502, 1, true),
+    makePlayer(2, 2),
+    makePlayer(503, 2, true),
+    makePlayer(504, 2, true),
+    makePlayer(3, 0),
+  ];
+
+  const room = await validate(players, botIds);
+  assert.deepEqual(teamCounts(room.players), { red: 3, blue: 3, spec: 1 });
+  assert.equal(room.players.find((p) => p.id === 3).team !== 0, true);
+  assert.equal(room.players.filter((p) => p.team !== 0 && botIds.has(p.id)).length, 3);
 }
 
 function testDoesNotStartGameDuringMatchRotation() {
@@ -213,6 +230,7 @@ async function run() {
   await testSwapsHumansAndBotsToFixBotDistribution();
   await testBenchesBotFromHeavyTeamAfterLeave();
   await testAvoidsFollowUpBotSwapWhenBenchingExtraPlayer();
+  await testSpectatorHumanReplacesBotWhenTeamsAlreadyEven();
   testDoesNotStartGameDuringMatchRotation();
   testExtraBotComesFromHeavyTeam();
   console.log('teamBalancer validation tests passed');

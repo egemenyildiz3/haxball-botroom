@@ -188,6 +188,22 @@ async function validateTeamDistribution(room, state, deps = {}) {
     const activePlayers = [...redPlayers, ...bluePlayers];
     const redCount = redPlayers.length;
     const blueCount = bluePlayers.length;
+    const activeBotCount = activePlayers.filter(isBot).length;
+
+    if (activeBotCount > targetBotCount) {
+      const extraBots = pickExtraActiveBots(players, state, isBot, targetBotCount, playerJoinOrder);
+      const excessBot = extraBots[0];
+
+      if (!excessBot) break;
+      try {
+        console.warn(`[TEAM-VALIDATOR] ${reason}: fazla aktif bot düzeltildi, ${excessBot.name} spec'e alındı.`);
+        room.setPlayerTeam(excessBot.id, 0);
+        await sleep(REBALANCE_MOVE_DELAY_MS);
+        continue;
+      } catch (e) {
+        break;
+      }
+    }
 
     if (activePlayers.length > desiredActiveCount) {
       const heavyTeam = redCount >= blueCount ? 1 : 2;
