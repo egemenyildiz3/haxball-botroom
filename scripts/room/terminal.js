@@ -28,6 +28,8 @@ function attachTerminalInput(room, state, deps, autoManager) {
       chatFilter: state.chatFilter,
       chatMuted: state.chatMuted,
       setChatMuted: (muted) => { state.chatMuted = !!muted; },
+      roomMuted: state.roomMuted,
+      setRoomMuted: (muted) => { state.roomMuted = !!muted; },
       mutedPlayers: state.mutedPlayers,
       gameActive: !!state.currentGame,
     };

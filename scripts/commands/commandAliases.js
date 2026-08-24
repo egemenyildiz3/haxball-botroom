@@ -18,6 +18,8 @@ const COMMAND_ALIASES = {
   auto: ['!auto', '!oto', '!otomatik'],
   mute: ['!mute', '!sohbet', '!chat'],
   unmute: ['!unmute', '!unmutex', '!susturac', '!susturaç'],
+  muteRoom: ['!muteroom', '!odaroommute', '!odasustur'],
+  unmuteRoom: ['!unmuteroom', '!roomunmute', '!odaac', '!odaaç'],
   kick: ['!kick'],
   ban: ['!ban'],
   blacklist: ['!blacklist', '!blackban', '!permaban'],

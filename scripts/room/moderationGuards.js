@@ -90,6 +90,23 @@ function handlePlayerKicked(room, state, kickedPlayer, reason, ban, byPlayer, de
     return;
   }
 
+  const action = ban ? 'ban' : 'kick';
+  const warning = `[AUDIT] Native ${action} kullanıldı -> yapan=${byClean} role=${roleOfUser(byUser)} hedef=${kickedClean} reason="${reason || ''}"`;
+  if (deps.logger) {
+    deps.logger.warn('native_moderation', warning, {
+      action,
+      actorId: safeBy.id,
+      actorName: byClean,
+      actorRole: roleOfUser(byUser),
+      targetId: safeKicked.id,
+      targetName: kickedClean,
+      reason: reason || '',
+      ban: !!ban,
+    });
+  } else {
+    console.warn(warning);
+  }
+
   if (state.autoManageEnabled) {
     setTimeout(() => {
       rebalanceTeams(room, state, deps)

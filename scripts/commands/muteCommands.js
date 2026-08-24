@@ -4,6 +4,7 @@ const { hasCapability } = require('../roles');
 
 const DEFAULT_PLAYER_MUTE_MINUTES = 10;
 const MAX_PLAYER_MUTE_MINUTES = 30;
+const ROOM_MUTE_ROLES = new Set(['owner', 'mod']);
 
 function muteKey(player) {
   return player && (player.auth || player.conn || String(player.id));
@@ -80,6 +81,10 @@ function isGlobalMuteSub(sub) {
   ].includes(sub);
 }
 
+function canMuteRoom(ctx) {
+  return ROOM_MUTE_ROLES.has(String(ctx.role || '').toLowerCase());
+}
+
 function routeMuteCommand(ctx) {
   const { room, player, args, displayName } = ctx;
   const t = ctx.t || ((key, vars = {}) => {
@@ -88,10 +93,15 @@ function routeMuteCommand(ctx) {
       'mute.needUnmute': '❌ Susturma kaldırma komutunu kullanamazsınız.',
       'mute.globalOn': `🔇 Sohbet ${vars.name} tarafından susturuldu. Komutlar kullanılabilir.`,
       'mute.globalOff': `🔊 Sohbet ${vars.name} tarafından açıldı.`,
+      'mute.roomNeedMod': '❌ Oda susturmayı sadece Owner veya Mod kullanabilir.',
+      'mute.roomOn': `🔇 Oda ${vars.name} tarafından susturuldu. Sadece Owner ve Mod konuşabilir.`,
+      'mute.roomOff': `🔊 Oda susturması ${vars.name} tarafından kaldırıldı.`,
     };
     return messages[key] || key;
   });
   if (ctx.commandKey === 'unmute') return unmuteTargetPlayer(ctx);
+  if (ctx.commandKey === 'muteRoom') return setRoomMute(ctx, true);
+  if (ctx.commandKey === 'unmuteRoom') return setRoomMute(ctx, false);
   if (ctx.commandKey !== 'mute') return null;
 
   if (!(typeof ctx.hasCapability === 'function' && ctx.hasCapability('mute'))) {
@@ -116,6 +126,48 @@ function routeMuteCommand(ctx) {
     sendMsg(room, t('mute.globalOn', { name: displayName }), null, 0xFFCC00, 'bold');
   } else {
     sendMsg(room, t('mute.globalOff', { name: displayName }), null, 0x00FF7F, 'bold');
+  }
+
+  return false;
+}
+
+function setRoomMute(ctx, enable) {
+  const { room, player, displayName } = ctx;
+  const t = ctx.t || ((key, vars = {}) => {
+    const messages = {
+      'mute.roomNeedMod': '❌ Oda susturmayı sadece Owner veya Mod kullanabilir.',
+      'mute.roomOn': `🔇 Oda ${vars.name} tarafından susturuldu. Sadece Owner ve Mod konuşabilir.`,
+      'mute.roomOff': `🔊 Oda susturması ${vars.name} tarafından kaldırıldı.`,
+    };
+    return messages[key] || key;
+  });
+
+  if (!canMuteRoom(ctx)) {
+    sendMsg(room, t('mute.roomNeedMod'), player.id, 0xFF5555, 'bold');
+    return false;
+  }
+
+  if (typeof ctx.setRoomMuted === 'function') {
+    ctx.setRoomMuted(enable);
+  }
+
+  sendMsg(
+    room,
+    enable ? t('mute.roomOn', { name: displayName }) : t('mute.roomOff', { name: displayName }),
+    null,
+    enable ? 0xFFCC00 : 0x00FF7F,
+    'bold'
+  );
+  const warning = `[AUDIT] Room mute ${enable ? 'enabled' : 'disabled'} -> yapan=${displayName} role=${ctx.role}`;
+  if (ctx.logger) {
+    ctx.logger.warn('room_mute', warning, {
+      enabled: enable,
+      actorId: player.id,
+      actorName: displayName,
+      actorRole: ctx.role,
+    });
+  } else {
+    console.warn(warning);
   }
 
   return false;

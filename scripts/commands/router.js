@@ -60,6 +60,11 @@ function isAdminLike(player, loggedInPlayers) {
   return !!hasCapability(userData, 'admin_chat');
 }
 
+function canSpeakWhenRoomMuted(userData) {
+  const role = roleOfUser(userData);
+  return role === 'owner' || role === 'mod';
+}
+
 function fallbackT(key, vars = {}) {
   const messages = {
     'common.unknownCommand': '❓ Bilinmeyen komut. Komutları görmek için !komutlar / !commands / !help yazabilirsiniz.',
@@ -144,6 +149,11 @@ function handlePlayerChat(room, player, msg, deps) {
   if (!text.startsWith('!')) {
     const chatText = text.toLocaleLowerCase('tr-TR');
     const isAdminChat = isRoleAdminChat;
+
+    if (deps.roomMuted && !canSpeakWhenRoomMuted(userData)) {
+      sendMsg(room, t('chat.roomMuted'), player.id, 0xFFCC00, 'bold');
+      return false;
+    }
 
     if (deps.chatMuted && !isAdminChat) {
       sendMsg(room, t('chat.muted'), player.id, 0xFFCC00, 'bold');

@@ -25,6 +25,7 @@ function createRoomState(options = {}) {
     lockedTeams: new Map(),
     autoManageEnabled: true,
     chatMuted: false,
+    roomMuted: false,
     mutedPlayers: new Map(),
     lastInputAt: new Map(),
     inactivityWarnings: new Set(),

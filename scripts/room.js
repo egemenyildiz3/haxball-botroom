@@ -12,7 +12,7 @@ const { handlePlayerBallKick, handleTeamGoal, handleGameStart, handleGameStop, c
 const { attachTerminalInput } = require('./room/terminal');
 const { isProtectedBotIdentity } = require('./room/botPolicy');
 const { blockDuplicateJoin, blockInvalidJoinName } = require('./room/joinGuards');
-const { isOwner } = require('./roles');
+const { isOwner, roleOfUser } = require('./roles');
 
 process.on('uncaughtException', (err) => {
   console.error('❌ [CRITICAL ERROR] Yakalanmamış İstisna:', err.message, err.stack);
@@ -120,6 +120,26 @@ function markOwnerAfkOnJoin(room, state, player, deps) {
   deps.sendMsg(room, deps.t('superadmin.autoAfk'), player.id, 0xFFCC00, 'bold');
   console.log(`${deps.getTimestamp()} [AFK] Owner girişte otomatik AFK yapıldı: ${getCleanName(player)} (ID: ${player.id})`);
   return true;
+}
+
+function auditNativeRoomAction(action, byPlayer, deps) {
+  if (!byPlayer || byPlayer.id === 0) return;
+
+  const { loggedInPlayers, logger } = deps;
+  const actorName = getCleanName(byPlayer);
+  const actorRole = roleOfUser(loggedInPlayers && loggedInPlayers.get(byPlayer.id));
+  const warning = `[AUDIT] Native ${action} kullanıldı -> yapan=${actorName} role=${actorRole}`;
+
+  if (logger) {
+    logger.warn('native_room_action', warning, {
+      action,
+      actorId: byPlayer.id,
+      actorName,
+      actorRole,
+    });
+  } else {
+    console.warn(warning);
+  }
 }
 
 function notifyActiveMuteOnJoin(room, state, player, deps) {
@@ -314,6 +334,8 @@ async function createRoom(room, deps) {
       chatFilter: state.chatFilter,
       chatMuted: state.chatMuted,
       setChatMuted: (muted) => { state.chatMuted = !!muted; },
+      roomMuted: state.roomMuted,
+      setRoomMuted: (muted) => { state.roomMuted = !!muted; },
       mutedPlayers: state.mutedPlayers,
       gameActive: !!state.currentGame,
     });
@@ -327,7 +349,8 @@ async function createRoom(room, deps) {
     handleTeamGoal(room, state, team, { getTimestamp, sendMsg, t, logger });
   };
 
-  room.onGameStart = function () {
+  room.onGameStart = function (byPlayer) {
+    auditNativeRoomAction('start', byPlayer, roomDeps);
     if (typeof room.getPlayerList === 'function') {
       for (const player of room.getPlayerList()) {
         markPlayerInput(state, player, botManager);
@@ -336,9 +359,18 @@ async function createRoom(room, deps) {
     handleGameStart(room, state, { sendMsg, playerAssignments, t, logger });
   };
 
-  room.onGameStop = function () {
+  room.onGameStop = function (byPlayer) {
+    auditNativeRoomAction('stop', byPlayer, roomDeps);
     handleGameStop(room, state, roomDeps)
       .catch((err) => console.warn('[GAME STOP] Maç sonu işlemleri başarısız:', err.message));
+  };
+
+  room.onGamePause = function (byPlayer) {
+    auditNativeRoomAction('pause', byPlayer, roomDeps);
+  };
+
+  room.onGameUnpause = function (byPlayer) {
+    auditNativeRoomAction('unpause', byPlayer, roomDeps);
   };
 
   await sleep(600);
