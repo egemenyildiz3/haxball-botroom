@@ -62,6 +62,13 @@ const DEFAULT_CONFIG = {
     restoreCheckMs: 30 * 1000,
   },
 
+  teamManagement: {
+    promotionNotice: {
+      enabled: true,
+      color: '00BFFF',
+    },
+  },
+
   logging: {
     enabled: true,
     jsonl: true,
@@ -246,6 +253,13 @@ const config = {
     restoreCheckMs: numberFromEnv('AUTO_RESTORE_CHECK_MS', fileConfig.autoManagement.restoreCheckMs, { min: 1000 }),
   },
 
+  teamManagement: {
+    promotionNotice: {
+      enabled: boolFromEnv('TEAM_PROMOTION_NOTICE_ENABLED', fileConfig.teamManagement.promotionNotice.enabled),
+      color: colorFromEnv('TEAM_PROMOTION_NOTICE_COLOR', fileConfig.teamManagement.promotionNotice.color),
+    },
+  },
+
   logging: {
     enabled: boolFromEnv('LOGGING_ENABLED', fileConfig.logging.enabled),
     jsonl: boolFromEnv('LOGGING_JSONL', fileConfig.logging.jsonl),
@@ -278,6 +292,12 @@ function validateConfig(cfg = config) {
   }
   if (cfg.inactivity.warningMs > cfg.inactivity.kickMs) {
     throw new Error('INACTIVITY_WARNING_MS, INACTIVITY_KICK_MS değerinden büyük olamaz.');
+  }
+  if (!cfg.teamManagement || !cfg.teamManagement.promotionNotice) {
+    throw new Error('teamManagement.promotionNotice config eksik.');
+  }
+  if (!Number.isInteger(cfg.teamManagement.promotionNotice.color)) {
+    throw new Error('TEAM_PROMOTION_NOTICE_COLOR renk formatı RRGGBB olmalı.');
   }
   if (cfg.teamColors.red.colors.length === 0 || cfg.teamColors.blue.colors.length === 0) {
     throw new Error('TEAM_COLOR_*_COLORS en az bir renk içermeli.');

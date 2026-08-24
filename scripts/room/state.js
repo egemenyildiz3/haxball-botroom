@@ -17,6 +17,7 @@ function createRoomState(options = {}) {
     manualPlacements: new Map(),
     isRebalancing: false,
     rebalanceRequested: false,
+    promotionNoticePlayers: new Set(),
     matchRotationPending: false,
     startGamePending: false,
     teamChangesLocked: false,

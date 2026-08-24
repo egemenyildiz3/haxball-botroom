@@ -91,6 +91,7 @@ const MESSAGES = {
     'auto.statusOn': '⚙️ Otomatik yönetim AÇIK: takım dağıtımı, maç başlatma ve maç sonu rotasyonu çalışıyor.',
     'auto.statusOff': '⚙️ Otomatik yönetim KAPALI: takımlar ve maç tamamen elle yönetiliyor.',
     'auto.restored': '🔓 Odada Admin/Kurucu kalmadığı için otomatik yönetim tekrar açıldı.',
+    'team.preparePromotion': '⏳ Oyuna alınmaya hazırlanıyorsunuz. Hazır olun!',
 
     'bot.needAdmin': '❌ Bot kontrolü için Admin olmalısın.',
     'bot.unavailable': '❌ Bot yöneticisi bu odada aktif değil.',
@@ -273,6 +274,7 @@ const MESSAGES = {
     'auto.statusOn': '⚙️ Automatic management ON: balancing, match start and rotation are active.',
     'auto.statusOff': '⚙️ Automatic management OFF: teams and matches are fully manual.',
     'auto.restored': '🔓 Automatic management was re-enabled because no Admin/Owner is in the room.',
+    'team.preparePromotion': '⏳ Get ready, you are being moved into the game.',
 
     'bot.needAdmin': '❌ You must be Admin to control bots.',
     'bot.unavailable': '❌ Bot manager is not available.',

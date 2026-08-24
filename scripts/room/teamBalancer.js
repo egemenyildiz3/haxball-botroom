@@ -379,7 +379,7 @@ function tryStartGame(room, state, retriesLeft) {
   setTimeout(() => tryStartGame(room, state, retriesLeft - 1), START_RETRY_DELAY_MS);
 }
 
-async function rebalanceTeams(room, state, { playerJoinOrder, botManager, sleep = fallbackSleep }) {
+async function rebalanceTeams(room, state, { playerJoinOrder, botManager, sleep = fallbackSleep, sendMsg, t, config }) {
   if (!state.autoManageEnabled) return;
   if (state.isRebalancing) {
     state.rebalanceRequested = true;
@@ -393,14 +393,15 @@ async function rebalanceTeams(room, state, { playerJoinOrder, botManager, sleep 
   try {
     do {
       state.rebalanceRequested = false;
-      await runRebalanceOnce(room, state, { playerJoinOrder, botManager, sleep });
+      await runRebalanceOnce(room, state, { playerJoinOrder, botManager, sleep, sendMsg, t, config });
     } while (state.rebalanceRequested);
   } finally {
     state.isRebalancing = false;
+    state.promotionNoticePlayers.clear();
   }
 }
 
-async function runRebalanceOnce(room, state, { playerJoinOrder, botManager, sleep }) {
+async function runRebalanceOnce(room, state, { playerJoinOrder, botManager, sleep, sendMsg, t, config }) {
   await sleep(REBALANCE_START_DELAY_MS);
   if (!state.autoManageEnabled) return;
 
@@ -425,6 +426,10 @@ async function runRebalanceOnce(room, state, { playerJoinOrder, botManager, slee
     : (waitingHumans.length > 0 && activePlayers.length < desiredActiveCount ? PLAYER_EMPTY_SLOT_DELAY_MS : 0);
 
   if (joinDelay > 0) {
+    const replacementSlots = Math.max(0, activeBots.length - targetBotCount);
+    const emptySlots = Math.max(0, desiredActiveCount - activePlayers.length);
+    const noticeCount = Math.max(replacementSlots, emptySlots);
+    notifyPromotionCandidates(room, state, waitingHumans.slice(0, noticeCount), { sendMsg, t, config });
     await sleep(joinDelay);
     if (!state.autoManageEnabled) return;
     players = room.getPlayerList();
@@ -535,6 +540,28 @@ function spectatorsByType(players, state, playerJoinOrder, isBot, wantBot) {
       && isBot(p) === wantBot
     ))
     .sort((a, b) => (playerJoinOrder.get(a.id) ?? 0) - (playerJoinOrder.get(b.id) ?? 0));
+}
+
+function promotionNoticeConfig(config = {}) {
+  const notice = config.teamManagement && config.teamManagement.promotionNotice;
+  return {
+    enabled: !notice || notice.enabled !== false,
+    color: notice && Number.isInteger(notice.color) ? notice.color : 0x00BFFF,
+  };
+}
+
+function notifyPromotionCandidates(room, state, candidates, deps = {}) {
+  const { sendMsg, t = (key) => key, config = {} } = deps;
+  if (!sendMsg || typeof sendMsg !== 'function') return;
+
+  const notice = promotionNoticeConfig(config);
+  if (!notice.enabled) return;
+
+  for (const player of candidates) {
+    if (!player || player.id === 0 || state.promotionNoticePlayers.has(player.id)) continue;
+    state.promotionNoticePlayers.add(player.id);
+    sendMsg(room, t('team.preparePromotion'), player.id, notice.color, 'bold');
+  }
 }
 
 module.exports = {

@@ -1,11 +1,16 @@
 const assert = require('assert/strict');
-const { checkAndStartGame, validateTeamDistribution, pickExtraActiveBots } = require('./teamBalancer');
+const { checkAndStartGame, validateTeamDistribution, pickExtraActiveBots, rebalanceTeams } = require('./teamBalancer');
 
 function makeState() {
   return {
     autoManageEnabled: true,
     afkPlayers: new Set(),
     manualPlacements: new Map(),
+    isRebalancing: false,
+    rebalanceRequested: false,
+    promotionNoticePlayers: new Set(),
+    teamChangesLocked: false,
+    lockedTeams: new Map(),
   };
 }
 
@@ -181,6 +186,40 @@ async function testSpectatorHumanReplacesBotWhenTeamsAlreadyEven() {
   assert.equal(room.players.filter((p) => p.team !== 0 && botIds.has(p.id)).length, 3);
 }
 
+async function testPromotionNoticeBeforeHumanReplacesBot() {
+  const botIds = new Set([501, 502, 503, 504]);
+  const players = [
+    makePlayer(1, 1),
+    makePlayer(501, 1, true),
+    makePlayer(502, 1, true),
+    makePlayer(2, 2),
+    makePlayer(503, 2, true),
+    makePlayer(504, 2, true),
+    makePlayer(3, 0),
+  ];
+  const room = makeRoom(players);
+  const messages = [];
+
+  await rebalanceTeams(room, makeState(), {
+    botManager: makeBotManager(botIds),
+    playerJoinOrder: new Map(players.map((p, index) => [p.id, index + 1])),
+    sleep: async () => {},
+    sendMsg: (targetRoom, text, targetId, color, style) => messages.push({ text, targetId, color, style }),
+    t: (key) => (key === 'team.preparePromotion' ? 'GET READY' : key),
+    config: {
+      teamManagement: {
+        promotionNotice: {
+          enabled: true,
+          color: 0x00BFFF,
+        },
+      },
+    },
+  });
+
+  assert.deepEqual(messages, [{ text: 'GET READY', targetId: 3, color: 0x00BFFF, style: 'bold' }]);
+  assert.equal(room.players.find((p) => p.id === 3).team !== 0, true);
+}
+
 function testDoesNotStartGameDuringMatchRotation() {
   const state = makeState();
   state.matchRotationPending = true;
@@ -231,6 +270,7 @@ async function run() {
   await testBenchesBotFromHeavyTeamAfterLeave();
   await testAvoidsFollowUpBotSwapWhenBenchingExtraPlayer();
   await testSpectatorHumanReplacesBotWhenTeamsAlreadyEven();
+  await testPromotionNoticeBeforeHumanReplacesBot();
   testDoesNotStartGameDuringMatchRotation();
   testExtraBotComesFromHeavyTeam();
   console.log('teamBalancer validation tests passed');

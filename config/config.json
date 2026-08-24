@@ -51,6 +51,12 @@
   "autoManagement": {
     "restoreCheckMs": 30000
   },
+  "teamManagement": {
+    "promotionNotice": {
+      "enabled": true,
+      "color": "00BFFF"
+    }
+  },
   "logging": {
     "enabled": true,
     "jsonl": true,
