@@ -3,7 +3,7 @@ const path = require('path');
 const { createHostRoom } = require('./bot/hostRoom');
 
 const { getTimestamp, sanitizeStadiumFileContents, sleep } = require('./util');
-const { loadOrCreateDatabase, persistDatabase, initRoomDatabase, initSharedDatabase } = require('./db');
+const { createPersistDatabase, loadOrCreateDatabase, initRoomDatabase, initSharedDatabase } = require('./db');
 const { createRoom } = require('./room');
 const { createBotManager } = require('./bot/manager');
 const config = require('./config');
@@ -46,6 +46,7 @@ const t = createTranslator(config.room.language);
 let SQL = null;
 let roomDb = null;
 let sharedDb = null;
+let persistDatabase = null;
 
 if (!TOKEN) {
   console.error('HAXBALL_TOKEN bulunamadı.');
@@ -82,6 +83,7 @@ async function startRoom() {
 
   roomDb = loadOrCreateDatabase(SQL, DB_FILE);
   sharedDb = loadOrCreateDatabase(SQL, SHARED_DB_FILE);
+  persistDatabase = createPersistDatabase({ SQL, sharedDb, SHARED_DB_FILE });
   initRoomDatabase(roomDb);
   initSharedDatabase(sharedDb);
   persistDatabase(roomDb, DB_FILE);

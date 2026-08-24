@@ -1,4 +1,4 @@
-const { saveGameResult } = require('../db');
+const { refreshLoggedInRoles, saveGameResult } = require('../db');
 const { getCleanName } = require('../util');
 const { checkAndStartGame, rememberLockedTeams, beginTeamTransitionLock, endTeamTransitionLock, validateTeamDistribution, teamLimits } = require('./teamBalancer');
 const { desiredBotCount, desiredEvenActiveCount, isBotPlayer, sortRealPlayersFirst } = require('./botPolicy');
@@ -324,6 +324,7 @@ async function handleGameStop(room, state, deps) {
     SPEC_PROMOTION_COUNT,
     botManager,
     config,
+    loggedInPlayers,
     t = fallbackT,
     logger = null,
   } = deps;
@@ -381,6 +382,19 @@ async function handleGameStop(room, state, deps) {
       result: winMsg,
       ...scoreVars(t, scores),
     }), null, 0xFFD700, 'bold');
+  }
+
+  if (sharedDb && SHARED_DB_FILE && typeof persistDatabase === 'function') {
+    persistDatabase(sharedDb, SHARED_DB_FILE);
+  }
+
+  if (sharedDb && loggedInPlayers) {
+    const refreshed = refreshLoggedInRoles(room, sharedDb, loggedInPlayers, {
+      roleCapabilities: config && config.adminRules && config.adminRules.roleCapabilities,
+    });
+    if (refreshed > 0) {
+      console.log(`[BACKEND-DB] Maç sonu role cache yenilendi: ${refreshed} oyuncu.`);
+    }
   }
 
   state.currentGame = null;

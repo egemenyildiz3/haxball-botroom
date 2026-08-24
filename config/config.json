@@ -1,7 +1,7 @@
 {
   "profile": "spacebounce-v4",
   "room": {
-    "name": "🛰️ TESLA 🛰️ SPACEBOUNCE 🛰️ AI 🪐",
+    "name": "🛰️ 𝕋𝔼𝕊𝕃𝔸 🛰️ SPACEBOUNCE v4 🪐 AI",
     "maxPlayers": 18,
     "scoreLimit": 3,
     "timeLimit": 4,
@@ -18,8 +18,8 @@
     "allowMultipleJoin": false,
     "roleCapabilities": {
       "owner": ["*"],
-      "admin": ["admin_chat", "afk_exempt", "auto", "ban", "blacklist", "bot", "clear_bans", "duplicate_join_exempt", "kick", "mute", "mute_exempt", "native_admin", "unmute"],
-      "mod": ["admin_chat", "afk_exempt", "auto", "kick", "mute", "mute_exempt", "native_admin", "unmute"],
+      "mod": ["admin_chat", "afk_exempt", "auto", "ban", "blacklist", "bot", "clear_bans", "duplicate_join_exempt", "kick", "mute", "mute_exempt", "native_admin", "unmute"],
+      "admin": ["admin_chat", "afk_exempt", "mute_exempt", "native_admin"],
       "vip": ["unmute"],
       "player": []
     }

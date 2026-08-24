@@ -12,6 +12,116 @@ function persistDatabase(db, DB_FILE) {
   fs.writeFileSync(DB_FILE, Buffer.from(db.export()));
 }
 
+function tableExists(db, tableName) {
+  return !!scalar(db, "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1", [tableName]);
+}
+
+function mergeExternalUserRoles(SQL, db, DB_FILE) {
+  if (!SQL || !DB_FILE || !fs.existsSync(DB_FILE)) return 0;
+  if (!tableExists(db, 'users')) return 0;
+
+  let diskDb = null;
+  let merged = 0;
+
+  try {
+    diskDb = new SQL.Database(new Uint8Array(fs.readFileSync(DB_FILE)));
+    if (!tableExists(diskDb, 'users')) return 0;
+
+    const stmt = diskDb.prepare(`
+      SELECT username, role
+      FROM users
+      WHERE username IS NOT NULL
+        AND TRIM(username) != ''
+        AND role IS NOT NULL
+        AND TRIM(role) != ''
+    `);
+    const update = db.prepare(`
+      UPDATE users
+      SET role = ?
+      WHERE LOWER(TRIM(username)) = LOWER(TRIM(?))
+        AND role != ?
+    `);
+
+    while (stmt.step()) {
+      const row = stmt.getAsObject();
+      update.run([row.role, row.username, row.role]);
+      merged += db.getRowsModified();
+    }
+
+    stmt.free();
+    update.free();
+  } catch (err) {
+    console.warn('[BACKEND-DB] Shared DB role merge hatası:', err.message);
+  } finally {
+    if (diskDb) diskDb.close();
+  }
+
+  return merged;
+}
+
+function createPersistDatabase({ SQL, sharedDb, SHARED_DB_FILE } = {}) {
+  return function persistDatabaseWithExternalMerge(db, DB_FILE) {
+    if (db === sharedDb && DB_FILE === SHARED_DB_FILE) {
+      const merged = mergeExternalUserRoles(SQL, db, DB_FILE);
+      if (merged > 0) {
+        console.log(`[BACKEND-DB] Diskteki role değişiklikleri shared DB hafızasına alındı: ${merged}`);
+      }
+    }
+
+    persistDatabase(db, DB_FILE);
+  };
+}
+
+function refreshLoggedInRoles(room, db, loggedInPlayers, { roleCapabilities } = {}) {
+  if (!room || typeof room.getPlayerList !== 'function' || !loggedInPlayers) return 0;
+
+  let refreshed = 0;
+  const players = room.getPlayerList().filter((player) => player && player.id !== 0);
+
+  for (const player of players) {
+    const current = loggedInPlayers.get(player.id);
+    if (!current || !current.username) continue;
+
+    try {
+      const stmt = db.prepare(`
+        SELECT username, role, player_uid
+        FROM users
+        WHERE LOWER(TRIM(username)) = LOWER(TRIM(?))
+        LIMIT 1
+      `);
+      stmt.bind([current.username]);
+      const row = stmt.step() ? stmt.getAsObject() : null;
+      stmt.free();
+
+      if (!row) continue;
+
+      const updated = {
+        ...current,
+        username: row.username || current.username,
+        role: row.role || current.role || 'player',
+        player_uid: row.player_uid || current.player_uid || '',
+      };
+      loggedInPlayers.set(player.id, updated);
+      refreshed++;
+
+      const canNativeAdmin = roleCapabilities
+        && Array.isArray(roleCapabilities[updated.role])
+        && (roleCapabilities[updated.role].includes('*') || roleCapabilities[updated.role].includes('native_admin'));
+      if (typeof room.setPlayerAdmin === 'function') {
+        if (canNativeAdmin && !player.admin) {
+          room.setPlayerAdmin(player.id, true);
+        } else if (!canNativeAdmin && player.admin) {
+          room.setPlayerAdmin(player.id, false);
+        }
+      }
+    } catch (err) {
+      console.warn(`[BACKEND-DB] Role refresh hatası (${current.username}):`, err.message);
+    }
+  }
+
+  return refreshed;
+}
+
 function initSharedDatabase(db) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
@@ -372,11 +482,13 @@ function saveAdminRequest(db, DB_FILE, username, aciklama, persistFn, sharedDb =
 }
 
 module.exports = {
+  createPersistDatabase,
   loadOrCreateDatabase,
   persistDatabase,
   initDatabase,
   initSharedDatabase,
   initRoomDatabase,
+  refreshLoggedInRoles,
   isUserBlacklisted,
   getOrCreatePlayerUid,
   logVisitedUser,

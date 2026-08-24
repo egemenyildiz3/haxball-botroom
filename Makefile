@@ -15,7 +15,7 @@ LIMIT ?= 50
 EVENT ?=
 LEVEL ?=
 
-.PHONY: help up up-v3 down down-v3 restart restart-v3 rebuild rebuild-v3 ps logs logs-f logs-v3 logs-v3-f logs-backend logs-backend-v3 logs-chat logs-chat-v3 logs-json logs-json-f logs-json-v3 logs-json-v3-f logs-json-errors logs-json-errors-v3 logs-json-player logs-json-player-v3 logs-json-event logs-json-event-v3 attach attach-v3 token-file-init token-file-init-v3 cron-install-db-backup cron-show db-all db-all-v3 db-users db-user-stats db-user-stats-v3 db-games db-games-v3 db-visited_users db-istekler db-istekler-v3 db-blacklist db-users-today db-visited_users-today db-ljungberg db-make-superadmin db-user-with-auth db-blacklist-player db-unblacklist-player db-backup db-backup-v3 db-backups db-restore db-restore-v3
+.PHONY: help up up-v3 down down-v3 restart restart-v3 rebuild rebuild-v3 ps logs logs-f logs-v3 logs-v3-f logs-backend logs-backend-v3 logs-chat logs-chat-v3 logs-json logs-json-f logs-json-v3 logs-json-v3-f logs-json-errors logs-json-errors-v3 logs-json-player logs-json-player-v3 logs-json-event logs-json-event-v3 attach attach-v3 token-file-init token-file-init-v3 cron-install-db-backup cron-show db-all db-all-v3 db-users db-user-stats db-user-stats-v3 db-games db-games-v3 db-visited_users db-istekler db-istekler-v3 db-blacklist db-users-today db-visited_users-today db-ljungberg db-set-role db-make-superadmin db-make-admin db-make-mod db-make-vip db-make-player db-user-with-auth db-blacklist-player db-unblacklist-player db-backup db-backup-v3 db-backups db-restore db-restore-v3
 
 help:
 	@echo "======================================================================"
@@ -72,7 +72,12 @@ help:
 	@echo "  make db-visited_users-today : Bugün gelen visited_users kayıtlarını listeler"
 	@echo "  make db-user-with-auth USERNAME='oyuncu' : Oyuncunun auth bilgisini gösterir"
 	@echo "----------------------------------------------------------------------"
+	@echo "  make db-set-role USERNAME='oyuncu' ROLE='admin' : Kullanıcı rolünü ayarlar"
 	@echo "  make db-make-superadmin USERNAME='oyuncu' : Kullanıcı rolünü owner yapar"
+	@echo "  make db-make-admin USERNAME='oyuncu' : Kullanıcı rolünü admin yapar"
+	@echo "  make db-make-mod USERNAME='oyuncu' : Kullanıcı rolünü mod yapar"
+	@echo "  make db-make-vip USERNAME='oyuncu' : Kullanıcı rolünü vip yapar"
+	@echo "  make db-make-player USERNAME='oyuncu' : Kullanıcı rolünü player yapar"
 	@echo "  make db-blacklist-player USERNAME='oyuncu' REASON='sebep' : Kullanıcıyı kara listeye ekler"
 	@echo "  make db-unblacklist-player USERNAME='oyuncu' : Kullanıcıyı kara listeden çıkarır"
 	@echo "----------------------------------------------------------------------"
@@ -402,17 +407,25 @@ db-ljungberg:
 
 # --- DANGER ZONE ---
 
-db-make-superadmin: #USERNAME=player1
-	docker exec -it $(CONTAINER) node -e "\
-		const fs = require('fs'); \
-		const initSqlJs = require('sql.js'); \
-		initSqlJs().then(SQL => { \
-			const dbPath = './$(SHARED_DB_FILE)'; \
-			const db = new SQL.Database(fs.readFileSync(dbPath)); \
-			db.run('UPDATE users SET role = ? WHERE username = ?', ['owner', '$(USERNAME)']); \
-			fs.writeFileSync(dbPath, Buffer.from(db.export())); \
-			console.log('$(USERNAME) kullanıcısı owner yapıldı.'); \
-		});"
+db-set-role:
+	@if [ -z "$(USERNAME)" ]; then echo "⚠️ HATA: USERNAME belirtilmedi! Örnek: make db-set-role USERNAME='oyuncu' ROLE='admin'"; exit 1; fi
+	@if [ -z "$(ROLE)" ]; then echo "⚠️ HATA: ROLE belirtilmedi! Geçerli roller: player, vip, mod, admin, owner"; exit 1; fi
+	docker exec -e TARGET_USERNAME="$(USERNAME)" -e TARGET_ROLE="$(ROLE)" -i $(CONTAINER) node < scripts/tools/dbSetRole.js
+
+db-make-superadmin:
+	@$(MAKE) db-set-role USERNAME="$(USERNAME)" ROLE=owner
+
+db-make-admin:
+	@$(MAKE) db-set-role USERNAME="$(USERNAME)" ROLE=admin
+
+db-make-mod:
+	@$(MAKE) db-set-role USERNAME="$(USERNAME)" ROLE=mod
+
+db-make-vip:
+	@$(MAKE) db-set-role USERNAME="$(USERNAME)" ROLE=vip
+
+db-make-player:
+	@$(MAKE) db-set-role USERNAME="$(USERNAME)" ROLE=player
 
 
 db-user-with-auth:
