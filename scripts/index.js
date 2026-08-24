@@ -71,6 +71,8 @@ async function startRoom() {
     botNames: config.bot.names,
     maxBots: config.bot.max,
     avatar: config.bot.avatar,
+    telemetry: config.bot.telemetry,
+    telemetryEveryTicks: config.bot.telemetryEveryTicks,
     t,
   });
 

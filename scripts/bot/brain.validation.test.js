@@ -6,9 +6,13 @@ const test = require('node:test');
 const {
   DEFAULTS,
   decide,
+  defenderTarget,
+  predictBall,
+  selectAttacker,
   solveIntercept,
   solveStrikeIntercept,
 } = require('./brain');
+const { ballWallBounds } = require('./manager');
 
 function makeView(self, ball, flipped = false) {
   return {
@@ -172,4 +176,106 @@ test('yeni temas mesafesi yakın şut isabetini bozmaz', () => {
     assert.notEqual(goalY, null, `y=${ballY}: top kale çizgisine ulaşmadı`);
     assert.ok(Math.abs(goalY) <= 100, `y=${ballY}: şut kale ağzını ıskaladı (${goalY})`);
   }
+});
+
+test('top tahmini Spacebounce üst duvarından sekmeyi hesaba katar', () => {
+  const ball = {
+    pos: { x: 0, y: 580 },
+    speed: { x: 4, y: 20 },
+    radius: 10,
+    walls: {
+      minY: -590,
+      maxY: 590,
+      minRestitution: 0.75,
+      maxRestitution: 0.75,
+    },
+  };
+
+  const afterBounce = predictBall(ball, 2, 0.99);
+  assert.ok(afterBounce.y < 580, `sekme sonrası top aşağı dönmeli: y=${afterBounce.y}`);
+  assert.ok(Math.abs(afterBounce.y - 575.15) < 0.01);
+});
+
+test('canlı stadyum düzlemleri top için ±590 merkez sınırına çevrilir', () => {
+  const stadium = {
+    planes: [
+      { normal: { x: 0, y: 1 }, dist: -600, bCoef: 1.5, cMask: 1 | 32 },
+      { normal: { x: 0, y: -1 }, dist: -600, bCoef: 1.5, cMask: 1 | 32 },
+      { normal: { x: 0, y: 1 }, dist: -750, bCoef: 0.1, cMask: 2 | 4 },
+      { normal: { x: 0, y: -1 }, dist: -750, bCoef: 0.1, cMask: 2 | 4 },
+    ],
+  };
+  const walls = ballWallBounds(stadium, { radius: 10, bCoef: 0.5 }, 1);
+
+  assert.deepEqual(walls, {
+    minY: -590,
+    maxY: 590,
+    minRestitution: 0.75,
+    maxRestitution: 0.75,
+  });
+});
+
+test('hücumcu küçük ETA farkında değişmez, belirgin farkta değişir', () => {
+  const ball = { pos: { x: 0, y: 0 }, speed: { x: 0, y: 0 }, radius: 10 };
+  const close = { id: 500, pos: { x: -80, y: 0 }, speed: { x: 0, y: 0 }, radius: 15 };
+  const current = { id: 501, pos: { x: -90, y: 0 }, speed: { x: 0, y: 0 }, radius: 15 };
+
+  const held = selectAttacker([close, current], ball, DEFAULTS, current.id, false);
+  assert.equal(held.id, current.id, 'asgari rol süresinde mevcut hücumcu korunmalı');
+
+  current.pos.x = -500;
+  const switched = selectAttacker(
+    [close, current],
+    ball,
+    { ...DEFAULTS, roleSwitchMarginTicks: 1 },
+    current.id,
+    true
+  );
+  assert.equal(switched.id, close.id, 'belirgin hızlı oyuncuya rol devredilmeli');
+});
+
+test('kaleye yönelen top için defans köşe yerine kale koridorunu kapatır', () => {
+  const view = makeView(
+    { pos: { x: -850, y: 250 } },
+    { pos: { x: -400, y: 30 }, speed: { x: -8, y: 0 } }
+  );
+  const defense = defenderTarget(view, { ...DEFAULTS, ballDamping: 0.99 });
+
+  assert.equal(defense.threat, true);
+  assert.ok(Math.abs(defense.point.x + 1065) < 0.01);
+  assert.ok(Math.abs(defense.point.y) <= 88, 'hedef kale direklerinin içinde kalmalı');
+});
+
+test('kendi bölgesindeki zararsız köşe topu defansı kale koridorundan çıkarmaz', () => {
+  const view = makeView(
+    { pos: { x: -850, y: 0 } },
+    { pos: { x: -700, y: 520 }, speed: { x: 0, y: 0 } }
+  );
+  const defense = defenderTarget(view, { ...DEFAULTS, ballDamping: 0.99 });
+
+  assert.equal(defense.threat, false);
+  assert.ok(Math.abs(defense.point.y) <= DEFAULTS.defenderMaxLateral);
+});
+
+test('rakip topa baskı yaparken bot güvenli mücadele dokunuşu yapar', () => {
+  const view = makeView(
+    { pos: { x: -27, y: 0 } },
+    { pos: { x: 0, y: 0 }, speed: { x: 0, y: 0 } }
+  );
+  view.opponents = [{ id: 700, pos: { x: 20, y: 5 }, speed: { x: 0, y: 0 }, radius: 15 }];
+  const move = decide(view, {}, {});
+
+  assert.equal(move.mode, 'pressure');
+  assert.equal(move.contested, true);
+  assert.equal(move.kick, true);
+});
+
+test('santra zorlaması top merkezine dalmak yerine güvenli vuruş rotasını korur', () => {
+  const view = makeView({ pos: { x: 70, y: 0 } }, { pos: { x: 0, y: 0 } });
+  view.forceBall = true;
+  const move = decide(view, {}, {});
+
+  assert.equal(move.mode, 'kickoff');
+  assert.equal(move.dirX, -1);
+  assert.notEqual(move.dirY, 0, 'topun önündeyken yanal dolaşma iptal edilmemeli');
 });

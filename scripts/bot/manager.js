@@ -10,12 +10,20 @@
  *   - CPU maliyeti çok daha düşük
  */
 
-const { decide, configFromPhysics, makePersonality, describePersonality } = require('./brain');
+const {
+  DEFAULTS,
+  decide,
+  configFromPhysics,
+  makePersonality,
+  describePersonality,
+  selectAttacker,
+} = require('./brain');
 
 const FIRST_BOT_ID = 500; // gerçek oyuncu id'leriyle çakışmasın diye yüksek başlıyoruz
 const BOT_CONN_PREFIX = 'bot-conn-';
 const BOT_AUTH_PREFIX = 'bot-auth-';
 const KICKOFF_FORCE_MS = 15 * 1000;
+const KICKOFF_RELEASE_DISTANCE = 85;
 const DEFAULT_BOT_NAMES = [
   'Messi',
   'Ronaldo',
@@ -28,6 +36,7 @@ const DEFAULT_BOT_NAMES = [
 ];
 
 const boundsCache = new WeakMap();
+const wallPlaneCache = new WeakMap();
 
 /**
  * Gerçek saha sınırlarını köşe noktalarından hesaplar.
@@ -54,6 +63,60 @@ function fieldBounds(stadium) {
   return bounds;
 }
 
+function vectorPart(vector, key, index) {
+  if (Array.isArray(vector)) return Number(vector[index]);
+  return vector ? Number(vector[key]) : NaN;
+}
+
+function maskContainsBall(mask, ballFlag) {
+  if (Array.isArray(mask)) return mask.includes('ball');
+  if (Number.isFinite(mask) && Number.isFinite(ballFlag)) return (mask & ballFlag) !== 0;
+  return true;
+}
+
+/** Haritadaki yatay, topa çarpan düzlemleri merkez sınırlarına çevirir. */
+function ballWallBounds(stadium, ball, ballFlag) {
+  if (!stadium || !ball) return null;
+
+  let planes = wallPlaneCache.get(stadium);
+  if (!planes) {
+    planes = [];
+    for (const plane of stadium.planes || []) {
+      const nx = vectorPart(plane && plane.normal, 'x', 0);
+      const ny = vectorPart(plane && plane.normal, 'y', 1);
+      const dist = Number(plane && plane.dist);
+      if (!Number.isFinite(nx) || !Number.isFinite(ny) || !Number.isFinite(dist)) continue;
+      if (Math.abs(nx) > 1e-6 || Math.abs(ny) < 0.9) continue;
+      if (!maskContainsBall(plane.cMask, ballFlag)) continue;
+      planes.push({ ny, dist, bCoef: Number(plane.bCoef ?? plane.bCoeff) });
+    }
+    wallPlaneCache.set(stadium, planes);
+  }
+
+  const radius = Number.isFinite(ball.radius) ? ball.radius : 10;
+  const ballBounce = Number(ball.bCoef ?? ball.bCoeff);
+  const discBounce = Number.isFinite(ballBounce) ? ballBounce : 0.5;
+  let min = null;
+  let max = null;
+
+  for (const plane of planes) {
+    const boundary = (plane.dist + radius) / plane.ny;
+    const restitution = Math.max(0, Math.min(1.5,
+      discBounce * (Number.isFinite(plane.bCoef) ? plane.bCoef : 1)
+    ));
+    if (plane.ny > 0 && (!min || boundary > min.value)) min = { value: boundary, restitution };
+    if (plane.ny < 0 && (!max || boundary < max.value)) max = { value: boundary, restitution };
+  }
+
+  if (!min || !max || max.value <= min.value) return null;
+  return {
+    minY: min.value,
+    maxY: max.value,
+    minRestitution: min.restitution,
+    maxRestitution: max.restitution,
+  };
+}
+
 function createBotManager(options = {}) {
   const baseName = options.botName || 'SpaceBot';
   const botNames = Array.isArray(options.botNames) && options.botNames.length > 0
@@ -63,6 +126,8 @@ function createBotManager(options = {}) {
   const avatar = options.avatar || '🤖';
   const log = options.log || ((msg) => console.log(msg));
   const brainConfig = options.brainConfig || {};
+  const telemetry = !!options.telemetry;
+  const telemetryEveryTicks = Math.max(1, Number(options.telemetryEveryTicks) || 120);
   const t = options.t || ((key, vars = {}) => {
     const messages = {
       'bot.roomNotReady': 'Oda henüz hazır değil.',
@@ -88,6 +153,9 @@ function createBotManager(options = {}) {
   let nextId = FIRST_BOT_ID;
   let physicsCfg = null; // haritadan okunan fizik ayarları
   let physicsStadium = null; // ayarların hangi stadyuma ait olduğu
+  let ballCollisionFlag = null;
+  let tickNumber = 0;
+  const roleState = new Map(); // team -> { attackerId, holdUntil }
 
   /**
    * Aktif haritanın playerPhysics değerlerini brain ayarlarına çevirir.
@@ -152,7 +220,7 @@ function createBotManager(options = {}) {
   }
 
   /** Ham oda durumundan brain.js'in beklediği görünümü kurar. */
-  function buildView(bot) {
+  function buildView(bot, attackerIds, walls) {
     const gameState = raw.gameState;
     if (!gameState || !gameState.physicsState) return null;
 
@@ -195,6 +263,7 @@ function createBotManager(options = {}) {
         speed: ball.speed || { x: 0, y: 0 },
         radius: ball.radius,
         damping: ball.damping,
+        walls,
       },
       teammates: others.filter((p) => p.team.id === teamId).map(toActor),
       opponents: others.filter((p) => p.team.id !== teamId && p.team.id !== 0).map(toActor),
@@ -204,6 +273,7 @@ function createBotManager(options = {}) {
       field,
       botOnly,
       forceBall: bot.forceBallUntil && bot.forceBallUntil > Date.now(),
+      attackerId: attackerIds.get(teamId),
     };
   }
 
@@ -214,20 +284,94 @@ function createBotManager(options = {}) {
     return Math.sqrt(dx * dx + dy * dy);
   }
 
-  function directInputToBall(player, ball) {
-    if (!keyState || !player || !player.disc || !player.disc.pos || !ball || !ball.pos) return 0;
-    const dx = ball.pos.x - player.disc.pos.x;
-    const dy = ball.pos.y - player.disc.pos.y;
-    const dirX = Math.abs(dx) < 2 ? 0 : Math.sign(dx);
-    const dirY = Math.abs(dy) < 2 ? 0 : Math.sign(dy);
-    return keyState(dirX, dirY, false);
+  function clearForce(bot) {
+    bot.forceBallUntil = 0;
+    bot.forceBallOrigin = null;
+  }
+
+  function actorOf(player) {
+    return {
+      id: player.id,
+      pos: player.disc.pos,
+      speed: player.disc.speed || { x: 0, y: 0 },
+      radius: player.disc.radius,
+    };
+  }
+
+  /** Takım başına tek, histerezisli hücumcu seçimi. */
+  function selectTeamAttackers(ball, walls, cfg) {
+    const result = new Map();
+    const now = Date.now();
+    const ballSnapshot = {
+      pos: ball.pos,
+      speed: ball.speed || { x: 0, y: 0 },
+      radius: ball.radius,
+      damping: ball.damping,
+      walls,
+    };
+
+    for (const teamId of [1, 2]) {
+      const players = raw.players.filter((player) =>
+        player.disc && player.team && player.team.id === teamId
+      );
+      if (players.length === 0) continue;
+
+      let forced = null;
+      for (const bot of bots.values()) {
+        if (!bot.forceBallUntil) continue;
+        const player = raw.getPlayer(bot.id);
+        const moved = bot.forceBallOrigin && Math.hypot(
+          ball.pos.x - bot.forceBallOrigin.x,
+          ball.pos.y - bot.forceBallOrigin.y
+        ) > KICKOFF_RELEASE_DISTANCE;
+        if (bot.forceBallUntil <= now || moved || !player || !player.team ||
+            (player.team.id !== 1 && player.team.id !== 2)) {
+          clearForce(bot);
+          continue;
+        }
+        if (player.team.id !== teamId) continue;
+        forced = bot;
+        break;
+      }
+
+      const state = roleState.get(teamId) || { attackerId: null, holdUntil: 0 };
+      let attackerId;
+      if (forced) {
+        attackerId = forced.id;
+      } else {
+        const squad = players.map(actorOf);
+        const choice = selectAttacker(
+          squad,
+          ballSnapshot,
+          { ...cfg, ballDamping: Number.isFinite(ball.damping) ? ball.damping : cfg.ballDamping },
+          state.attackerId,
+          tickNumber >= state.holdUntil
+        );
+        attackerId = choice.id;
+        if (attackerId !== state.attackerId) {
+          state.holdUntil = tickNumber + (cfg.roleMinHoldTicks || DEFAULTS.roleMinHoldTicks);
+        }
+      }
+
+      state.attackerId = attackerId;
+      roleState.set(teamId, state);
+      result.set(teamId, attackerId);
+    }
+
+    return result;
   }
 
   /** Her fizik tick'inde tüm botların girdisini hesaplar ve gönderir. */
   function tick() {
     if (!raw || bots.size === 0) return;
 
+    tickNumber++;
     const cfg = currentBrainConfig();
+    const gameState = raw.gameState;
+    const ball = gameState && gameState.physicsState && gameState.physicsState.discs[0];
+    const walls = ball ? ballWallBounds(raw.stadium, ball, ballCollisionFlag) : null;
+    const attackerIds = ball ? selectTeamAttackers(ball, walls, cfg) : new Map();
+    const traceThisTick = telemetry && tickNumber % telemetryEveryTicks === 0;
 
     for (const bot of bots.values()) {
       // Kişiliği taban ayarların üstüne uygula (taban değişirse yeniden birleştir)
@@ -238,10 +382,21 @@ function createBotManager(options = {}) {
 
       let input = 0;
       try {
-        const view = buildView(bot);
+        const view = buildView(bot, attackerIds, walls);
         if (view) {
           const move = decide(view, bot.memory, bot.cfg);
           input = keyState(move.dirX, move.dirY, move.kick);
+          if (traceThisTick) {
+            const p = (point) => point
+              ? `${point.x.toFixed(1)},${point.y.toFixed(1)}`
+              : '-';
+            log(
+              `🤖 [BOT-TRACE] t=${tickNumber} name=${bot.name} role=${move.role} ` +
+              `mode=${move.mode} eta=${Number(move.interceptTicks).toFixed(1)} ` +
+              `self=${p(view.self.pos)} ball=${p(view.ball.pos)} target=${p(move.target)} ` +
+              `input=${move.dirX},${move.dirY},${move.kick ? 1 : 0}`
+            );
+          }
         } else {
           bot.memory.kickCooldown = 0;
         }
@@ -319,6 +474,7 @@ function createBotManager(options = {}) {
     attach(rawRoom, api) {
       raw = rawRoom;
       keyState = api.Utils.keyState;
+      ballCollisionFlag = api.CollisionFlags && api.CollisionFlags.ball;
 
       // Oyun tick'ine bağlan; varsa mevcut kancayı da çağırmaya devam et
       const previous = raw.onGameTick;
@@ -388,15 +544,15 @@ function createBotManager(options = {}) {
         return false;
       }
 
-      chosen.bot.forceBallUntil = Date.now() + durationMs;
-      const input = directInputToBall(chosen.player, ball);
-      if (input !== 0) {
-        chosen.bot.lastInput = input;
-        try { raw.fakeSendPlayerInput(input, chosen.bot.id); } catch (e) {}
+      for (const bot of bots.values()) {
+        const player = raw.getPlayer(bot.id);
+        if (player && player.team && player.team.id === teamId) clearForce(bot);
       }
+      chosen.bot.forceBallUntil = Date.now() + durationMs;
+      chosen.bot.forceBallOrigin = { x: ball.pos.x, y: ball.pos.y };
 
       const distance = distanceToBall(chosen.player, ball);
-      log(`🤖 [BOT] Santra watchdog: ${chosen.bot.name} topa gitmeye zorlandı (team=${teamId}, mesafe=${Math.round(distance)}).`);
+      log(`🤖 [BOT] Santra watchdog: ${chosen.bot.name} güvenli vuruş planıyla topa yönlendirildi (team=${teamId}, mesafe=${Math.round(distance)}).`);
       return true;
     },
 
@@ -473,4 +629,4 @@ function createBotManager(options = {}) {
   };
 }
 
-module.exports = { createBotManager };
+module.exports = { createBotManager, ballWallBounds };

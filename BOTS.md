@@ -205,6 +205,11 @@ The target is kept just outside physical collision distance but inside kick
 range (`strikeContactPadding`). This gives the fresh kick press a window before
 the player starts accidentally carrying the ball.
 
+The predictor also reads the live stadium's ball-collision planes. On
+Spacebounce the player boundary is ±750 but the ball rebounds at ±600; future
+intercepts now follow that damped rebound (including the ball × wall bounce
+coefficient) instead of chasing a straight-line point outside the ball field.
+
 ### 4.5 Wrong-side and fast-ball handling
 
 When the attacker is in front of the ball, a straight path to the desired
@@ -271,8 +276,11 @@ Haxball play — you must work the ball close to score.
 
 ## 6. Roles
 
-Every bot computes the **same** assignment from the same world state (ties
-broken by player id), so they never disagree.
+The manager computes one **shared** attacker assignment per team (ties broken by
+player id), so bots never disagree. The current attacker is held for at least
+`roleMinHoldTicks`, and a challenger must improve ETA by
+`roleSwitchMarginTicks`; near-equal estimates therefore no longer swap the role
+back and forth every tick.
 
 | Role | Count | Behaviour |
 |---|---|---|
@@ -307,6 +315,21 @@ ratio = defenderNear + (defenderFar - defenderNear) * ballDepth
 Deeper when threatened, but no longer parked on the goal line. When the team
 attacks, the defender steps into midfield as a safety valve instead of playing
 as a dedicated keeper.
+
+There is one exception: the damped, wall-aware ball trajectory is projected
+onto a line in front of the bot's own goal. If it crosses the goal corridor,
+the defender closes that intersection point. Harmless corner balls have their
+lateral pull clamped, so they cannot drag the last defender away from goal.
+
+### 6.3 Contested balls and kickoffs
+
+When an opponent is already close to the ball, the attacker selects a stable
+side away from the opponent and permits a safe forward setup/clear touch. This
+breaks prolonged two-player scrums without relaxing the own-goal guard.
+
+The kickoff watchdog uses the same strike-contact and wrong-side route planner.
+It no longer injects a direct "run at ball centre" input, and releases its
+forced attacker as soon as the ball has moved 85 units.
 
 ---
 
@@ -361,9 +384,17 @@ All in `scripts/bot/brain.js` → `DEFAULTS`.
 | `strikeContactPadding` | 2.5 | Wait slightly closer to the ball (must stay below `kickPadding`) |
 | `approachSideOffset` | 68 | Take a wider route around the ball when caught on the wrong side |
 | `incomingBallSpeed` | 3.5 | Treat fewer balls as high-speed receptions |
+| `roleSwitchMarginTicks` | 7 | Require a larger ETA gain before changing attacker |
+| `defenderGoalOffset` | 135 | Hold the emergency block line farther from goal |
+| `contestOpponentDistance` | 82 | Detect contested balls from farther away |
 
 Env overrides: `HAXBALL_BOT_NAME`, `HAXBALL_BOT_MAX`, `HAXBALL_BOT_AVATAR`,
-`HAXBALL_BOT_AUTOSTART`, `HAXBALL_BOT_LEARNING`, `HAXBALL_BOT_LEARNING_FILE`.
+`HAXBALL_BOT_AUTOSTART`, `HAXBALL_BOT_TELEMETRY`,
+`HAXBALL_BOT_TELEMETRY_EVERY_TICKS`.
+
+Telemetry is off by default. Enable it to emit sampled `[BOT-TRACE]` lines with
+role, decision mode, ETA, player/ball/target positions and final input. The
+default sample period is 120 physics ticks.
 
 ---
 
@@ -392,11 +423,10 @@ and mocks.
 ## 10. Known limits and next steps
 
 - **No passing.** The bot always shoots or advances; it never plays a teammate in.
-- **No dedicated goalkeeper.** The defender tracks the ball rather than holding a line.
-- **No wall-bounce shots.** `bCoef 1.5` makes bank shots unusually strong here.
+- **No deliberate wall-bounce shots.** Rebounds are predicted for interception,
+  but the attacker does not intentionally choose a bank-shot angle.
 - **No difficulty levels.** For a public room, a beatable bot is arguably a better
   product; `strikeSpeed` and reaction timing would be the throttles.
-- **No kickoff handling.**
 
 ### Would a trained RL agent be better?
 

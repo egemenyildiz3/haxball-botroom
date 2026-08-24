@@ -23,7 +23,9 @@
     "names": ["Salah", "Greenwood", "Osimhen", "Trossard", "Messi", "Ronaldo", "Hakimi", "Kimmich"],
     "max": 8,
     "avatar": "🤖",
-    "autostart": 4
+    "autostart": 4,
+    "telemetry": false,
+    "telemetryEveryTicks": 120
   },
   "chat": {
     "cooldownMs": 3000,

@@ -29,6 +29,8 @@ const DEFAULT_CONFIG = {
     max: 8,
     avatar: '🤖',
     autostart: 4,
+    telemetry: false,
+    telemetryEveryTicks: 120,
   },
 
   chat: {
@@ -200,6 +202,12 @@ const config = {
     max: numberFromEnv('HAXBALL_BOT_MAX', fileConfig.bot.max, { min: 0, max: 16 }),
     avatar: process.env.HAXBALL_BOT_AVATAR || fileConfig.bot.avatar,
     autostart: numberFromEnv('HAXBALL_BOT_AUTOSTART', fileConfig.bot.autostart, { min: 0, max: 16 }),
+    telemetry: boolFromEnv('HAXBALL_BOT_TELEMETRY', fileConfig.bot.telemetry),
+    telemetryEveryTicks: numberFromEnv(
+      'HAXBALL_BOT_TELEMETRY_EVERY_TICKS',
+      fileConfig.bot.telemetryEveryTicks,
+      { min: 1, max: 3600 }
+    ),
   },
 
   chat: {

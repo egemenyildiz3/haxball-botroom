@@ -77,6 +77,13 @@ const DEFAULTS = {
   incomingReleaseTicks: 3,
   defensiveTouchMinGain: 0.5,
 
+  // Rakip topun çevresindeyken kusursuz şut açısını sonsuza kadar aramak
+  // yerine güvenli, ileri ve hafif yanal bir mücadele dokunuşu yap.
+  contestOpponentDistance: 82,
+  contestEngageDistance: 190,
+  contestDirectionBias: 0.28,
+  pressureTouchMinGain: 0.35,
+
   // Bölgeye göre vuruş kararı:
   //  - Kaleye yakınsak gerçek isabet kontrolü yap (goalMargin)
   //  - Uzaktaysak nişan arama, ileri doğru vur (clearConeCos)
@@ -106,6 +113,20 @@ const DEFAULTS = {
   defenderNear: 0.45,
   defenderFar: 0.7,
   clearThird: 0.33, // sahanın bu kadarlık dilimi "kendi bölgemiz" sayılır
+
+  // Tehlikeli top kendi kale koridoruna giriyorsa defans oyuncusu köşeye
+  // sürüklenmek yerine kale önündeki kesişim noktasını kapatır.
+  defenderGoalOffset: 135,
+  defenderThreatLookahead: 180,
+  defenderThreatMargin: 65,
+  defenderPostInset: 12,
+  defenderCorridorDepth: 0.38,
+  defenderMaxLateral: 190,
+
+  // Rol yöneticisi bu değerleri tüm takım için ortak kullanır. Birkaç ticklik
+  // küçük ETA farkında hücumcu değişmesin; zigzag ve çift kararsızlık azalır.
+  roleSwitchMarginTicks: 7,
+  roleMinHoldTicks: 36,
 };
 
 // --- Vektör yardımcıları -------------------------------------------------
@@ -305,17 +326,61 @@ function configFromPhysics(playerPhysics, extra) {
  * Topun t tick sonraki konumu. Her tick hız `damping` ile çarpıldığı için
  * yol alınan mesafe geometrik seri: v * (1 - d^t) / (1 - d)
  */
-function predictBall(ball, t, damping) {
+function predictBallTrajectory(ball, ticks, damping) {
   const speed = ball.speed || { x: 0, y: 0 };
+  const count = Math.max(0, Math.floor(ticks));
+  const trajectory = [{ x: ball.pos.x, y: ball.pos.y }];
+  if (count === 0) return trajectory;
+
+  const walls = ball.walls;
+  const hasWalls = walls && Number.isFinite(walls.minY) && Number.isFinite(walls.maxY) &&
+    walls.maxY > walls.minY;
+
+  // Duvar bilgisi yoksa önceki kapalı formu koru. Bu yol hem daha hızlıdır hem
+  // de genel haritalarda mevcut davranışı değiştirmez.
+  if (!hasWalls) {
+    for (let t = 1; t <= count; t++) {
+      const factor = Math.abs(1 - damping) < 1e-9
+        ? t
+        : (1 - Math.pow(damping, t)) / (1 - damping);
+      trajectory.push({
+        x: ball.pos.x + speed.x * factor,
+        y: ball.pos.y + speed.y * factor,
+      });
+    }
+    return trajectory;
+  }
+
+  const position = { x: ball.pos.x, y: ball.pos.y };
+  const velocity = { x: speed.x, y: speed.y };
+  const minRestitution = Number.isFinite(walls.minRestitution) ? walls.minRestitution : 1;
+  const maxRestitution = Number.isFinite(walls.maxRestitution) ? walls.maxRestitution : 1;
+
+  for (let t = 1; t <= count; t++) {
+    position.x += velocity.x;
+    position.y += velocity.y;
+    velocity.x *= damping;
+    velocity.y *= damping;
+
+    // Haxball çarpışma çözücüsü diski sınırın üstüne geri iter ve sönümlenmiş
+    // normal hızını iki nesnenin bCoef çarpımıyla tersine çevirir.
+    if (position.y < walls.minY) {
+      position.y = walls.minY;
+      velocity.y = Math.abs(velocity.y) * minRestitution;
+    } else if (position.y > walls.maxY) {
+      position.y = walls.maxY;
+      velocity.y = -Math.abs(velocity.y) * maxRestitution;
+    }
+
+    trajectory.push({ x: position.x, y: position.y });
+  }
+
+  return trajectory;
+}
+
+function predictBall(ball, t, damping) {
   if (t <= 0) return { x: ball.pos.x, y: ball.pos.y };
-
-  const d = damping;
-  const factor = Math.abs(1 - d) < 1e-9 ? t : (1 - Math.pow(d, t)) / (1 - d);
-
-  return {
-    x: ball.pos.x + speed.x * factor,
-    y: ball.pos.y + speed.y * factor,
-  };
+  return predictBallTrajectory(ball, t, damping)[Math.floor(t)];
 }
 
 /**
@@ -351,9 +416,10 @@ function solveIntercept(from, ball, cfg) {
 
   const reach = (from.radius || 15) + (ball.radius || 10) + padding;
   const vel = from.speed || { x: 0, y: 0 };
+  const trajectory = predictBallTrajectory(ball, ticksAhead, damping);
 
   for (let t = 0; t <= ticksAhead; t++) {
-    const bp = predictBall(ball, t, damping);
+    const bp = trajectory[t];
     const toBall = sub(bp, from.pos);
     const dist = len(toBall);
     const speedTowards = dot(vel, normalize(toBall));
@@ -363,7 +429,7 @@ function solveIntercept(from, ball, cfg) {
     }
   }
 
-  const far = predictBall(ball, ticksAhead, damping);
+  const far = trajectory[ticksAhead];
   return {
     ticks: ticksAhead + 1 + len(sub(far, from.pos)) / 10000,
     point: far,
@@ -394,10 +460,11 @@ function solveStrikeIntercept(from, ball, kickDirection, cfg) {
   const contactDistance = (from.radius || 15) + (ball.radius || 10) + contactPadding;
   const tolerance = Math.max(1, padding - contactPadding);
   const vel = from.speed || { x: 0, y: 0 };
+  const trajectory = predictBallTrajectory(ball, ticksAhead, damping);
 
   let last = null;
   for (let t = 0; t <= ticksAhead; t++) {
-    const ballPoint = predictBall(ball, t, damping);
+    const ballPoint = trajectory[t];
     const point = sub(ballPoint, scale(direction, contactDistance));
     const toPoint = sub(point, from.pos);
     const distance = len(toPoint);
@@ -474,6 +541,36 @@ function chooseClearPoint(view) {
 // --- Rol dağılımı --------------------------------------------------------
 
 /**
+ * Takımın hücumcusunu seçer. Yönetici mevcut hücumcuyu ve kilit durumunu
+ * vererek bu saf fonksiyonu bütün takım için bir kez çağırır.
+ */
+function selectAttacker(squad, ball, cfg, currentId = null, canSwitch = true) {
+  const ranked = squad
+    .map((player) => ({ id: player.id, intercept: solveIntercept(player, ball, cfg) }))
+    .sort((a, b) => a.intercept.ticks - b.intercept.ticks || a.id - b.id);
+
+  if (ranked.length === 0) return { id: null, intercept: null, changed: false, ranked };
+
+  const best = ranked[0];
+  const current = ranked.find((entry) => entry.id === currentId);
+  const margin = Number.isFinite(cfg.roleSwitchMarginTicks)
+    ? cfg.roleSwitchMarginTicks
+    : DEFAULTS.roleSwitchMarginTicks;
+
+  if (current && current.id !== best.id &&
+      (!canSwitch || current.intercept.ticks - best.intercept.ticks < margin)) {
+    return { id: current.id, intercept: current.intercept, changed: false, ranked };
+  }
+
+  return {
+    id: best.id,
+    intercept: best.intercept,
+    changed: currentId !== null && currentId !== best.id,
+    ranked,
+  };
+}
+
+/**
  * Rol dağılımı. Tüm botlar aynı dünya durumunu gördüğü için hepsi aynı
  * sonuca varır (eşitlikte id'ye göre) - yani rol çakışması olmaz.
  *
@@ -489,15 +586,10 @@ function assignRoles(view, cfg) {
   const squad = [view.self, ...view.teammates];
 
   // 1) Hücumcu: topa en erken ulaşan
-  let attackerId = view.self.id;
-  let bestTicks = mine.ticks;
-  for (const mate of view.teammates) {
-    const eta = solveIntercept(mate, view.ball, cfg);
-    if (eta.ticks < bestTicks || (eta.ticks === bestTicks && mate.id < attackerId)) {
-      bestTicks = eta.ticks;
-      attackerId = mate.id;
-    }
-  }
+  const sharedAttackerExists = squad.some((player) => player.id === view.attackerId);
+  const attackerId = sharedAttackerExists
+    ? view.attackerId
+    : selectAttacker(squad, view.ball, cfg).id;
 
   if (attackerId === view.self.id) {
     return { role: 'attacker', intercept: mine, slot: 0 };
@@ -545,12 +637,56 @@ function defenderTarget(view, cfg) {
   const ownCenter = mid(view.ownGoal.p0, view.ownGoal.p1);
   const oppCenter = mid(view.oppGoal.p0, view.oppGoal.p1);
   const f = fieldOf(view);
+  const upfield = upfieldOf(view);
+  const goalAxis = normalize(sub(view.ownGoal.p1, view.ownGoal.p0));
+  const goalLength = len(sub(view.ownGoal.p1, view.ownGoal.p0));
 
   const toBall = sub(view.ball.pos, ownCenter);
   const pitchLength = len(sub(oppCenter, ownCenter)) || (f.maxX - f.minX);
 
   // 0 = top kendi kalemizde, 1 = top rakip kalede
-  const ballDepth = clamp(dot(toBall, upfieldOf(view)) / pitchLength, 0, 1);
+  const ballDepth = clamp(dot(toBall, upfield) / pitchLength, 0, 1);
+
+  // Topun sönümlenmiş ve duvarlardan sekmiş yolunu kale önündeki koruma
+  // çizgisine kadar izle. Çizgiyi kale ağzı civarında kesiyorsa öncelik şut
+  // hattını kapatmaktır; topun bulunduğu köşeyi kovalamak değildir.
+  const keeperDepth = cfg.defenderGoalOffset;
+  const lookahead = Math.max(1, Math.floor(cfg.defenderThreatLookahead));
+  const trajectory = predictBallTrajectory(view.ball, lookahead, cfg.ballDamping);
+  let previous = trajectory[0];
+  let threatPoint = null;
+
+  for (let t = 1; t < trajectory.length; t++) {
+    const point = trajectory[t];
+    const previousDepth = dot(sub(previous, ownCenter), upfield);
+    const currentDepth = dot(sub(point, ownCenter), upfield);
+    const crossed = previousDepth >= keeperDepth && currentDepth <= keeperDepth;
+
+    if (crossed) {
+      const denom = previousDepth - currentDepth;
+      const ratioAtLine = denom > 1e-9 ? (previousDepth - keeperDepth) / denom : 0;
+      const crossing = add(previous, scale(sub(point, previous), ratioAtLine));
+      const lateral = dot(sub(crossing, ownCenter), goalAxis);
+      if (Math.abs(lateral) <= goalLength / 2 + cfg.defenderThreatMargin) {
+        threatPoint = crossing;
+      }
+      break;
+    }
+    previous = point;
+  }
+
+  if (threatPoint) {
+    const maxKeeperLateral = Math.max(0, goalLength / 2 - cfg.defenderPostInset);
+    const lateral = clamp(
+      dot(sub(threatPoint, ownCenter), goalAxis),
+      -maxKeeperLateral,
+      maxKeeperLateral
+    );
+    return {
+      point: add(add(ownCenter, scale(upfield, keeperDepth)), scale(goalAxis, lateral)),
+      threat: true,
+    };
+  }
 
   // Top uzaklaştıkça daha ileri konumlan
   const ratio = clamp(
@@ -559,7 +695,22 @@ function defenderTarget(view, cfg) {
     0.8
   );
 
-  return add(ownCenter, scale(toBall, ratio));
+  let point = add(ownCenter, scale(toBall, ratio));
+
+  // Kendi bölgemizde zararsız biçimde köşede duran top da defansı kale
+  // koridorundan tamamen çıkarmasın. İleri/geri hareket korunur, yanal sürüklenme
+  // sınırlanır.
+  if (ballDepth < cfg.defenderCorridorDepth) {
+    const lateral = clamp(
+      dot(sub(point, ownCenter), goalAxis),
+      -cfg.defenderMaxLateral,
+      cfg.defenderMaxLateral
+    );
+    const depth = dot(sub(point, ownCenter), upfield);
+    point = add(add(ownCenter, scale(upfield, depth)), scale(goalAxis, lateral));
+  }
+
+  return { point, threat: false };
 }
 
 /**
@@ -614,6 +765,50 @@ function botOnlyNudgeTarget(view, target, cfg, memory) {
   return {
     x: target.x,
     y: clamp(target.y + memory.botOnlyNudgeSide * cfg.botOnlyNudge, f.minY * 0.85, f.maxY * 0.85),
+  };
+}
+
+/**
+ * Topun çevresindeki en yakın rakibi bulur ve mücadelede kullanılacak güvenli
+ * yönü üretir. Yanal taraf rakibin tersidir ve kısa süreli bellekte tutulur;
+ * böylece iki bot birbirine temas ederken hedef her tick sağ/sol oynamaz.
+ */
+function pressureSituation(view, cfg, memory) {
+  let opponent = null;
+  let opponentDistance = Infinity;
+  for (const candidate of view.opponents || []) {
+    const distance = len(sub(candidate.pos, view.ball.pos));
+    if (distance < opponentDistance) {
+      opponent = candidate;
+      opponentDistance = distance;
+    }
+  }
+
+  const selfDistance = len(sub(view.self.pos, view.ball.pos));
+  const contested = !!opponent && opponentDistance <= cfg.contestOpponentDistance &&
+    selfDistance <= cfg.contestEngageDistance;
+
+  if (!contested) {
+    memory.pressureSide = 0;
+    return { contested: false, opponent: null, direction: null };
+  }
+
+  const upfield = upfieldOf(view);
+  const sideAxis = { x: -upfield.y, y: upfield.x };
+  const opponentSide = dot(sub(opponent.pos, view.ball.pos), sideAxis);
+  if (!memory.pressureSide) {
+    memory.pressureSide = Math.abs(opponentSide) > 5
+      ? -Math.sign(opponentSide)
+      : (view.self.id % 2 === 0 ? 1 : -1);
+  }
+
+  return {
+    contested: true,
+    opponent,
+    direction: normalize(add(
+      upfield,
+      scale(sideAxis, memory.pressureSide * cfg.contestDirectionBias)
+    )),
   };
 }
 
@@ -766,6 +961,7 @@ function decide(view, memory, config) {
     kickPadding: activeCfg.kickPadding,
     predictTicks: activeCfg.predictTicks,
     ballDamping: activeCfg.ballDamping,
+    roleSwitchMarginTicks: activeCfg.roleSwitchMarginTicks,
   };
 
   const assigned = assignRoles(view, roleCfg);
@@ -801,23 +997,29 @@ function decide(view, memory, config) {
     : 0;
   const receivingFastBall = incomingClosingSpeed >= activeCfg.incomingBallSpeed &&
     currentBallDistance <= activeCfg.approachDetourRange * 2;
+  const pressure = role === 'attacker'
+    ? pressureSituation(view, activeCfg, memory)
+    : { contested: false, opponent: null, direction: null };
   const ballToAim = receivingFastBall
     ? normalize(currentToBall)
-    : aimKickDirection(toAim, view.ball.speed, activeCfg.kickStrength);
+    : pressure.contested
+      ? pressure.direction
+      : aimKickDirection(toAim, view.ball.speed, activeCfg.kickStrength);
 
   let target;
   let strikePlan = null;
   let approach = { detouring: false };
-  if (view.forceBall) {
-    target = view.ball.pos;
-  } else if (role === 'attacker') {
+  let goalThreat = false;
+  if (role === 'attacker') {
     // Topun gelecekteki konumunu ve oyuncunun gerçek temas merkezini birlikte
     // çöz. Sonra yanlış taraftaysak topun içinden geçmeden yanal yay çiz.
     strikePlan = solveStrikeIntercept(view.self, view.ball, ballToAim, activeCfg);
     approach = safeStrikeTarget(view, strikePlan, ballToAim, activeCfg, memory);
     target = approach.target;
   } else if (role === 'defender') {
-    target = defenderTarget(view, activeCfg);
+    const defense = defenderTarget(view, activeCfg);
+    target = defense.point;
+    goalThreat = defense.threat;
   } else {
     target = supportTarget(view, activeCfg, slot);
   }
@@ -866,7 +1068,10 @@ function decide(view, memory, config) {
   const defensiveTouch = beforeForwardSpeed <= -activeCfg.incomingBallSpeed &&
     dot(kickDir, upfield) > 0.15 &&
     afterForwardSpeed >= beforeForwardSpeed + activeCfg.defensiveTouchMinGain;
-  const safeTouch = safeDirection || defensiveTouch;
+  const pressureTouch = pressure.contested &&
+    dot(kickDir, upfield) > activeCfg.ownGoalGuard &&
+    afterForwardSpeed >= beforeForwardSpeed + activeCfg.pressureTouchMinGain;
+  const safeTouch = safeDirection || defensiveTouch || pressureTouch;
 
   // Şut bölgesinde: top gerçekten kale ağzına gidiyor mu VE oraya ulaşıyor mu?
   // (sabit açı konisi yerine ışın-kale kesişimi; boş kale ıskalamasın)
@@ -886,7 +1091,7 @@ function decide(view, memory, config) {
   // Kaleye yakınsak isabet şartı ara; uzaktaysak topa vur ve ileri gönder.
   const forceKick = view.forceBall && inKickRange && safeTouch;
 
-  const wantKick = forceKick || (inKickRange && (defensiveTouch || (safeDirection && (
+  const wantKick = forceKick || (inKickRange && (defensiveTouch || pressureTouch || (safeDirection && (
     inShootingRange ? onTarget : forwardness >= activeCfg.clearConeCos
   ))));
 
@@ -901,7 +1106,7 @@ function decide(view, memory, config) {
   const nearKickRange = distToBall <= kickRange + dynamicReleaseMargin;
   const interceptImminent = strikePlan && strikePlan.ticks <= activeCfg.incomingReleaseTicks;
   const likelyKickSoon = role === 'attacker' && (nearKickRange || interceptImminent) && safeTouch && (
-    defensiveTouch || inShootingRange || forwardness >= activeCfg.clearConeCos
+    defensiveTouch || pressureTouch || inShootingRange || forwardness >= activeCfg.clearConeCos
   );
 
   if (!inKickRange && likelyKickSoon && (nav.brake || memory.lastKeyDown)) {
@@ -946,12 +1151,29 @@ function decide(view, memory, config) {
   memory.braking = braking;
   memory.lastKeyDown = keyDown;
 
+  const mode = view.forceBall
+    ? 'kickoff'
+    : receivingFastBall
+      ? 'receive'
+      : pressure.contested
+        ? 'pressure'
+        : role === 'attacker'
+          ? (approach.detouring ? 'detour' : 'strike')
+          : role === 'defender'
+            ? (goalThreat ? 'defend-goal' : 'defend')
+            : 'support';
+
   return {
     dirX: nav.dirX,
     dirY: nav.dirY,
     kick: keyDown,
     role,
     braking,
+    mode,
+    target,
+    interceptTicks: strikePlan ? strikePlan.ticks : assigned.intercept.ticks,
+    contested: pressure.contested,
+    goalThreat,
   };
 }
 
@@ -962,8 +1184,11 @@ module.exports = {
   PERSONALITY_SPEC,
   DEFAULTS,
   predictBall,
+  predictBallTrajectory,
   solveIntercept,
   solveStrikeIntercept,
+  selectAttacker,
+  defenderTarget,
   brakingDistance,
   reachableDistance,
   navigate,
