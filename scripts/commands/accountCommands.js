@@ -105,35 +105,41 @@ function handleAutoLogin(room, player, { db, DB_FILE, loggedInPlayers, persistDa
 function handleStats(ctx) {
   const { room, player, cleanedName, loggedInPlayers, db } = ctx;
   const t = ctx.t || fallbackT;
-  if (!loggedInPlayers.has(player.id)) {
+  const userData = loggedInPlayers.get(player.id);
+  if (!userData) {
     sendMsg(room, t('account.statsLoginRequired'), player.id, 0xFFCC00, 'bold');
     return false;
   }
 
   try {
-    const stmt = db.prepare('SELECT goals, assists, wins, losses FROM users WHERE username = ?');
-    stmt.bind([cleanedName]);
+    const stmt = db.prepare(`
+      SELECT goals, assists, wins, losses
+      FROM user_stats
+      WHERE player_uid = ? OR LOWER(TRIM(username)) = LOWER(TRIM(?))
+      LIMIT 1
+    `.replace(/\s+/g, ' '));
+    stmt.bind([userData.player_uid || '', cleanedName]);
 
+    let row = { goals: 0, assists: 0, wins: 0, losses: 0 };
     if (stmt.step()) {
-      const row = stmt.getAsObject();
-      const goals = row.goals || 0;
-      const assists = row.assists || 0;
-      const wins = row.wins || 0;
-      const losses = row.losses || 0;
-      const totalGames = wins + losses;
-      const winRate = totalGames > 0 ? ((wins / totalGames) * 100).toFixed(1) : '0.0';
-
-      sendMsg(
-        room,
-        t('account.statsLine', { name: cleanedName, goals, assists, wins, losses, winRate }),
-        player.id,
-        0x00BFFF,
-        'bold'
-      );
-    } else {
-      sendMsg(room, t('account.statsMissing'), player.id, 0xFF5555, 'bold');
+      row = stmt.getAsObject();
     }
     stmt.free();
+
+    const goals = row.goals || 0;
+    const assists = row.assists || 0;
+    const wins = row.wins || 0;
+    const losses = row.losses || 0;
+    const totalGames = wins + losses;
+    const winRate = totalGames > 0 ? ((wins / totalGames) * 100).toFixed(1) : '0.0';
+
+    sendMsg(
+      room,
+      t('account.statsLine', { name: cleanedName, goals, assists, wins, losses, winRate }),
+      player.id,
+      0x00BFFF,
+      'bold'
+    );
   } catch (err) {
     console.warn('[BACKEND-DB] Stats sorgu hatası:', err.message);
     sendMsg(room, t('account.statsError'), player.id, 0xFF5555, 'bold');
@@ -168,7 +174,7 @@ function handleLeaderboard(ctx, type) {
   try {
     const stmt = db.prepare(`
       SELECT username, ${leaderboard.column} AS value
-      FROM users
+      FROM user_stats
       WHERE COALESCE(${leaderboard.column}, 0) > 0
       ORDER BY ${leaderboard.column} DESC, username COLLATE NOCASE ASC
       LIMIT 5
@@ -224,8 +230,12 @@ function handleRegister(ctx) {
       console.log(`[BACKEND-DB] Yeni kullanıcı ekleniyor -> Kullanıcı: "${cleanedName}" | Token: "${playerToken}"`);
 
       db.run(
-        'INSERT INTO users (username, player_uid, password, auth_key, role, registered_at, goals, assists, wins, losses) VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0, 0)',
+        'INSERT INTO users (username, player_uid, password, auth_key, role, registered_at) VALUES (?, ?, ?, ?, ?, ?)',
         [cleanedName, playerUid, password, playerToken, 'player', new Date().toISOString()]
+      );
+      db.run(
+        'INSERT OR IGNORE INTO user_stats (player_uid, username, goals, assists, wins, losses, updated_at) VALUES (?, ?, 0, 0, 0, 0, ?)',
+        [playerUid, cleanedName, new Date().toISOString()]
       );
 
       persistDatabase(db, DB_FILE);

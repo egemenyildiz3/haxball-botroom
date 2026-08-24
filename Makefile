@@ -10,7 +10,7 @@ LIMIT ?= 50
 EVENT ?=
 LEVEL ?=
 
-.PHONY: help up down ps logs logs-f logs-backend logs-chat logs-json logs-json-f logs-json-errors logs-json-player logs-json-event attach token-file-init cron-install-db-backup cron-show db-all db-users db-games db-visited_users db-istekler db-blacklist db-users-today db-visited_users-today db-ljungberg db-make-superadmin db-user-with-auth db-blacklist-player db-unblacklist-player db-backup db-backups db-restore
+.PHONY: help up down ps logs logs-f logs-backend logs-chat logs-json logs-json-f logs-json-errors logs-json-player logs-json-event attach token-file-init cron-install-db-backup cron-show db-all db-users db-user-stats db-games db-visited_users db-istekler db-blacklist db-users-today db-visited_users-today db-ljungberg db-make-superadmin db-user-with-auth db-blacklist-player db-unblacklist-player db-backup db-backups db-restore
 
 help:
 	@echo "======================================================================"
@@ -39,6 +39,7 @@ help:
 	@echo "----------------------------------------------------------------------"
 	@echo "  make db-all        : SQLite tablolarını listeler"
 	@echo "  make db-users      : 'users' tablosundaki tüm kayıtları listeler"
+	@echo "  make db-user-stats : 'user_stats' tablosundaki tüm istatistikleri listeler"
 	@echo "  make db-games      : 'games' tablosundaki tüm kayıtları listeler"
 	@echo "  make db-visited_users : 'visited_users' tablosundaki tüm kayıtları listeler"
 	@echo "  make db-istekler   : 'istekler' tablosundaki tüm kayıtları listeler"
@@ -149,6 +150,19 @@ db-users:
 		initSqlJs().then(SQL => { \
 			const db = new SQL.Database(fs.readFileSync('./db/haxball-results.sqlite')); \
 			const stmt = db.prepare('SELECT * FROM users'); \
+			const rows = []; \
+			while (stmt.step()) rows.push(stmt.getAsObject()); \
+			stmt.free(); \
+			console.table(rows); \
+		});"
+
+db-user-stats:
+	docker exec -it $(CONTAINER) node -e "\
+		const fs = require('fs'); \
+		const initSqlJs = require('sql.js'); \
+		initSqlJs().then(SQL => { \
+			const db = new SQL.Database(fs.readFileSync('./db/haxball-results.sqlite')); \
+			const stmt = db.prepare('SELECT * FROM user_stats ORDER BY wins DESC, goals DESC, username COLLATE NOCASE ASC'); \
 			const rows = []; \
 			while (stmt.step()) rows.push(stmt.getAsObject()); \
 			stmt.free(); \

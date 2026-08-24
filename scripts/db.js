@@ -12,35 +12,6 @@ function persistDatabase(db, DB_FILE) {
   fs.writeFileSync(DB_FILE, Buffer.from(db.export()));
 }
 
-function tableColumns(db, tableName) {
-  const stmt = db.prepare(`PRAGMA table_info(${tableName})`);
-  const columns = new Set();
-  while (stmt.step()) {
-    const row = stmt.getAsObject();
-    if (row && row.name) columns.add(String(row.name));
-  }
-  stmt.free();
-  return columns;
-}
-
-function ensureRoleColumn(db) {
-  const columns = tableColumns(db, 'users');
-  if (columns.has('role')) return;
-
-  db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'player';");
-
-  if (columns.has('isadmin')) {
-    db.exec(`
-      UPDATE users
-      SET role = CASE
-        WHEN LOWER(TRIM(username)) IN ('loréx', 'ljungberg') THEN 'owner'
-        WHEN isadmin = 1 THEN 'admin'
-        ELSE 'player'
-      END
-    `);
-  }
-}
-
 function initDatabase(db) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS games (
@@ -51,7 +22,10 @@ function initDatabase(db) {
       score_blue INTEGER NOT NULL,
       winner_team INTEGER,
       loser_team INTEGER,
-      duration_seconds REAL NOT NULL
+      duration_seconds REAL NOT NULL,
+      red_team TEXT NOT NULL DEFAULT '[]',
+      blue_team TEXT NOT NULL DEFAULT '[]',
+      winning_streak INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS users (
@@ -61,11 +35,17 @@ function initDatabase(db) {
       auth_key TEXT,
       role TEXT NOT NULL DEFAULT 'player',
       registered_at TEXT,
-      last_visited_at TEXT,
-      goals INTEGER DEFAULT 0,
-      assists INTEGER DEFAULT 0,
-      wins INTEGER DEFAULT 0,
-      losses INTEGER DEFAULT 0
+      last_visited_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS user_stats (
+      player_uid TEXT PRIMARY KEY,
+      username TEXT NOT NULL,
+      goals INTEGER NOT NULL DEFAULT 0,
+      assists INTEGER NOT NULL DEFAULT 0,
+      wins INTEGER NOT NULL DEFAULT 0,
+      losses INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT
     );
 
     CREATE TABLE IF NOT EXISTS visited_users (
@@ -94,6 +74,7 @@ function initDatabase(db) {
     );
 
     CREATE INDEX IF NOT EXISTS idx_users_player_uid ON users(player_uid);
+    CREATE INDEX IF NOT EXISTS idx_user_stats_username ON user_stats(username);
     CREATE INDEX IF NOT EXISTS idx_blacklisted_users_player_uid ON blacklisted_users(player_uid);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_blacklisted_users_username_unique
       ON blacklisted_users(LOWER(TRIM(username)))
@@ -101,11 +82,10 @@ function initDatabase(db) {
     CREATE INDEX IF NOT EXISTS idx_istekler_player_uid ON istekler(player_uid);
   `);
 
-  ensureRoleColumn(db);
-
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_users_player_uid ON users(player_uid);
     CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+    CREATE INDEX IF NOT EXISTS idx_games_winner_streak ON games(winner_team, winning_streak);
   `);
 }
 
@@ -132,6 +112,7 @@ function playerUidExists(db, playerUid) {
     SELECT 1 FROM (
       SELECT player_uid FROM visited_users
       UNION ALL SELECT player_uid FROM users
+      UNION ALL SELECT player_uid FROM user_stats
       UNION ALL SELECT player_uid FROM blacklisted_users
       UNION ALL SELECT player_uid FROM istekler
     )
@@ -158,6 +139,7 @@ function findPlayerUid(db, username, authKey = '') {
       SELECT player_uid FROM (
         SELECT username, player_uid FROM visited_users
         UNION ALL SELECT username, player_uid FROM users
+        UNION ALL SELECT username, player_uid FROM user_stats
         UNION ALL SELECT username, player_uid FROM blacklisted_users
         UNION ALL SELECT username, player_uid FROM istekler
       )
@@ -189,6 +171,10 @@ function findPlayerUid(db, username, authKey = '') {
 
 function getOrCreatePlayerUid(db, username, authKey = '') {
   return findPlayerUid(db, username, authKey) || generateUniquePlayerUid(db);
+}
+
+function isBotUsername(username) {
+  return String(username || '').trim().toLowerCase().startsWith('spacebot');
 }
 
 function isUserBlacklisted(db, username, authKey) {
@@ -255,27 +241,82 @@ function saveGameResult(db, DB_FILE, scores, winnerTeam, loserTeam, game, endedA
   try {
     db.exec('BEGIN TRANSACTION');
 
+    const latestWinner = (() => {
+      const stmt = db.prepare(`
+        SELECT winner_team, winning_streak
+        FROM games
+        WHERE winner_team IS NOT NULL
+        ORDER BY id DESC
+        LIMIT 1
+      `.replace(/\s+/g, ' '));
+      const row = stmt.step() ? stmt.getAsObject() : null;
+      stmt.free();
+      return row;
+    })();
+    const winningStreak = winnerTeam === null
+      ? 0
+      : (latestWinner && Number(latestWinner.winner_team) === winnerTeam
+        ? Number(latestWinner.winning_streak || 0) + 1
+        : 1);
+
+    const playerRows = game.players
+      .filter((player) => player && player.cleanName)
+      .map((player) => ({
+        username: player.cleanName,
+        player_uid: getOrCreatePlayerUid(db, player.cleanName),
+        team: player.team,
+        goals: player.goals || 0,
+        assists: player.assists || 0,
+      }));
+    const redTeam = JSON.stringify(playerRows.filter((player) => player.team === 1));
+    const blueTeam = JSON.stringify(playerRows.filter((player) => player.team === 2));
+
     const insertGame = db.prepare(`
-      INSERT INTO games (started_at, ended_at, score_red, score_blue, winner_team, loser_team, duration_seconds)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO games (
+        started_at,
+        ended_at,
+        score_red,
+        score_blue,
+        winner_team,
+        loser_team,
+        duration_seconds,
+        red_team,
+        blue_team,
+        winning_streak
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `.replace(/\s+/g, ' '));
-    insertGame.run([game.started_at, endedAt, scores.red, scores.blue, winnerTeam, loserTeam, durationSeconds]);
+    insertGame.run([
+      game.started_at,
+      endedAt,
+      scores.red,
+      scores.blue,
+      winnerTeam,
+      loserTeam,
+      durationSeconds,
+      redTeam,
+      blueTeam,
+      winningStreak,
+    ]);
     insertGame.free();
 
     const updateUserStats = db.prepare(`
-      UPDATE users
-      SET goals = goals + ?,
-          assists = assists + ?,
-          wins = wins + ?,
-          losses = losses + ?
-      WHERE username = ?
+      INSERT INTO user_stats (player_uid, username, goals, assists, wins, losses, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(player_uid) DO UPDATE SET
+        username = excluded.username,
+        goals = user_stats.goals + excluded.goals,
+        assists = user_stats.assists + excluded.assists,
+        wins = user_stats.wins + excluded.wins,
+        losses = user_stats.losses + excluded.losses,
+        updated_at = excluded.updated_at
     `.replace(/\s+/g, ' '));
 
-    for (const player of game.players) {
-      if (!player.cleanName) continue;
+    for (const player of playerRows) {
+      if (isBotUsername(player.username)) continue;
       const isWin = winnerTeam !== null && player.team === winnerTeam ? 1 : 0;
       const isLoss = loserTeam !== null && player.team === loserTeam ? 1 : 0;
-      updateUserStats.run([player.goals || 0, player.assists || 0, isWin, isLoss, player.cleanName]);
+      updateUserStats.run([player.player_uid, player.username, player.goals, player.assists, isWin, isLoss, endedAt]);
     }
 
     updateUserStats.free();
