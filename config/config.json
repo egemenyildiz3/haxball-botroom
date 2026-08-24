@@ -7,7 +7,12 @@
     "timeLimit": 4,
     "promotionCount": 4,
     "public": true,
-    "language": "en"
+    "language": "en",
+    "geo": {
+      "code": "tr",
+      "lat": 37.0208,
+      "lon": 30.8541
+    }
   },
   "adminRules": {
     "allowMultipleJoin": false,

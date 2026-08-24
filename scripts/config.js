@@ -11,7 +11,12 @@ const DEFAULT_CONFIG = {
     timeLimit: 4,
     promotionCount: 4,
     public: true,
-    language: 'tr',
+    language: 'en',
+    geo: {
+      code: 'tr',
+      lat: 37.0208,
+      lon: 30.8541,
+    },
   },
 
   map: {
@@ -231,6 +236,11 @@ const config = {
     promotionCount: numberFromEnv('HAXBALL_PROMOTION_COUNT', fileConfig.room.promotionCount, { min: 1, max: 8 }),
     public: boolFromEnv('HAXBALL_PUBLIC', fileConfig.room.public),
     language: languageFromEnv(fileConfig.room.language),
+    geo: {
+      code: (process.env.HAXBALL_GEO_CODE || fileConfig.room.geo.code || 'tr').trim().toLowerCase(),
+      lat: numberFromEnv('HAXBALL_GEO_LAT', fileConfig.room.geo.lat, { min: -90, max: 90 }),
+      lon: numberFromEnv('HAXBALL_GEO_LON', fileConfig.room.geo.lon, { min: -180, max: 180 }),
+    },
   },
 
   map: {
@@ -354,6 +364,9 @@ function validateConfig(cfg = config) {
   }
   if (cfg.room.promotionCount > cfg.teamManagement.maxTeamSize) {
     throw new Error('HAXBALL_PROMOTION_COUNT, TEAM_MAX_SIZE değerinden büyük olamaz.');
+  }
+  if (!/^[a-z]{2}$/.test(cfg.room.geo.code)) {
+    throw new Error('HAXBALL_GEO_CODE iki harfli ülke kodu olmalı.');
   }
   if (cfg.afk.maxDurationMs > 0 && cfg.afk.minDurationMs > cfg.afk.maxDurationMs) {
     throw new Error('AFK_MIN_DURATION_MS, AFK_MAX_DURATION_MS değerinden büyük olamaz.');

@@ -111,7 +111,7 @@ async function startRoom() {
     public: config.room.public,
     noPlayer: false,
     token: TOKEN,
-    geo: { code: 'tr', lat: 37.0208, lon: 30.8541 },
+    geo: config.room.geo,
   });
 
   const room = host.room;
