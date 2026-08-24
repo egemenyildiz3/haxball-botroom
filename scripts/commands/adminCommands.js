@@ -65,7 +65,9 @@ function handleClearBans(ctx) {
 }
 
 function handleBlacklist(ctx) {
-  const { room, player, args, cleanedName, loggedInPlayers, playerAssignments, db, DB_FILE, persistDatabase, botManager } = ctx;
+  const { room, player, args, cleanedName, loggedInPlayers, playerAssignments, persistDatabase, botManager } = ctx;
+  const db = ctx.sharedDb || ctx.db;
+  const DB_FILE = ctx.SHARED_DB_FILE || ctx.DB_FILE;
   const t = ctx.t || fallbackT;
   if (!(typeof ctx.hasCapability === 'function' && ctx.hasCapability('blacklist'))) {
     sendMsg(room, t('common.founderOnly'), player.id, 0xFF5555, 'bold');

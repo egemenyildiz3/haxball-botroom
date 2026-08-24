@@ -3,18 +3,25 @@ const path = require('path');
 const { createHostRoom } = require('./bot/hostRoom');
 
 const { getTimestamp, sanitizeStadiumFileContents, sleep } = require('./util');
-const { loadOrCreateDatabase, persistDatabase, initDatabase } = require('./db');
+const { loadOrCreateDatabase, persistDatabase, initRoomDatabase, initSharedDatabase } = require('./db');
 const { createRoom } = require('./room');
 const { createBotManager } = require('./bot/manager');
 const config = require('./config');
 const { createTranslator } = require('./i18n');
 const { createLogger } = require('./logger');
 
-const MAP_FILE = path.join(__dirname, '..', 'maps', 'Spacebounce.hbs');
-const DB_FILE = path.join(__dirname, '..', 'db', 'haxball-results.sqlite');
 const DEFAULT_TOKEN_FILE = '/run/haxball/spacebounce-botroom-token.txt';
 const logger = createLogger(config.logging);
 logger.installConsole();
+
+function resolveAppPath(filePath) {
+  if (path.isAbsolute(filePath)) return filePath;
+  return path.join(__dirname, '..', filePath);
+}
+
+const MAP_FILE = resolveAppPath(config.map.file);
+const DB_FILE = resolveAppPath(config.database.file);
+const SHARED_DB_FILE = resolveAppPath(config.sharedDatabase.file);
 
 function readToken() {
   const envToken = String(process.env.HAXBALL_TOKEN || '').trim();
@@ -37,11 +44,18 @@ const TOKEN = readToken();
 const t = createTranslator(config.room.language);
 
 let SQL = null;
-let db = null;
+let roomDb = null;
+let sharedDb = null;
 
 if (!TOKEN) {
   console.error('HAXBALL_TOKEN bulunamadı.');
   console.error(`Lütfen HAXBALL_TOKEN env değişkenini veya HAXBALL_TOKEN_FILE dosyasını tanımlayın. Varsayılan dosya: ${DEFAULT_TOKEN_FILE}`);
+  process.exit(1);
+}
+
+if (!fs.existsSync(MAP_FILE)) {
+  console.error(`Map dosyası bulunamadı: ${MAP_FILE}`);
+  console.error('ROOM_PROFILE / HAXBALL_MAP_FILE ayarını veya maps klasöründeki dosyayı kontrol edin.');
   process.exit(1);
 }
 
@@ -59,18 +73,23 @@ startRoom().catch((error) => {
 
 async function startRoom() {
   console.log(`${getTimestamp()} Haxball odası başlatılıyor...`);
+  console.log(`${getTimestamp()} Profile: ${config.profile} | Map: ${config.map.file} | Room DB: ${config.database.file} | Shared DB: ${config.sharedDatabase.file}`);
 
   const initSqlJs = require('sql.js');
   SQL = await initSqlJs({
     locateFile: (file) => path.join(__dirname, '..', 'node_modules', 'sql.js', 'dist', file),
   });
 
-  db = loadOrCreateDatabase(SQL, DB_FILE);
-  initDatabase(db);
-  persistDatabase(db, DB_FILE);
+  roomDb = loadOrCreateDatabase(SQL, DB_FILE);
+  sharedDb = loadOrCreateDatabase(SQL, SHARED_DB_FILE);
+  initRoomDatabase(roomDb);
+  initSharedDatabase(sharedDb);
+  persistDatabase(roomDb, DB_FILE);
+  persistDatabase(sharedDb, SHARED_DB_FILE);
 
   const botManager = createBotManager({
     botName: config.bot.baseName,
+    brain: config.bot.brain,
     botNames: config.bot.names,
     maxBots: config.bot.max,
     avatar: config.bot.avatar,
@@ -113,8 +132,12 @@ async function startRoom() {
     TIME_LIMIT: config.room.timeLimit,
     SPEC_PROMOTION_COUNT: config.room.promotionCount,
     mapData,
-    db,
-    DB_FILE,
+    db: sharedDb,
+    DB_FILE: SHARED_DB_FILE,
+    sharedDb,
+    SHARED_DB_FILE,
+    roomDb,
+    ROOM_DB_FILE: DB_FILE,
     persistDatabase,
     ADMIN_PASSWORD: config.adminRules.password,
     playerAssignments,

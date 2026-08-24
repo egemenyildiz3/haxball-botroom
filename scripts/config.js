@@ -2,6 +2,8 @@ const fs = require('fs');
 const path = require('path');
 
 const DEFAULT_CONFIG = {
+  profile: 'spacebounce-v4',
+
   room: {
     name: '🛰️🛰️ SPACEBOUNCE | ⚽ 4v4 🪐 🛰️🛰️',
     maxPlayers: 16,
@@ -10,6 +12,18 @@ const DEFAULT_CONFIG = {
     promotionCount: 4,
     public: true,
     language: 'tr',
+  },
+
+  map: {
+    file: 'maps/SpacebounceV4.hbs',
+  },
+
+  database: {
+    file: 'db/haxball-results.sqlite',
+  },
+
+  sharedDatabase: {
+    file: 'db/haxball-shared.sqlite',
   },
 
   adminRules: {
@@ -25,6 +39,7 @@ const DEFAULT_CONFIG = {
 
   bot: {
     baseName: 'SpaceBot',
+    brain: 'balanced',
     names: ['Salah', 'Škriniar', 'Osimhen', 'Trossard', 'Messi', 'Ronaldo', 'Hakimi', 'Kimmich'],
     max: 8,
     avatar: '🤖',
@@ -63,6 +78,8 @@ const DEFAULT_CONFIG = {
   },
 
   teamManagement: {
+    maxTeamSize: 4,
+    maxActivePlayers: 8,
     promotionNotice: {
       enabled: true,
       color: '00BFFF',
@@ -97,15 +114,24 @@ function configPath() {
     || path.join(__dirname, '..', 'config', 'config.json');
 }
 
-function readJsonConfig() {
-  const file = configPath();
+function readJsonFile(file, label) {
   if (!file || !fs.existsSync(file)) return {};
 
   try {
     return JSON.parse(fs.readFileSync(file, 'utf8'));
   } catch (err) {
-    throw new Error(`CONFIG_FILE okunamadı (${file}): ${err.message}`);
+    throw new Error(`${label} okunamadı (${file}): ${err.message}`);
   }
+}
+
+function readJsonConfig() {
+  return readJsonFile(configPath(), 'CONFIG_FILE');
+}
+
+function profilePath(profileName) {
+  if (process.env.PROFILE_FILE) return process.env.PROFILE_FILE;
+  if (!profileName) return '';
+  return path.join(__dirname, '..', 'profiles', `${profileName}.json`);
 }
 
 function isPlainObject(value) {
@@ -185,9 +211,18 @@ function languageFromEnv(fallback) {
   return language;
 }
 
-const fileConfig = deepMerge(DEFAULT_CONFIG, readJsonConfig());
+const baseFileConfig = deepMerge(DEFAULT_CONFIG, readJsonConfig());
+const selectedProfile = (
+  process.env.ROOM_PROFILE
+  || process.env.HAXBALL_ROOM_PROFILE
+  || baseFileConfig.profile
+  || DEFAULT_CONFIG.profile
+).trim();
+const fileConfig = deepMerge(baseFileConfig, readJsonFile(profilePath(selectedProfile), 'PROFILE_FILE'));
 
 const config = {
+  profile: selectedProfile,
+
   room: {
     name: process.env.HAXBALL_ROOM_NAME || fileConfig.room.name,
     maxPlayers: numberFromEnv('HAXBALL_MAX_PLAYERS', fileConfig.room.maxPlayers, { min: 1, max: 30 }),
@@ -196,6 +231,18 @@ const config = {
     promotionCount: numberFromEnv('HAXBALL_PROMOTION_COUNT', fileConfig.room.promotionCount, { min: 1, max: 8 }),
     public: boolFromEnv('HAXBALL_PUBLIC', fileConfig.room.public),
     language: languageFromEnv(fileConfig.room.language),
+  },
+
+  map: {
+    file: process.env.HAXBALL_MAP_FILE || fileConfig.map.file,
+  },
+
+  database: {
+    file: process.env.HAXBALL_DB_FILE || fileConfig.database.file,
+  },
+
+  sharedDatabase: {
+    file: process.env.HAXBALL_SHARED_DB_FILE || fileConfig.sharedDatabase.file,
   },
 
   adminRules: {
@@ -212,6 +259,7 @@ const config = {
 
   bot: {
     baseName: process.env.HAXBALL_BOT_NAME || fileConfig.bot.baseName,
+    brain: process.env.HAXBALL_BOT_BRAIN || fileConfig.bot.brain,
     names: listFromEnv('HAXBALL_BOT_NAMES', fileConfig.bot.names),
     max: numberFromEnv('HAXBALL_BOT_MAX', fileConfig.bot.max, { min: 0, max: 16 }),
     avatar: process.env.HAXBALL_BOT_AVATAR || fileConfig.bot.avatar,
@@ -254,6 +302,8 @@ const config = {
   },
 
   teamManagement: {
+    maxTeamSize: numberFromEnv('TEAM_MAX_SIZE', fileConfig.teamManagement.maxTeamSize, { min: 1, max: 8 }),
+    maxActivePlayers: numberFromEnv('TEAM_MAX_ACTIVE_PLAYERS', fileConfig.teamManagement.maxActivePlayers, { min: 2, max: 16 }),
     promotionNotice: {
       enabled: boolFromEnv('TEAM_PROMOTION_NOTICE_ENABLED', fileConfig.teamManagement.promotionNotice.enabled),
       color: colorFromEnv('TEAM_PROMOTION_NOTICE_COLOR', fileConfig.teamManagement.promotionNotice.color),
@@ -284,8 +334,26 @@ const config = {
 };
 
 function validateConfig(cfg = config) {
+  if (!cfg.map || !cfg.map.file) {
+    throw new Error('map.file config eksik.');
+  }
+  if (!cfg.database || !cfg.database.file) {
+    throw new Error('database.file config eksik.');
+  }
   if (cfg.bot.autostart > cfg.bot.max) {
     throw new Error('HAXBALL_BOT_AUTOSTART, HAXBALL_BOT_MAX değerinden büyük olamaz.');
+  }
+  if (!['balanced', 'smallPitch'].includes(cfg.bot.brain)) {
+    throw new Error('HAXBALL_BOT_BRAIN balanced veya smallPitch olmalı.');
+  }
+  if (cfg.teamManagement.maxActivePlayers > cfg.teamManagement.maxTeamSize * 2) {
+    throw new Error('TEAM_MAX_ACTIVE_PLAYERS, TEAM_MAX_SIZE * 2 değerinden büyük olamaz.');
+  }
+  if (cfg.teamManagement.maxActivePlayers % 2 !== 0) {
+    throw new Error('TEAM_MAX_ACTIVE_PLAYERS çift sayı olmalı.');
+  }
+  if (cfg.room.promotionCount > cfg.teamManagement.maxTeamSize) {
+    throw new Error('HAXBALL_PROMOTION_COUNT, TEAM_MAX_SIZE değerinden büyük olamaz.');
   }
   if (cfg.afk.maxDurationMs > 0 && cfg.afk.minDurationMs > cfg.afk.maxDurationMs) {
     throw new Error('AFK_MIN_DURATION_MS, AFK_MAX_DURATION_MS değerinden büyük olamaz.');

@@ -7,10 +7,25 @@ const PLAYER_REPLACES_BOT_DELAY_MS = 3 * 1000;
 const PLAYER_EMPTY_SLOT_DELAY_MS = 1 * 1000;
 const START_RETRY_DELAY_MS = 1000;
 const START_RETRY_COUNT = 5;
-const MAX_TEAM_SIZE = 4;
-const MAX_ACTIVE_PLAYERS = 8;
+const DEFAULT_MAX_TEAM_SIZE = 4;
+const DEFAULT_MAX_ACTIVE_PLAYERS = 8;
 
 const fallbackSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function teamLimits(config = {}) {
+  const teamManagement = config.teamManagement || {};
+  const maxTeamSize = Number.isInteger(teamManagement.maxTeamSize)
+    ? teamManagement.maxTeamSize
+    : DEFAULT_MAX_TEAM_SIZE;
+  const maxActivePlayers = Number.isInteger(teamManagement.maxActivePlayers)
+    ? teamManagement.maxActivePlayers
+    : Math.min(DEFAULT_MAX_ACTIVE_PLAYERS, maxTeamSize * 2);
+
+  return {
+    maxTeamSize,
+    maxActivePlayers: Math.min(maxActivePlayers, maxTeamSize * 2),
+  };
+}
 
 function lockTeams(room) {
   if (typeof room.setTeamsLock === 'function') {
@@ -169,11 +184,13 @@ async function validateTeamDistribution(room, state, deps = {}) {
     playerJoinOrder = new Map(),
     sleep = fallbackSleep,
     reason = 'unknown',
+    config = {},
   } = deps;
 
   if (typeof room.getPlayerList !== 'function' || typeof room.setPlayerTeam !== 'function') return;
 
   const isBot = (p) => isBotPlayer(botManager, p);
+  const { maxTeamSize, maxActivePlayers } = teamLimits(config);
 
   for (let attempts = 0; attempts < 8; attempts++) {
     if (!state.autoManageEnabled) return;
@@ -182,8 +199,8 @@ async function validateTeamDistribution(room, state, deps = {}) {
     const eligiblePlayers = players.filter((p) => isAutoEligiblePlayer(p, state, isBot));
     const realPlayers = eligiblePlayers.filter((p) => !isBot(p));
     const botPlayers = eligiblePlayers.filter(isBot);
-    const targetBotCount = desiredBotCount(realPlayers.length, botPlayers.length, MAX_ACTIVE_PLAYERS);
-    const desiredActiveCount = desiredEvenActiveCount(realPlayers.length, botPlayers.length, MAX_ACTIVE_PLAYERS);
+    const targetBotCount = desiredBotCount(realPlayers.length, botPlayers.length, maxActivePlayers);
+    const desiredActiveCount = desiredEvenActiveCount(realPlayers.length, botPlayers.length, maxActivePlayers);
     const redPlayers = activeTeamPlayers(players, state, 1);
     const bluePlayers = activeTeamPlayers(players, state, 2);
     const activePlayers = [...redPlayers, ...bluePlayers];
@@ -229,7 +246,7 @@ async function validateTeamDistribution(room, state, deps = {}) {
       }
     }
 
-    const oversizedTeam = redCount > MAX_TEAM_SIZE ? 1 : (blueCount > MAX_TEAM_SIZE ? 2 : 0);
+    const oversizedTeam = redCount > maxTeamSize ? 1 : (blueCount > maxTeamSize ? 2 : 0);
     if (oversizedTeam) {
       const fromPlayers = oversizedTeam === 1 ? redPlayers : bluePlayers;
       const toTeam = oversizedTeam === 1 ? 2 : 1;
@@ -238,7 +255,7 @@ async function validateTeamDistribution(room, state, deps = {}) {
 
       if (!movable) break;
       try {
-        const targetTeam = toCount < MAX_TEAM_SIZE ? toTeam : 0;
+        const targetTeam = toCount < maxTeamSize ? toTeam : 0;
         console.warn(`[TEAM-VALIDATOR] ${reason}: takım kapasitesi düzeltildi, ${movable.name} team=${targetTeam}.`);
         room.setPlayerTeam(movable.id, targetTeam);
         await sleep(REBALANCE_MOVE_DELAY_MS);
@@ -253,7 +270,7 @@ async function validateTeamDistribution(room, state, deps = {}) {
       const targetTeam = fromRed ? 2 : 1;
       const toCount = fromRed ? blueCount : redCount;
 
-      if (activePlayers.length < desiredActiveCount && toCount < MAX_TEAM_SIZE) {
+      if (activePlayers.length < desiredActiveCount && toCount < maxTeamSize) {
         const activeBotCount = activePlayers.filter(isBot).length;
         const botSlotsRemaining = Math.max(0, targetBotCount - activeBotCount);
         const promotable = spectatorsByType(players, state, playerJoinOrder, isBot, false)[0]
@@ -287,7 +304,7 @@ async function validateTeamDistribution(room, state, deps = {}) {
         }
       }
 
-      if (toCount >= MAX_TEAM_SIZE) {
+      if (toCount >= maxTeamSize) {
         const benchPlayer = pickBenchCandidate(fromPlayers, state, isBot);
         if (!benchPlayer) break;
 
@@ -414,12 +431,13 @@ async function runRebalanceOnce(room, state, { playerJoinOrder, botManager, slee
   }
 
   const isBot = (p) => isBotPlayer(botManager, p);
+  const { maxTeamSize, maxActivePlayers } = teamLimits(config);
   let autoEligiblePlayers = players.filter((p) => isAutoEligiblePlayer(p, state, isBot));
   let realPlayers = autoEligiblePlayers.filter((p) => !isBot(p));
   let botPlayers = autoEligiblePlayers.filter(isBot);
-  let targetBotCount = desiredBotCount(realPlayers.length, botPlayers.length);
+  let targetBotCount = desiredBotCount(realPlayers.length, botPlayers.length, maxActivePlayers);
   let activeBots = botPlayers.filter((p) => p.team === 1 || p.team === 2);
-  let desiredActiveCount = desiredEvenActiveCount(realPlayers.length, botPlayers.length, MAX_ACTIVE_PLAYERS);
+  let desiredActiveCount = desiredEvenActiveCount(realPlayers.length, botPlayers.length, maxActivePlayers);
   const activePlayers = players.filter((p) => p.id !== 0 && (p.team === 1 || p.team === 2) && !state.afkPlayers.has(p.id));
   const waitingHumans = spectatorsByType(players, state, playerJoinOrder, isBot, false);
   const joinDelay = waitingHumans.length > 0 && activeBots.length > targetBotCount
@@ -437,9 +455,9 @@ async function runRebalanceOnce(room, state, { playerJoinOrder, botManager, slee
     autoEligiblePlayers = players.filter((p) => isAutoEligiblePlayer(p, state, isBot));
     realPlayers = autoEligiblePlayers.filter((p) => !isBot(p));
     botPlayers = autoEligiblePlayers.filter(isBot);
-    targetBotCount = desiredBotCount(realPlayers.length, botPlayers.length);
+    targetBotCount = desiredBotCount(realPlayers.length, botPlayers.length, maxActivePlayers);
     activeBots = botPlayers.filter((p) => p.team === 1 || p.team === 2);
-    desiredActiveCount = desiredEvenActiveCount(realPlayers.length, botPlayers.length, MAX_ACTIVE_PLAYERS);
+    desiredActiveCount = desiredEvenActiveCount(realPlayers.length, botPlayers.length, maxActivePlayers);
   }
 
   if (activeBots.length > targetBotCount) {
@@ -461,7 +479,7 @@ async function runRebalanceOnce(room, state, { playerJoinOrder, botManager, slee
     ...spectatorsByType(players, state, playerJoinOrder, isBot, true).slice(0, botSlotsRemaining),
   ];
 
-  const maxTeamSize = Math.min(MAX_TEAM_SIZE, Math.max(1, Math.ceil(desiredActiveCount / 2)));
+  const maxTeamSizeForMatch = Math.min(maxTeamSize, Math.max(1, Math.ceil(desiredActiveCount / 2)));
 
   let redCount = redPlayers.length;
   let blueCount = bluePlayers.length;
@@ -476,11 +494,11 @@ async function runRebalanceOnce(room, state, { playerJoinOrder, botManager, slee
     await sleep(REBALANCE_MOVE_DELAY_MS);
   }
 
-  while (spectators.length > 0 && (redCount < maxTeamSize || blueCount < maxTeamSize)) {
+  while (spectators.length > 0 && (redCount < maxTeamSizeForMatch || blueCount < maxTeamSizeForMatch)) {
     if (!state.autoManageEnabled) return;
-    const targetTeam = redCount < maxTeamSize && blueCount < maxTeamSize
+    const targetTeam = redCount < maxTeamSizeForMatch && blueCount < maxTeamSizeForMatch
       ? (redCount <= blueCount ? 1 : 2)
-      : (redCount < maxTeamSize ? 1 : 2);
+      : (redCount < maxTeamSizeForMatch ? 1 : 2);
 
     const promote = spectators.shift();
     try {
@@ -521,7 +539,7 @@ async function runRebalanceOnce(room, state, { playerJoinOrder, botManager, slee
   }
 
   if (!state.autoManageEnabled) return;
-  await validateTeamDistribution(room, state, { playerJoinOrder, botManager, sleep, reason: 'rebalance' });
+  await validateTeamDistribution(room, state, { playerJoinOrder, botManager, sleep, reason: 'rebalance', config });
   rememberLockedTeams(room, state);
   state.teamChangesLocked = true;
   await sleep(REBALANCE_END_DELAY_MS);
@@ -576,4 +594,5 @@ module.exports = {
   balanceBotDistribution,
   validateTeamDistribution,
   pickExtraActiveBots,
+  teamLimits,
 };

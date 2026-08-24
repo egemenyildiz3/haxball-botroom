@@ -1,7 +1,7 @@
 const fs = require("fs");
 const initSqlJs = require("sql.js");
 
-const DB_PATH = "./db/haxball-results.sqlite";
+const DB_PATH = process.env.HAXBALL_SHARED_DB_FILE || "./db/haxball-shared.sqlite";
 
 function getEnv(name) {
   return (process.env[name] || "").trim();
@@ -24,7 +24,6 @@ function uidExists(db, uid) {
         SELECT player_uid FROM users
         UNION ALL SELECT player_uid FROM visited_users
         UNION ALL SELECT player_uid FROM blacklisted_users
-        UNION ALL SELECT player_uid FROM istekler
       )
       WHERE player_uid = ?
       LIMIT 1
@@ -47,7 +46,6 @@ function findUid(db, username) {
   const queries = [
     "SELECT player_uid FROM visited_users WHERE LOWER(TRIM(username)) = LOWER(TRIM(?)) AND player_uid IS NOT NULL AND TRIM(player_uid) != '' LIMIT 1",
     "SELECT player_uid FROM users WHERE LOWER(TRIM(username)) = LOWER(TRIM(?)) AND player_uid IS NOT NULL AND TRIM(player_uid) != '' LIMIT 1",
-    "SELECT player_uid FROM istekler WHERE LOWER(TRIM(username)) = LOWER(TRIM(?)) AND player_uid IS NOT NULL AND TRIM(player_uid) != '' LIMIT 1",
   ];
 
   for (const query of queries) {

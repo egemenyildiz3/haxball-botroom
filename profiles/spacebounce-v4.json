@@ -1,0 +1,14 @@
+{
+  "room": {
+    "name": "🛰️ TESLA 🛰️ SPACEBOUNCE v4 🛰️ AI 🪐"
+  },
+  "map": {
+    "file": "maps/SpacebounceV4.hbs"
+  },
+  "database": {
+    "file": "db/haxball-results.sqlite"
+  },
+  "logging": {
+    "dir": "/usr/src/app/logs/v4"
+  }
+}

@@ -1,13 +1,12 @@
 const { saveGameResult } = require('../db');
 const { getCleanName } = require('../util');
-const { checkAndStartGame, rememberLockedTeams, beginTeamTransitionLock, endTeamTransitionLock, validateTeamDistribution } = require('./teamBalancer');
+const { checkAndStartGame, rememberLockedTeams, beginTeamTransitionLock, endTeamTransitionLock, validateTeamDistribution, teamLimits } = require('./teamBalancer');
 const { desiredBotCount, desiredEvenActiveCount, isBotPlayer, sortRealPlayersFirst } = require('./botPolicy');
 
 const ROTATION_START_DELAY_MS = 600;
 const ROTATION_MOVE_DELAY_MS = 300;
 const ROTATION_END_DELAY_MS = 450;
 const KICKOFF_TOUCH_DELAY_MS = 4 * 1000;
-const MIN_BOTS_AFTER_GAME = 4;
 
 function shuffle(players) {
   const result = [...players];
@@ -311,7 +310,28 @@ function handleGameStart(room, state, { sendMsg, t = fallbackT, logger = null })
 }
 
 async function handleGameStop(room, state, deps) {
-  const { db, DB_FILE, persistDatabase, sendMsg, playerJoinOrder, sleep, SPEC_PROMOTION_COUNT, botManager, t = fallbackT, logger = null } = deps;
+  const {
+    db,
+    DB_FILE,
+    roomDb = db,
+    ROOM_DB_FILE = DB_FILE,
+    sharedDb = db,
+    SHARED_DB_FILE = DB_FILE,
+    persistDatabase,
+    sendMsg,
+    playerJoinOrder,
+    sleep,
+    SPEC_PROMOTION_COUNT,
+    botManager,
+    config,
+    t = fallbackT,
+    logger = null,
+  } = deps;
+  const { maxTeamSize, maxActivePlayers } = teamLimits(config);
+  const minimumBotsAfterGame = Math.max(0, Math.min(
+    config && config.bot && Number.isInteger(config.bot.max) ? config.bot.max : maxActivePlayers,
+    config && config.bot && Number.isInteger(config.bot.autostart) ? config.bot.autostart : maxTeamSize
+  ));
 
   const liveScores = typeof room.getScores === 'function' ? room.getScores() : null;
   let scores = { red: 0, blue: 0, time: 0 };
@@ -343,7 +363,19 @@ async function handleGameStop(room, state, deps) {
   }
 
   if (scores.red > 0 || scores.blue > 0) {
-    saveGameResult(db, DB_FILE, scores, winnerTeam, loserTeam, state.currentGame, endedAt, durationSeconds, persistDatabase);
+    saveGameResult(
+      roomDb,
+      ROOM_DB_FILE,
+      scores,
+      winnerTeam,
+      loserTeam,
+      state.currentGame,
+      endedAt,
+      durationSeconds,
+      persistDatabase,
+      sharedDb,
+      SHARED_DB_FILE
+    );
     const winMsg = winnerTeam === 1 ? t('match.redWon') : winnerTeam === 2 ? t('match.blueWon') : t('match.draw');
     sendMsg(room, t('match.finished', {
       result: winMsg,
@@ -365,7 +397,7 @@ async function handleGameStop(room, state, deps) {
 
   try {
     if (botManager && typeof botManager.ensureMinimum === 'function') {
-      const result = botManager.ensureMinimum(MIN_BOTS_AFTER_GAME);
+      const result = botManager.ensureMinimum(minimumBotsAfterGame);
       console.log(`[MATCH ROTATION] ${result.message}`);
     }
 
@@ -390,12 +422,12 @@ async function handleGameStop(room, state, deps) {
     const isBot = (p) => isBotPlayer(botManager, p);
     const realPlayers = activeNonAfkPlayers.filter((p) => !isBot(p));
     const botPlayers = activeNonAfkPlayers.filter(isBot);
-    const targetBotCount = desiredBotCount(realPlayers.length, botPlayers.length);
-    const desiredActiveCount = desiredEvenActiveCount(realPlayers.length, botPlayers.length, 8);
+    const targetBotCount = desiredBotCount(realPlayers.length, botPlayers.length, maxActivePlayers);
+    const desiredActiveCount = desiredEvenActiveCount(realPlayers.length, botPlayers.length, maxActivePlayers);
     const sortByPriority = sortRealPlayersFirst(botManager, playerJoinOrder);
 
-    if (realPlayers.length <= 8) {
-      console.log(`[MATCH ROTATION] Gerçek oyuncu sayısı <= 8 (${realPlayers.length}). Botlar yalnızca boşluk dolduracak şekilde yeniden dağıtılıyor...`);
+    if (realPlayers.length <= maxActivePlayers) {
+      console.log(`[MATCH ROTATION] Gerçek oyuncu sayısı <= ${maxActivePlayers} (${realPlayers.length}). Botlar yalnızca boşluk dolduracak şekilde yeniden dağıtılıyor...`);
 
       for (const p of allPlayers) {
         if (!state.autoManageEnabled) return;
@@ -413,8 +445,8 @@ async function handleGameStop(room, state, deps) {
         .slice(0, desiredActiveCount);
 
       const totalPlayers = availableSpecs.length;
-      const redCount = Math.min(4, totalPlayers / 2);
-      const blueCount = Math.min(4, totalPlayers / 2);
+      const redCount = Math.min(maxTeamSize, totalPlayers / 2);
+      const blueCount = Math.min(maxTeamSize, totalPlayers / 2);
       const assignments = mixedTeamAssignments(availableSpecs, redCount, blueCount, isBot);
 
       for (const { player: p, team: targetTeam } of assignments) {
@@ -423,7 +455,7 @@ async function handleGameStop(room, state, deps) {
         await sleep(ROTATION_MOVE_DELAY_MS);
       }
     } else {
-      console.log(`[MATCH ROTATION] Aktif oyuncu sayısı > 8 (${activeNonAfkPlayers.length}). Yenilen takım spece alınıyor ve sıradaki kişiler sahaya sürülüyor...`);
+      console.log(`[MATCH ROTATION] Aktif oyuncu sayısı > ${maxActivePlayers} (${activeNonAfkPlayers.length}). Yenilen takım spece alınıyor ve sıradaki kişiler sahaya sürülüyor...`);
 
       const losingPlayers = allPlayers.filter((p) => p.id !== 0 && p.team === loserTeam);
       for (const p of losingPlayers) {
@@ -444,7 +476,10 @@ async function handleGameStop(room, state, deps) {
           return activeBots < targetBotCount;
         });
 
-      const promotionCount = SPEC_PROMOTION_COUNT || (losingPlayers.length > 0 ? losingPlayers.length : 4);
+      const promotionCount = Math.min(
+        maxTeamSize,
+        SPEC_PROMOTION_COUNT || (losingPlayers.length > 0 ? losingPlayers.length : maxTeamSize)
+      );
       const nextToPlay = currentSpecs.slice(0, promotionCount);
 
       for (const p of nextToPlay) {
@@ -455,7 +490,7 @@ async function handleGameStop(room, state, deps) {
     }
 
     if (!state.autoManageEnabled) return;
-    await validateTeamDistribution(room, state, { playerJoinOrder, botManager, sleep, reason: 'match-rotation' });
+    await validateTeamDistribution(room, state, { playerJoinOrder, botManager, sleep, reason: 'match-rotation', config });
     rememberLockedTeams(room, state);
     state.teamChangesLocked = true;
     await sleep(ROTATION_END_DELAY_MS);

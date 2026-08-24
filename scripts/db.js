@@ -12,22 +12,8 @@ function persistDatabase(db, DB_FILE) {
   fs.writeFileSync(DB_FILE, Buffer.from(db.export()));
 }
 
-function initDatabase(db) {
+function initSharedDatabase(db) {
   db.exec(`
-    CREATE TABLE IF NOT EXISTS games (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      started_at TEXT NOT NULL,
-      ended_at TEXT NOT NULL,
-      score_red INTEGER NOT NULL,
-      score_blue INTEGER NOT NULL,
-      winner_team INTEGER,
-      loser_team INTEGER,
-      duration_seconds REAL NOT NULL,
-      red_team TEXT NOT NULL DEFAULT '[]',
-      blue_team TEXT NOT NULL DEFAULT '[]',
-      winning_streak INTEGER NOT NULL DEFAULT 0
-    );
-
     CREATE TABLE IF NOT EXISTS users (
       username TEXT PRIMARY KEY,
       player_uid TEXT NOT NULL,
@@ -36,16 +22,6 @@ function initDatabase(db) {
       role TEXT NOT NULL DEFAULT 'player',
       registered_at TEXT,
       last_visited_at TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS user_stats (
-      player_uid TEXT PRIMARY KEY,
-      username TEXT NOT NULL,
-      goals INTEGER NOT NULL DEFAULT 0,
-      assists INTEGER NOT NULL DEFAULT 0,
-      wins INTEGER NOT NULL DEFAULT 0,
-      losses INTEGER NOT NULL DEFAULT 0,
-      updated_at TEXT
     );
 
     CREATE TABLE IF NOT EXISTS visited_users (
@@ -66,6 +42,41 @@ function initDatabase(db) {
       banned_at TEXT
     );
 
+    CREATE INDEX IF NOT EXISTS idx_users_player_uid ON users(player_uid);
+    CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+    CREATE INDEX IF NOT EXISTS idx_blacklisted_users_player_uid ON blacklisted_users(player_uid);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_blacklisted_users_username_unique
+      ON blacklisted_users(LOWER(TRIM(username)))
+      WHERE username IS NOT NULL AND TRIM(username) != '';
+  `);
+}
+
+function initRoomDatabase(db) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS games (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      started_at TEXT NOT NULL,
+      ended_at TEXT NOT NULL,
+      score_red INTEGER NOT NULL,
+      score_blue INTEGER NOT NULL,
+      winner_team INTEGER,
+      loser_team INTEGER,
+      duration_seconds REAL NOT NULL,
+      red_team TEXT NOT NULL DEFAULT '[]',
+      blue_team TEXT NOT NULL DEFAULT '[]',
+      winning_streak INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS user_stats (
+      player_uid TEXT PRIMARY KEY,
+      username TEXT NOT NULL,
+      goals INTEGER NOT NULL DEFAULT 0,
+      assists INTEGER NOT NULL DEFAULT 0,
+      wins INTEGER NOT NULL DEFAULT 0,
+      losses INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT
+    );
+
     CREATE TABLE IF NOT EXISTS istekler (
       username TEXT NOT NULL,
       player_uid TEXT NOT NULL,
@@ -73,20 +84,15 @@ function initDatabase(db) {
       date TEXT NOT NULL
     );
 
-    CREATE INDEX IF NOT EXISTS idx_users_player_uid ON users(player_uid);
     CREATE INDEX IF NOT EXISTS idx_user_stats_username ON user_stats(username);
-    CREATE INDEX IF NOT EXISTS idx_blacklisted_users_player_uid ON blacklisted_users(player_uid);
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_blacklisted_users_username_unique
-      ON blacklisted_users(LOWER(TRIM(username)))
-      WHERE username IS NOT NULL AND TRIM(username) != '';
     CREATE INDEX IF NOT EXISTS idx_istekler_player_uid ON istekler(player_uid);
-  `);
-
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_users_player_uid ON users(player_uid);
-    CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
     CREATE INDEX IF NOT EXISTS idx_games_winner_streak ON games(winner_team, winning_streak);
   `);
+}
+
+function initDatabase(db) {
+  initSharedDatabase(db);
+  initRoomDatabase(db);
 }
 
 function scalar(db, query, params = []) {
@@ -112,9 +118,7 @@ function playerUidExists(db, playerUid) {
     SELECT 1 FROM (
       SELECT player_uid FROM visited_users
       UNION ALL SELECT player_uid FROM users
-      UNION ALL SELECT player_uid FROM user_stats
       UNION ALL SELECT player_uid FROM blacklisted_users
-      UNION ALL SELECT player_uid FROM istekler
     )
     WHERE player_uid = ?
     LIMIT 1
@@ -139,9 +143,7 @@ function findPlayerUid(db, username, authKey = '') {
       SELECT player_uid FROM (
         SELECT username, player_uid FROM visited_users
         UNION ALL SELECT username, player_uid FROM users
-        UNION ALL SELECT username, player_uid FROM user_stats
         UNION ALL SELECT username, player_uid FROM blacklisted_users
-        UNION ALL SELECT username, player_uid FROM istekler
       )
       WHERE LOWER(TRIM(username)) = LOWER(TRIM(?))
         AND player_uid IS NOT NULL
@@ -175,6 +177,25 @@ function getOrCreatePlayerUid(db, username, authKey = '') {
 
 function isBotUsername(username) {
   return String(username || '').trim().toLowerCase().startsWith('spacebot');
+}
+
+function ensureVisitedUid(db, DB_FILE, username, persistFn) {
+  if (!username) return '';
+
+  const now = new Date().toISOString();
+  const playerUid = getOrCreatePlayerUid(db, username);
+  const stmt = db.prepare(`
+    INSERT INTO visited_users (username, player_uid, auth_key, first_visited_at, last_visited_at)
+    VALUES (?, ?, '', ?, ?)
+    ON CONFLICT(username) DO UPDATE SET
+      player_uid = COALESCE(NULLIF(visited_users.player_uid, ''), excluded.player_uid),
+      last_visited_at = excluded.last_visited_at
+  `);
+  stmt.run([username, playerUid, now, now]);
+  stmt.free();
+
+  if (typeof persistFn === 'function') persistFn(db, DB_FILE);
+  return playerUid;
 }
 
 function isUserBlacklisted(db, username, authKey) {
@@ -235,7 +256,7 @@ function logVisitedUser(db, DB_FILE, username, authKey, persistFn) {
   }
 }
 
-function saveGameResult(db, DB_FILE, scores, winnerTeam, loserTeam, game, endedAt, durationSeconds, persistFn) {
+function saveGameResult(db, DB_FILE, scores, winnerTeam, loserTeam, game, endedAt, durationSeconds, persistFn, sharedDb = db, sharedDB_FILE = DB_FILE) {
   if (!game) return;
 
   try {
@@ -263,7 +284,9 @@ function saveGameResult(db, DB_FILE, scores, winnerTeam, loserTeam, game, endedA
       .filter((player) => player && player.cleanName)
       .map((player) => ({
         username: player.cleanName,
-        player_uid: getOrCreatePlayerUid(db, player.cleanName),
+        player_uid: isBotUsername(player.cleanName)
+          ? ''
+          : ensureVisitedUid(sharedDb, sharedDB_FILE, player.cleanName, persistFn),
         team: player.team,
         goals: player.goals || 0,
         assists: player.assists || 0,
@@ -328,14 +351,14 @@ function saveGameResult(db, DB_FILE, scores, winnerTeam, loserTeam, game, endedA
   }
 }
 
-function saveAdminRequest(db, DB_FILE, username, aciklama, persistFn) {
+function saveAdminRequest(db, DB_FILE, username, aciklama, persistFn, sharedDb = db) {
   if (!username || !aciklama) {
     return { ok: false, error: 'Eksik kullanıcı veya açıklama.' };
   }
 
   try {
     const date = new Date().toISOString();
-    const playerUid = getOrCreatePlayerUid(db, username);
+    const playerUid = getOrCreatePlayerUid(sharedDb, username);
     const stmt = db.prepare('INSERT INTO istekler (username, player_uid, aciklama, date) VALUES (?, ?, ?, ?)');
     stmt.run([username, playerUid, aciklama, date]);
     stmt.free();
@@ -352,6 +375,8 @@ module.exports = {
   loadOrCreateDatabase,
   persistDatabase,
   initDatabase,
+  initSharedDatabase,
+  initRoomDatabase,
   isUserBlacklisted,
   getOrCreatePlayerUid,
   logVisitedUser,

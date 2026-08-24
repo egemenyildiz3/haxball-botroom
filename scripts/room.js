@@ -150,6 +150,10 @@ async function createRoom(room, deps) {
     leavingIntentions,
     db,
     DB_FILE,
+    sharedDb = db,
+    SHARED_DB_FILE = DB_FILE,
+    roomDb = db,
+    ROOM_DB_FILE = DB_FILE,
     persistDatabase,
     ADMIN_PASSWORD,
     getTimestamp,
@@ -165,6 +169,10 @@ async function createRoom(room, deps) {
   const roomDeps = {
     db,
     DB_FILE,
+    sharedDb,
+    SHARED_DB_FILE,
+    roomDb,
+    ROOM_DB_FILE,
     loggedInPlayers,
     playerAssignments,
     playerJoinOrder,
@@ -243,7 +251,7 @@ async function createRoom(room, deps) {
 
     const hasProtectedBotAuth = isProtectedBotIdentity(botManager, safePlayer);
 
-    if (!hasProtectedBotAuth && isUserBlacklisted(db, cleanedName, safePlayer.auth)) {
+    if (!hasProtectedBotAuth && isUserBlacklisted(sharedDb, cleanedName, safePlayer.auth)) {
       console.log(`${getTimestamp()} [BLACKLIST] Karalistedeki oyuncu engellendi: ${cleanedName} (ID: ${safePlayer.id}, Auth: ${safePlayer.auth || 'YOK'})`);
       try {
         room.kickPlayer(safePlayer.id, "Karalisteye alındınız.", true);
@@ -263,7 +271,7 @@ async function createRoom(room, deps) {
       return;
     }
 
-    logVisitedUser(db, DB_FILE, cleanedName, safePlayer.auth, persistDatabase);
+    logVisitedUser(sharedDb, SHARED_DB_FILE, cleanedName, safePlayer.auth, persistDatabase);
     assignPlayerInternal(room, safePlayer, state, roomDeps);
     if (logger) {
       logger.event('player_join', 'Player joined', {
@@ -276,7 +284,7 @@ async function createRoom(room, deps) {
     await sleep(800);
 
     const updatedPlayer = sanitizePlayer(room, safePlayer, state);
-    handleAutoLogin(room, updatedPlayer, { db, DB_FILE, loggedInPlayers, persistDatabase, t });
+    handleAutoLogin(room, updatedPlayer, { db: sharedDb, DB_FILE: SHARED_DB_FILE, loggedInPlayers, persistDatabase, config, t });
     notifyActiveMuteOnJoin(room, state, sanitizePlayer(room, updatedPlayer, state), roomDeps);
     markOwnerAfkOnJoin(room, state, sanitizePlayer(room, updatedPlayer, state), roomDeps);
     state.pendingJoinPlayers.delete(updatedPlayer.id);

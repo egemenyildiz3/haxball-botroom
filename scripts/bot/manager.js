@@ -10,13 +10,10 @@
  *   - CPU maliyeti çok daha düşük
  */
 
-const {
-  decide,
-  configFromPhysics,
-  makePersonality,
-  describePersonality,
-  selectAttacker,
-} = require('./brain');
+const BRAIN_MODULES = {
+  balanced: require('./brain'),
+  smallPitch: require('./brainSmallPitch'),
+};
 
 const FIRST_BOT_ID = 500; // gerçek oyuncu id'leriyle çakışmasın diye yüksek başlıyoruz
 const BOT_CONN_PREFIX = 'bot-conn-';
@@ -124,6 +121,15 @@ function createBotManager(options = {}) {
   const maxBots = Number(options.maxBots || 8);
   const avatar = options.avatar || '🤖';
   const log = options.log || ((msg) => console.log(msg));
+  const brainName = BRAIN_MODULES[options.brain] ? options.brain : 'balanced';
+  const brain = BRAIN_MODULES[brainName];
+  const {
+    decide,
+    configFromPhysics,
+    makePersonality,
+    describePersonality,
+    selectAttacker,
+  } = brain;
   const brainConfig = options.brainConfig || {};
   const telemetry = !!options.telemetry;
   const telemetryEveryTicks = Math.max(1, Number(options.telemetryEveryTicks) || 120);
@@ -168,7 +174,7 @@ function createBotManager(options = {}) {
 
       const pp = (stadium && stadium.playerPhysics) || {};
       log(
-        `🤖 [BOT] Harita fiziği okundu → damping=${pp.damping} ` +
+        `🤖 [BOT] Harita fiziği okundu → brain=${brainName} damping=${pp.damping} ` +
         `kickingDamping=${pp.kickingDamping} acceleration=${pp.acceleration}`
       );
     }

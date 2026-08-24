@@ -1,7 +1,7 @@
 const fs = require("fs");
 const initSqlJs = require("sql.js");
 
-const DB_PATH = "./db/haxball-results.sqlite";
+const DB_PATH = process.env.HAXBALL_SHARED_DB_FILE || "./db/haxball-shared.sqlite";
 
 function getEnv(name) {
   return (process.env[name] || "").trim();
@@ -22,7 +22,6 @@ initSqlJs().then((SQL) => {
     "SELECT auth_key, player_uid FROM visited_users WHERE LOWER(TRIM(username)) = LOWER(TRIM(?))",
     "SELECT auth_key, player_uid FROM users WHERE LOWER(TRIM(username)) = LOWER(TRIM(?))",
     "SELECT auth_key, player_uid FROM blacklisted_users WHERE LOWER(TRIM(username)) = LOWER(TRIM(?))",
-    "SELECT '' AS auth_key, player_uid FROM istekler WHERE LOWER(TRIM(username)) = LOWER(TRIM(?))",
   ];
 
   for (const query of queries) {

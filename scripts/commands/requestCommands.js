@@ -14,7 +14,10 @@ function minutesLeft(ms) {
 function routeRequestCommand(ctx) {
   if (ctx.commandKey !== 'adminRequest') return null;
 
-  const { room, player, args, cleanedName, db, DB_FILE, persistDatabase } = ctx;
+  const { room, player, args, cleanedName, persistDatabase } = ctx;
+  const db = ctx.roomDb || ctx.db;
+  const DB_FILE = ctx.ROOM_DB_FILE || ctx.DB_FILE;
+  const sharedDb = ctx.sharedDb || ctx.db;
   const t = ctx.t || ((key, vars = {}) => {
     const messages = {
       'request.usage': '📮 Kullanım: !admin <istek / talep / şikayet>',
@@ -44,7 +47,7 @@ function routeRequestCommand(ctx) {
     return false;
   }
 
-  const result = saveAdminRequest(db, DB_FILE, cleanedName || player.name || 'Bilinmeyen', aciklama, persistDatabase);
+  const result = saveAdminRequest(db, DB_FILE, cleanedName || player.name || 'Bilinmeyen', aciklama, persistDatabase, sharedDb);
   if (!result.ok) {
     sendMsg(room, t('request.error', { error: result.error }), player.id, 0xFF5555, 'bold');
     return false;

@@ -166,8 +166,12 @@ function handleBye(ctx) {
 
 function handleHelp(ctx) {
   const { room, player } = ctx;
+  const maxTeamSize = ctx.config && ctx.config.teamManagement && ctx.config.teamManagement.maxTeamSize
+    ? ctx.config.teamManagement.maxTeamSize
+    : 4;
+  const gameMode = `${maxTeamSize}v${maxTeamSize}`;
   const t = ctx.t || ((key) => ({
-    'help.title': '📖 Spacebounce 4v4 - Komut listesi:',
+    'help.title': `📖 Spacebounce ${gameMode} - Komut listesi:`,
     'help.players': '• !oyuncular — Odadaki oyuncuları ve ID\'lerini listeler',
     'help.stats': '• !s / !stats / !istatistik — İstatistiklerinizi gösterir',
     'help.leaderboards': '• !golkralı / !asistkralı / !top — Liderlik tablolarını gösterir',
@@ -186,7 +190,7 @@ function handleHelp(ctx) {
     'help.clearbans': '• !clearbans — Tüm banları temizler (Kurucu)',
   }[key] || key));
   const helpText = [
-    t('help.title'),
+    t('help.title', { mode: gameMode }),
     t('help.players'),
     t('help.stats'),
     t('help.leaderboards'),

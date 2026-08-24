@@ -103,7 +103,8 @@ function handleAutoLogin(room, player, { db, DB_FILE, loggedInPlayers, persistDa
 }
 
 function handleStats(ctx) {
-  const { room, player, cleanedName, loggedInPlayers, db } = ctx;
+  const { room, player, cleanedName, loggedInPlayers } = ctx;
+  const db = ctx.roomDb || ctx.db;
   const t = ctx.t || fallbackT;
   const userData = loggedInPlayers.get(player.id);
   if (!userData) {
@@ -166,7 +167,8 @@ const LEADERBOARDS = {
 };
 
 function handleLeaderboard(ctx, type) {
-  const { room, player, db } = ctx;
+  const { room, player } = ctx;
+  const db = ctx.roomDb || ctx.db;
   const t = ctx.t || fallbackT;
   const leaderboard = LEADERBOARDS[type];
   if (!leaderboard) return false;
@@ -202,7 +204,11 @@ function handleLeaderboard(ctx, type) {
 }
 
 function handleRegister(ctx) {
-  const { room, player, args, cleanedName, playerToken, loggedInPlayers, db, DB_FILE, persistDatabase } = ctx;
+  const { room, player, args, cleanedName, playerToken, loggedInPlayers, persistDatabase } = ctx;
+  const db = ctx.sharedDb || ctx.db;
+  const DB_FILE = ctx.SHARED_DB_FILE || ctx.DB_FILE;
+  const roomDb = ctx.roomDb || ctx.db;
+  const ROOM_DB_FILE = ctx.ROOM_DB_FILE || ctx.DB_FILE;
   const t = ctx.t || fallbackT;
   if (loggedInPlayers.has(player.id)) {
     sendMsg(room, t('account.alreadySession'), player.id, 0x00FF7F, 'bold');
@@ -233,12 +239,13 @@ function handleRegister(ctx) {
         'INSERT INTO users (username, player_uid, password, auth_key, role, registered_at) VALUES (?, ?, ?, ?, ?, ?)',
         [cleanedName, playerUid, password, playerToken, 'player', new Date().toISOString()]
       );
-      db.run(
+      roomDb.run(
         'INSERT OR IGNORE INTO user_stats (player_uid, username, goals, assists, wins, losses, updated_at) VALUES (?, ?, 0, 0, 0, 0, ?)',
         [playerUid, cleanedName, new Date().toISOString()]
       );
 
       persistDatabase(db, DB_FILE);
+      if (roomDb !== db) persistDatabase(roomDb, ROOM_DB_FILE);
       loggedInPlayers.set(player.id, { username: cleanedName, role: 'player', player_uid: playerUid });
 
       console.log(`[BACKEND-DB] Yeni kullanıcı başarıyla kaydedildi ve dosyaya yazıldı -> "${cleanedName}"`);
@@ -252,7 +259,9 @@ function handleRegister(ctx) {
 }
 
 function handleLogin(ctx) {
-  const { room, player, args, cleanedName, playerToken, loggedInPlayers, db, DB_FILE, persistDatabase, config } = ctx;
+  const { room, player, args, cleanedName, playerToken, loggedInPlayers, persistDatabase, config } = ctx;
+  const db = ctx.sharedDb || ctx.db;
+  const DB_FILE = ctx.SHARED_DB_FILE || ctx.DB_FILE;
   const t = ctx.t || fallbackT;
   if (loggedInPlayers.has(player.id)) {
     sendMsg(room, t('account.alreadyLoggedIn'), player.id, 0x00FF7F, 'bold');

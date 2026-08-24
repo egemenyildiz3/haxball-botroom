@@ -1,6 +1,7 @@
 {
+  "profile": "spacebounce-v4",
   "room": {
-    "name": "🛰️ TESLA 🛰️ SPACEBOUNCE 4v4 🛰️ AI 🪐",
+    "name": "🛰️ TESLA 🛰️ SPACEBOUNCE 🛰️ AI 🪐",
     "maxPlayers": 18,
     "scoreLimit": 3,
     "timeLimit": 4,
@@ -20,6 +21,7 @@
   },
   "bot": {
     "baseName": "SpaceBot",
+    "brain": "balanced",
     "names": ["Salah", "Škriniar", "Osimhen", "Trossard", "Messi", "Ronaldo", "Hakimi", "Kimmich"],
     "max": 8,
     "avatar": "🤖",
@@ -52,6 +54,8 @@
     "restoreCheckMs": 30000
   },
   "teamManagement": {
+    "maxTeamSize": 4,
+    "maxActivePlayers": 8,
     "promotionNotice": {
       "enabled": true,
       "color": "00BFFF"

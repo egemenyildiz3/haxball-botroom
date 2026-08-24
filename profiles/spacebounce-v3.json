@@ -1,0 +1,24 @@
+{
+  "room": {
+    "name": "🛰️ TESLA 🛰️ SPACEBOUNCE v3 🛰️ AI 🪐",
+    "maxPlayers": 12,
+    "promotionCount": 3
+  },
+  "map": {
+    "file": "maps/SpacebounceV3.hbs"
+  },
+  "database": {
+    "file": "db/haxball-v3-results.sqlite"
+  },
+  "bot": {
+    "brain": "smallPitch",
+    "autostart": 4
+  },
+  "teamManagement": {
+    "maxTeamSize": 3,
+    "maxActivePlayers": 6
+  },
+  "logging": {
+    "dir": "/usr/src/app/logs/v3"
+  }
+}

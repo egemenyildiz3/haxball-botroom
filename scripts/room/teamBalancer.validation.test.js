@@ -62,13 +62,14 @@ function botCounts(players, botIds) {
   };
 }
 
-async function validate(players, botIds = new Set()) {
+async function validate(players, botIds = new Set(), extraDeps = {}) {
   const room = makeRoom(players);
   await validateTeamDistribution(room, makeState(), {
     botManager: makeBotManager(botIds),
     playerJoinOrder: new Map(players.map((p, index) => [p.id, index + 1])),
     sleep: async () => {},
     reason: 'test',
+    ...extraDeps,
   });
   return room;
 }
@@ -278,6 +279,53 @@ async function testPendingJoinDoesNotReceivePromotionNotice() {
   assert.equal(room.players.find((p) => p.id === 3).team, 0);
 }
 
+async function testV3ProfileKeepsThreeVsThree() {
+  const botIds = new Set([501, 502, 503, 504]);
+  const players = [
+    makePlayer(1, 1),
+    makePlayer(501, 1, true),
+    makePlayer(502, 1, true),
+    makePlayer(2, 2),
+    makePlayer(503, 2, true),
+    makePlayer(504, 2, true),
+    makePlayer(505, 0, true),
+  ];
+
+  const room = await validate(players, botIds, {
+    config: {
+      teamManagement: {
+        maxTeamSize: 3,
+        maxActivePlayers: 6,
+      },
+    },
+  });
+
+  assert.deepEqual(teamCounts(room.players), { red: 3, blue: 3, spec: 1 });
+}
+
+async function testV3ProfileBenchesFourthTeamPlayer() {
+  const players = [
+    makePlayer(1, 1),
+    makePlayer(2, 1),
+    makePlayer(3, 1),
+    makePlayer(4, 1),
+    makePlayer(5, 2),
+    makePlayer(6, 2),
+    makePlayer(7, 2),
+  ];
+
+  const room = await validate(players, new Set(), {
+    config: {
+      teamManagement: {
+        maxTeamSize: 3,
+        maxActivePlayers: 6,
+      },
+    },
+  });
+
+  assert.deepEqual(teamCounts(room.players), { red: 3, blue: 3, spec: 1 });
+}
+
 function testDoesNotStartGameDuringMatchRotation() {
   const state = makeState();
   state.matchRotationPending = true;
@@ -331,6 +379,8 @@ async function run() {
   await testPromotionNoticeBeforeHumanReplacesBot();
   await testManuallyBenchedBotCanStillFillMissingTeamSlot();
   await testPendingJoinDoesNotReceivePromotionNotice();
+  await testV3ProfileKeepsThreeVsThree();
+  await testV3ProfileBenchesFourthTeamPlayer();
   testDoesNotStartGameDuringMatchRotation();
   testExtraBotComesFromHeavyTeam();
   console.log('teamBalancer validation tests passed');
