@@ -8,13 +8,14 @@ DB_BACKUP_DIR := $(FILE_STORAGE_DIR)/backups
 LOG_DIR := logs/v4
 V3_LOG_DIR := logs/v3
 TOKEN_FILE := $(FILE_STORAGE_DIR)/spacebounce-v4-token.txt
+V3_TOKEN_FILE := $(FILE_STORAGE_DIR)/spacebounce-v3-token.txt
 CRON_LOG := $(DB_BACKUP_DIR)/cron.log
 BACKUP ?=
 LIMIT ?= 50
 EVENT ?=
 LEVEL ?=
 
-.PHONY: help up up-v3 down down-v3 ps logs logs-f logs-v3 logs-v3-f logs-backend logs-chat logs-json logs-json-f logs-json-v3 logs-json-v3-f logs-json-errors logs-json-player logs-json-event attach attach-v3 token-file-init cron-install-db-backup cron-show db-all db-users db-user-stats db-games db-visited_users db-istekler db-blacklist db-users-today db-visited_users-today db-ljungberg db-make-superadmin db-user-with-auth db-blacklist-player db-unblacklist-player db-backup db-backups db-restore
+.PHONY: help up up-v3 down down-v3 restart restart-v3 rebuild rebuild-v3 ps logs logs-f logs-v3 logs-v3-f logs-backend logs-backend-v3 logs-chat logs-chat-v3 logs-json logs-json-f logs-json-v3 logs-json-v3-f logs-json-errors logs-json-errors-v3 logs-json-player logs-json-player-v3 logs-json-event logs-json-event-v3 attach attach-v3 token-file-init token-file-init-v3 cron-install-db-backup cron-show db-all db-all-v3 db-users db-user-stats db-user-stats-v3 db-games db-games-v3 db-visited_users db-istekler db-istekler-v3 db-blacklist db-users-today db-visited_users-today db-ljungberg db-make-superadmin db-user-with-auth db-blacklist-player db-unblacklist-player db-backup db-backup-v3 db-backups db-restore db-restore-v3
 
 help:
 	@echo "======================================================================"
@@ -25,7 +26,9 @@ help:
 	@echo "  make down          : Konteynerleri durdurur ve kaldırır"
 	@echo "  make down-v3       : Sadece V3 odasını durdurur ve kaldırır"
 	@echo "  make restart       : Konteyneri yeniden başlatır"
+	@echo "  make restart-v3    : V3 konteynerini yeniden başlatır"
 	@echo "  make rebuild       : Image'ı yeniden derleyip konteyneri başlatır"
+	@echo "  make rebuild-v3    : Image'ı yeniden derleyip V3 konteynerini başlatır"
 	@echo "  make ps            : Çalışan konteyner durumunu gösterir"
 	@echo "----------------------------------------------------------------------"
 	@echo "  make logs          : Canlı konteyner loglarını izler"
@@ -33,27 +36,37 @@ help:
 	@echo "  make logs-v3       : V3 konteyner loglarını izler"
 	@echo "  make logs-v3-f     : V3 konteyner loglarını takip eder"
 	@echo "  make logs-backend  : Sadece [BACKEND-DB] veritabanı loglarını filtreler"
+	@echo "  make logs-backend-v3 : V3 [BACKEND-DB] veritabanı loglarını filtreler"
 	@echo "  make logs-chat     : Sadece [CHAT] loglarını filtreler"
+	@echo "  make logs-chat-v3  : V3 [CHAT] loglarını filtreler"
 	@echo "  make logs-json     : JSONL operasyon loglarını tablo olarak gösterir"
 	@echo "  make logs-json-f   : Bugünün JSONL log dosyasını canlı takip eder"
 	@echo "  make logs-json-v3  : V3 JSONL operasyon loglarını tablo olarak gösterir"
 	@echo "  make logs-json-v3-f : V3 bugünün JSONL log dosyasını canlı takip eder"
 	@echo "  make logs-json-errors : JSONL error loglarını gösterir"
+	@echo "  make logs-json-errors-v3 : V3 JSONL error loglarını gösterir"
 	@echo "  make logs-json-player USERNAME='oyuncu' : Oyuncuya göre JSONL log arar"
+	@echo "  make logs-json-player-v3 USERNAME='oyuncu' : V3 oyuncuya göre JSONL log arar"
 	@echo "  make logs-json-event EVENT='goal' : Event tipine göre JSONL log arar"
+	@echo "  make logs-json-event-v3 EVENT='goal' : V3 event tipine göre JSONL log arar"
 	@echo "  make attach        : Konteyner terminaline bağlanır"
 	@echo "  make attach-v3     : V3 konteyner terminaline bağlanır"
 	@echo "----------------------------------------------------------------------"
 	@echo "  make token-file-init : .env içindeki tokenı file-storage token dosyasına yazar"
+	@echo "  make token-file-init-v3 : .env içindeki V3 tokenı file-storage token dosyasına yazar"
 	@echo "  make cron-install-db-backup : Her gün 12:00 DB backup cron satırını kurar/günceller"
 	@echo "  make cron-show     : Mevcut crontab kayıtlarını gösterir"
 	@echo "----------------------------------------------------------------------"
 	@echo "  make db-all        : V4 oda SQLite tablolarını listeler"
+	@echo "  make db-all-v3     : V3 oda SQLite tablolarını listeler"
 	@echo "  make db-users      : shared 'users' tablosundaki tüm kayıtları listeler"
 	@echo "  make db-user-stats : 'user_stats' tablosundaki tüm istatistikleri listeler"
+	@echo "  make db-user-stats-v3 : V3 'user_stats' tablosundaki tüm istatistikleri listeler"
 	@echo "  make db-games      : 'games' tablosundaki tüm kayıtları listeler"
+	@echo "  make db-games-v3   : V3 'games' tablosundaki tüm kayıtları listeler"
 	@echo "  make db-visited_users : shared 'visited_users' tablosundaki tüm kayıtları listeler"
 	@echo "  make db-istekler   : 'istekler' tablosundaki tüm kayıtları listeler"
+	@echo "  make db-istekler-v3 : V3 'istekler' tablosundaki tüm kayıtları listeler"
 	@echo "  make db-blacklist  : shared 'blacklisted_users' tablosundaki kayıtları listeler"
 	@echo "  make db-users-today : Bugün görülen users kayıtlarını listeler"
 	@echo "  make db-visited_users-today : Bugün gelen visited_users kayıtlarını listeler"
@@ -64,8 +77,10 @@ help:
 	@echo "  make db-unblacklist-player USERNAME='oyuncu' : Kullanıcıyı kara listeden çıkarır"
 	@echo "----------------------------------------------------------------------"
 	@echo "  make db-backup     : SQLite veritabanının timestamp'li yedeğini alır"
+	@echo "  make db-backup-v3  : Sadece V3 oda SQLite veritabanının yedeğini alır"
 	@echo "  make db-backups    : Alınmış veritabanı yedeklerini listeler"
 	@echo "  make db-restore BACKUP='$(DB_BACKUP_DIR)/...' : Seçilen yedeği geri yükler"
+	@echo "  make db-restore-v3 BACKUP='$(DB_BACKUP_DIR)/...' : Seçilen V3 yedeğini geri yükler"
 	@echo "======================================================================"
 
 # --- Docker Compose Komutları ---
@@ -82,6 +97,18 @@ down:
 down-v3:
 	docker compose --profile v3 stop haxball-v3
 	docker compose --profile v3 rm -f haxball-v3
+
+restart:
+	docker compose restart haxball
+
+restart-v3:
+	docker compose --profile v3 restart haxball-v3
+
+rebuild:
+	docker compose up -d --build haxball
+
+rebuild-v3:
+	docker compose --profile v3 up -d --build haxball-v3
 
 ps:
 	docker compose ps
@@ -103,8 +130,14 @@ logs-v3-f:
 logs-backend:
 	docker logs -f $(CONTAINER) | grep --line-buffered "\[BACKEND-DB\]"
 
+logs-backend-v3:
+	docker logs -f $(V3_CONTAINER) | grep --line-buffered "\[BACKEND-DB\]"
+
 logs-chat:
 	docker logs -f $(CONTAINER) | grep --line-buffered "\[CHAT\]"
+
+logs-chat-v3:
+	docker logs -f $(V3_CONTAINER) | grep --line-buffered "\[CHAT\]"
 
 logs-json:
 	@LOG_DIR="$(LOG_DIR)" LIMIT="$(LIMIT)" node scripts/tools/logQuery.js
@@ -125,13 +158,24 @@ logs-json-v3-f:
 logs-json-errors:
 	@LOG_DIR="$(LOG_DIR)" LIMIT="$(LIMIT)" LEVEL="error" node scripts/tools/logQuery.js
 
+logs-json-errors-v3:
+	@LOG_DIR="$(V3_LOG_DIR)" LIMIT="$(LIMIT)" LEVEL="error" node scripts/tools/logQuery.js
+
 logs-json-player:
 	@if [ -z "$(USERNAME)" ]; then echo "⚠️ HATA: USERNAME belirtilmedi! Örnek: make logs-json-player USERNAME='Longman'"; exit 1; fi
 	@LOG_DIR="$(LOG_DIR)" LIMIT="$(LIMIT)" USERNAME="$(USERNAME)" node scripts/tools/logQuery.js
 
+logs-json-player-v3:
+	@if [ -z "$(USERNAME)" ]; then echo "⚠️ HATA: USERNAME belirtilmedi! Örnek: make logs-json-player-v3 USERNAME='Longman'"; exit 1; fi
+	@LOG_DIR="$(V3_LOG_DIR)" LIMIT="$(LIMIT)" USERNAME="$(USERNAME)" node scripts/tools/logQuery.js
+
 logs-json-event:
 	@if [ -z "$(EVENT)" ]; then echo "⚠️ HATA: EVENT belirtilmedi! Örnek: make logs-json-event EVENT='goal'"; exit 1; fi
 	@LOG_DIR="$(LOG_DIR)" LIMIT="$(LIMIT)" EVENT="$(EVENT)" node scripts/tools/logQuery.js
+
+logs-json-event-v3:
+	@if [ -z "$(EVENT)" ]; then echo "⚠️ HATA: EVENT belirtilmedi! Örnek: make logs-json-event-v3 EVENT='goal'"; exit 1; fi
+	@LOG_DIR="$(V3_LOG_DIR)" LIMIT="$(LIMIT)" EVENT="$(EVENT)" node scripts/tools/logQuery.js
 
 attach:
 	docker attach haxball-headless
@@ -149,6 +193,15 @@ token-file-init:
 	printf "%s\n" "$$token" > "$(TOKEN_FILE)"; \
 	chmod 600 "$(TOKEN_FILE)"; \
 	echo "✅ Token dosyası hazırlandı: $(TOKEN_FILE)"
+
+token-file-init-v3:
+	@set -e; \
+	mkdir -p "$(FILE_STORAGE_DIR)"; \
+	token=$$(awk -F= '/^HAXBALL_TOKEN_V3=/{print substr($$0, index($$0, "=") + 1)}' .env 2>/dev/null | tail -1 | sed 's/^"//; s/"$$//; s/^'\''//; s/'\''$$//'); \
+	if [ -z "$$token" ]; then echo "⚠️ HATA: .env içinde HAXBALL_TOKEN_V3 bulunamadı."; exit 1; fi; \
+	printf "%s\n" "$$token" > "$(V3_TOKEN_FILE)"; \
+	chmod 600 "$(V3_TOKEN_FILE)"; \
+	echo "✅ V3 token dosyası hazırlandı: $(V3_TOKEN_FILE)"
 
 cron-install-db-backup:
 	@set -e; \
@@ -171,6 +224,19 @@ db-all:
 		const initSqlJs = require('sql.js'); \
 		initSqlJs().then(SQL => { \
 			const db = new SQL.Database(fs.readFileSync('./$(DB_FILE)')); \
+			const stmt = db.prepare(\"SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'\"); \
+			const rows = []; \
+			while (stmt.step()) rows.push(stmt.getAsObject()); \
+			stmt.free(); \
+			console.table(rows); \
+		});"
+
+db-all-v3:
+	docker exec -it $(V3_CONTAINER) node -e "\
+		const fs = require('fs'); \
+		const initSqlJs = require('sql.js'); \
+		initSqlJs().then(SQL => { \
+			const db = new SQL.Database(fs.readFileSync('./$(V3_DB_FILE)')); \
 			const stmt = db.prepare(\"SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'\"); \
 			const rows = []; \
 			while (stmt.step()) rows.push(stmt.getAsObject()); \
@@ -204,12 +270,38 @@ db-user-stats:
 			console.table(rows); \
 		});"
 
+db-user-stats-v3:
+	docker exec -it $(V3_CONTAINER) node -e "\
+		const fs = require('fs'); \
+		const initSqlJs = require('sql.js'); \
+		initSqlJs().then(SQL => { \
+			const db = new SQL.Database(fs.readFileSync('./$(V3_DB_FILE)')); \
+			const stmt = db.prepare('SELECT * FROM user_stats ORDER BY wins DESC, goals DESC, username COLLATE NOCASE ASC'); \
+			const rows = []; \
+			while (stmt.step()) rows.push(stmt.getAsObject()); \
+			stmt.free(); \
+			console.table(rows); \
+		});"
+
 db-games:
 	docker exec -it $(CONTAINER) node -e "\
 		const fs = require('fs'); \
 		const initSqlJs = require('sql.js'); \
 		initSqlJs().then(SQL => { \
 			const db = new SQL.Database(fs.readFileSync('./$(DB_FILE)')); \
+			const stmt = db.prepare('SELECT * FROM games'); \
+			const rows = []; \
+			while (stmt.step()) rows.push(stmt.getAsObject()); \
+			stmt.free(); \
+			console.table(rows); \
+		});"
+
+db-games-v3:
+	docker exec -it $(V3_CONTAINER) node -e "\
+		const fs = require('fs'); \
+		const initSqlJs = require('sql.js'); \
+		initSqlJs().then(SQL => { \
+			const db = new SQL.Database(fs.readFileSync('./$(V3_DB_FILE)')); \
 			const stmt = db.prepare('SELECT * FROM games'); \
 			const rows = []; \
 			while (stmt.step()) rows.push(stmt.getAsObject()); \
@@ -236,6 +328,19 @@ db-istekler:
 		const initSqlJs = require('sql.js'); \
 		initSqlJs().then(SQL => { \
 			const db = new SQL.Database(fs.readFileSync('./$(DB_FILE)')); \
+			const stmt = db.prepare('SELECT rowid, username, player_uid, aciklama, date FROM istekler'); \
+			const rows = []; \
+			while (stmt.step()) rows.push(stmt.getAsObject()); \
+			stmt.free(); \
+			console.table(rows); \
+		});"
+
+db-istekler-v3:
+	docker exec -it $(V3_CONTAINER) node -e "\
+		const fs = require('fs'); \
+		const initSqlJs = require('sql.js'); \
+		initSqlJs().then(SQL => { \
+			const db = new SQL.Database(fs.readFileSync('./$(V3_DB_FILE)')); \
 			const stmt = db.prepare('SELECT rowid, username, player_uid, aciklama, date FROM istekler'); \
 			const rows = []; \
 			while (stmt.step()) rows.push(stmt.getAsObject()); \
@@ -361,6 +466,20 @@ db-backup:
 		echo "✅ DB backup alındı: $$backup"; \
 	done
 
+db-backup-v3:
+	@set -e; \
+	mkdir -p "$(DB_BACKUP_DIR)"; \
+	source="$(V3_DB_FILE)"; \
+	if [ ! -f "$$source" ]; then echo "⚠️ HATA: V3 DB bulunamadı: $$source"; exit 1; fi; \
+	ts=$$(date +%Y%m%d-%H%M%S); \
+	name=$$(basename "$$source" .sqlite); \
+	backup="$(DB_BACKUP_DIR)/$$name-$$ts.sqlite"; \
+	tmp="$$backup.tmp"; \
+	cp -p "$$source" "$$tmp"; \
+	node -e 'const fs = require("fs"); const initSqlJs = require("sql.js"); const file = process.argv[1]; initSqlJs().then(SQL => { const db = new SQL.Database(fs.readFileSync(file)); db.exec("SELECT name FROM sqlite_master LIMIT 1"); db.close(); }).catch((err) => { console.error("⚠️ Backup doğrulaması başarısız:", err.message); process.exit(1); });' "$$tmp"; \
+	mv "$$tmp" "$$backup"; \
+	echo "✅ V3 DB backup alındı: $$backup"
+
 db-backups:
 	@mkdir -p "$(DB_BACKUP_DIR)"
 	@find "$(DB_BACKUP_DIR)" -maxdepth 1 -type f -name 'haxball-*.sqlite' -printf '%TY-%Tm-%Td %TH:%TM  %s bytes  %p\n' | sort
@@ -373,3 +492,12 @@ db-restore:
 	@mkdir -p "$(dir $(DB_FILE))"
 	@cp -p "$(BACKUP)" "$(DB_FILE)"
 	@echo "✅ DB restore edildi: $(BACKUP) -> $(DB_FILE)"
+
+db-restore-v3:
+	@if [ -z "$(BACKUP)" ]; then echo "⚠️ HATA: BACKUP belirtilmedi! Örnek: make db-restore-v3 BACKUP='$(DB_BACKUP_DIR)/haxball-v3-results-YYYYMMDD-HHMMSS.sqlite'"; exit 1; fi
+	@if [ ! -f "$(BACKUP)" ]; then echo "⚠️ HATA: Backup bulunamadı: $(BACKUP)"; exit 1; fi
+	@if docker inspect -f '{{.State.Running}}' $(V3_CONTAINER) 2>/dev/null | grep -q true; then echo "⚠️ HATA: V3 container çalışırken restore yapılmadı. Önce V3 odasını bilinçli şekilde durdur."; exit 1; fi
+	@node -e 'const fs = require("fs"); const initSqlJs = require("sql.js"); const file = process.argv[1]; initSqlJs().then(SQL => { const db = new SQL.Database(fs.readFileSync(file)); db.exec("SELECT name FROM sqlite_master LIMIT 1"); db.close(); }).catch((err) => { console.error("⚠️ Backup doğrulaması başarısız:", err.message); process.exit(1); });' "$(BACKUP)"
+	@mkdir -p "$(dir $(V3_DB_FILE))"
+	@cp -p "$(BACKUP)" "$(V3_DB_FILE)"
+	@echo "✅ V3 DB restore edildi: $(BACKUP) -> $(V3_DB_FILE)"
