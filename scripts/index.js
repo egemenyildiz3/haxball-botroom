@@ -8,10 +8,13 @@ const { createRoom } = require('./room');
 const { createBotManager } = require('./bot/manager');
 const config = require('./config');
 const { createTranslator } = require('./i18n');
+const { createLogger } = require('./logger');
 
 const MAP_FILE = path.join(__dirname, '..', 'maps', 'Spacebounce.hbs');
 const DB_FILE = path.join(__dirname, '..', 'db', 'haxball-results.sqlite');
 const DEFAULT_TOKEN_FILE = '/run/haxball/spacebounce-botroom-token.txt';
+const logger = createLogger(config.logging);
+logger.installConsole();
 
 function readToken() {
   const envToken = String(process.env.HAXBALL_TOKEN || '').trim();
@@ -74,6 +77,7 @@ async function startRoom() {
     telemetry: config.bot.telemetry,
     telemetryEveryTicks: config.bot.telemetryEveryTicks,
     t,
+    log: (message, meta) => logger.info('bot', message, meta),
   });
 
   const cleanupBots = () => botManager.stopAll();
@@ -123,6 +127,7 @@ async function startRoom() {
     botManager,
     config,
     t,
+    logger,
   });
 
   if (config.bot.autostart > 0) {

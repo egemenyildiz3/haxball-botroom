@@ -55,6 +55,7 @@ const DEFAULTS = {
   settleRadius: 8,
   settleWakeRadius: 18,
   settleMaxSpeed: 0.35,
+  strikeSettleRadius: 2,
 
   // Fren histerezisi: basma eşiği yüksek, bırakma eşiği düşük. Tek eşik
   // kullanılınca fren her birkaç tick'te açılıp kapanıyor (tuş spam'i) ve
@@ -885,6 +886,11 @@ function navigate(self, target, cfg, memory = {}, opts = {}) {
   // hedef settleWakeRadius dışına çıkana kadar küçük oynamaları yok sayar.
   if (opts.strike) {
     memory.positionSettled = false;
+    if (dist <= cfg.strikeSettleRadius && speed <= cfg.settleMaxSpeed) {
+      memory.braking = false;
+      memory.brakeHold = 0;
+      return { dirX: 0, dirY: 0, brake: false };
+    }
   } else {
     if (memory.positionSettled && dist < cfg.settleWakeRadius) {
       memory.braking = false;

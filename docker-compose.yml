@@ -16,6 +16,7 @@ services:
     volumes:
       - ./config:/usr/src/app/config:ro
       - ./db:/usr/src/app/db
+      - /home/egemen/file-storage/haxball/logs:/usr/src/app/logs
       - ./maps:/usr/src/app/maps
       - /home/egemen/file-storage/haxball:/run/haxball:ro
     command: npm start

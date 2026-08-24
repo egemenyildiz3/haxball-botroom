@@ -51,6 +51,12 @@
   "autoManagement": {
     "restoreCheckMs": 30000
   },
+  "logging": {
+    "enabled": true,
+    "jsonl": true,
+    "dir": "/usr/src/app/logs",
+    "retentionDays": 14
+  },
   "teamColors": {
     "red": {
       "angle": 60,

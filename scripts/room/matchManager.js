@@ -178,7 +178,7 @@ function scoreVars(t, scores) {
   };
 }
 
-function handleTeamGoal(room, state, team, { getTimestamp, sendMsg, t = fallbackT }) {
+function handleTeamGoal(room, state, team, { getTimestamp, sendMsg, t = fallbackT, logger = null }) {
   state.ballRecovery = null;
   const liveScores = typeof room.getScores === 'function' ? room.getScores() : null;
 
@@ -253,6 +253,20 @@ function handleTeamGoal(room, state, team, { getTimestamp, sendMsg, t = fallback
   }
 
   console.log(`[GOAL] ${announcement}`);
+  if (logger) {
+    logger.event('goal', 'Goal scored', {
+      team,
+      redScore: scores.red,
+      blueScore: scores.blue,
+      gameTime: timeStr,
+      scorer: goalScorer ? goalScorer.name : '',
+      scorerId: goalScorer ? goalScorer.id : null,
+      assister: assistPlayer ? assistPlayer.name : '',
+      assisterId: assistPlayer ? assistPlayer.id : null,
+      ownGoalPlayer: ownGoalPlayer ? ownGoalPlayer.name : '',
+      ownGoalPlayerId: ownGoalPlayer ? ownGoalPlayer.id : null,
+    });
+  }
   sendMsg(room, announcement, null, color, 'bold');
 
   state.lastTouchPlayer = null;
@@ -261,7 +275,7 @@ function handleTeamGoal(room, state, team, { getTimestamp, sendMsg, t = fallback
   startKickoffWatch(state, kickoffTeamAfterGoal(team));
 }
 
-function handleGameStart(room, state, { sendMsg, t = fallbackT }) {
+function handleGameStart(room, state, { sendMsg, t = fallbackT, logger = null }) {
   if (typeof room.getPlayerList !== 'function') return;
 
   endTeamTransitionLock(room, state);
@@ -286,11 +300,18 @@ function handleGameStart(room, state, { sendMsg, t = fallbackT }) {
   startKickoffWatch(state);
 
   console.log(`[GAME START] Maç başladı! Aktif oyuncu sayısı: ${state.currentGame.players.length}`);
+  if (logger) {
+    logger.event('match_start', 'Match started', {
+      activePlayers: state.currentGame.players.length,
+      redPlayers: state.currentGame.players.filter((player) => player.team === 1).length,
+      bluePlayers: state.currentGame.players.filter((player) => player.team === 2).length,
+    });
+  }
   sendMsg(room, t('match.started'), null, 0x00FF7F, 'bold');
 }
 
 async function handleGameStop(room, state, deps) {
-  const { db, DB_FILE, persistDatabase, sendMsg, playerJoinOrder, sleep, SPEC_PROMOTION_COUNT, botManager, t = fallbackT } = deps;
+  const { db, DB_FILE, persistDatabase, sendMsg, playerJoinOrder, sleep, SPEC_PROMOTION_COUNT, botManager, t = fallbackT, logger = null } = deps;
 
   const liveScores = typeof room.getScores === 'function' ? room.getScores() : null;
   let scores = { red: 0, blue: 0, time: 0 };
@@ -311,6 +332,15 @@ async function handleGameStop(room, state, deps) {
   const durationSeconds = state.currentGame ? (new Date(endedAt) - new Date(state.currentGame.started_at)) / 1000 : 0;
 
   console.log(`[GAME STOP] Maç bitti! Skor - Kırmızı: ${scores.red} | Mavi: ${scores.blue} (Süre: ${formatDuration(durationSeconds)})`);
+  if (logger) {
+    logger.event('match_stop', 'Match stopped', {
+      redScore: scores.red,
+      blueScore: scores.blue,
+      winnerTeam,
+      loserTeam,
+      durationSeconds: Math.round(durationSeconds),
+    });
+  }
 
   if (scores.red > 0 || scores.blue > 0) {
     saveGameResult(db, DB_FILE, scores, winnerTeam, loserTeam, state.currentGame, endedAt, durationSeconds, persistDatabase);

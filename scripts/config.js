@@ -62,6 +62,13 @@ const DEFAULT_CONFIG = {
     restoreCheckMs: 30 * 1000,
   },
 
+  logging: {
+    enabled: true,
+    jsonl: true,
+    dir: path.join(__dirname, '..', 'logs'),
+    retentionDays: 14,
+  },
+
   teamColors: {
     red: {
       team: 1,
@@ -237,6 +244,13 @@ const config = {
 
   autoManagement: {
     restoreCheckMs: numberFromEnv('AUTO_RESTORE_CHECK_MS', fileConfig.autoManagement.restoreCheckMs, { min: 1000 }),
+  },
+
+  logging: {
+    enabled: boolFromEnv('LOGGING_ENABLED', fileConfig.logging.enabled),
+    jsonl: boolFromEnv('LOGGING_JSONL', fileConfig.logging.jsonl),
+    dir: process.env.LOGGING_DIR || fileConfig.logging.dir,
+    retentionDays: numberFromEnv('LOGGING_RETENTION_DAYS', fileConfig.logging.retentionDays, { min: 0, max: 365 }),
   },
 
   teamColors: {

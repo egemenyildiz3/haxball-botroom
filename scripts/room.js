@@ -142,6 +142,7 @@ async function createRoom(room, deps) {
     botManager = null,
     config,
     t,
+    logger,
   } = deps;
 
   const state = createRoomState({ chat: config.chat, t });
@@ -162,6 +163,7 @@ async function createRoom(room, deps) {
     botManager,
     config,
     t,
+    logger,
   };
 
   const autoManager = createAutoManager(room, state, roomDeps);
@@ -178,6 +180,7 @@ async function createRoom(room, deps) {
     console.log('\n========================================');
     console.log('🔗 Oda Bağlantısı:', link);
     console.log('========================================\n');
+    if (logger) logger.event('room_link', 'Room link created', { link });
   };
 
   room.onGameTick = function () {
@@ -213,6 +216,7 @@ async function createRoom(room, deps) {
 
     if (isOwnBot) {
       console.log(`${getTimestamp()} [BOT] Bot oyuncu olarak tanındı: ${cleanedName} (ID: ${safePlayer.id})`);
+      if (logger) logger.event('bot_join', 'Bot joined', { playerId: safePlayer.id, username: cleanedName });
       assignPlayerInternal(room, safePlayer, state, roomDeps);
       await sleep(800);
       await handlePlayerJoin(room, sanitizePlayer(room, safePlayer, state), state, roomDeps);
@@ -243,6 +247,13 @@ async function createRoom(room, deps) {
 
     logVisitedUser(db, DB_FILE, cleanedName, safePlayer.auth, persistDatabase);
     assignPlayerInternal(room, safePlayer, state, roomDeps);
+    if (logger) {
+      logger.event('player_join', 'Player joined', {
+        playerId: safePlayer.id,
+        username: cleanedName,
+        authPresent: !!safePlayer.auth,
+      });
+    }
 
     await sleep(800);
 
@@ -259,6 +270,14 @@ async function createRoom(room, deps) {
 
   room.onPlayerChat = function (player, msg) {
     const safePlayer = sanitizePlayer(room, player, state);
+    if (logger) {
+      logger.event('chat_received', 'Chat received', {
+        playerId: safePlayer.id,
+        username: getCleanName(safePlayer),
+        isCommand: String(msg || '').trim().startsWith('!') || String(msg || '').trim().startsWith('/'),
+        length: String(msg || '').length,
+      });
+    }
     return handlePlayerChat(room, safePlayer, msg, {
       ...roomDeps,
       afkPlayers: state.afkPlayers,
@@ -277,7 +296,7 @@ async function createRoom(room, deps) {
   };
 
   room.onTeamGoal = function (team) {
-    handleTeamGoal(room, state, team, { getTimestamp, sendMsg, t });
+    handleTeamGoal(room, state, team, { getTimestamp, sendMsg, t, logger });
   };
 
   room.onGameStart = function () {
@@ -286,7 +305,7 @@ async function createRoom(room, deps) {
         markPlayerInput(state, player, botManager);
       }
     }
-    handleGameStart(room, state, { sendMsg, playerAssignments, t });
+    handleGameStart(room, state, { sendMsg, playerAssignments, t, logger });
   };
 
   room.onGameStop = function () {
@@ -337,18 +356,21 @@ async function handlePlayerJoin(room, player, state, deps) {
 }
 
 function handlePlayerLeave(room, player, state, deps) {
-  const { playerAssignments, playerJoinOrder, loggedInPlayers, leavingIntentions, getTimestamp } = deps;
+  const { playerAssignments, playerJoinOrder, loggedInPlayers, leavingIntentions, getTimestamp, logger } = deps;
   const cleanedName = getCleanName(player);
   const intention = leavingIntentions.get(player.id);
 
   if (intention === 'ban') {
     console.log(`[BAN] Oyuncu banlandı: id=${player.id}, isim=${cleanedName}`);
+    if (logger) logger.event('player_ban', 'Player banned', { playerId: player.id, username: cleanedName });
     leavingIntentions.delete(player.id);
   } else if (intention === 'kick') {
     console.log(`[KICK] Oyuncu atıldı: id=${player.id}, isim=${cleanedName}`);
+    if (logger) logger.event('player_kick', 'Player kicked', { playerId: player.id, username: cleanedName });
     leavingIntentions.delete(player.id);
   } else {
     console.log(`${getTimestamp()} [LEAVE] Oyuncu kendi ayrıldı: id=${player.id}, isim=${cleanedName}`);
+    if (logger) logger.event('player_leave', 'Player left', { playerId: player.id, username: cleanedName });
   }
 
   if (player && typeof player.id !== 'undefined') {

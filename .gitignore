@@ -1,4 +1,5 @@
 node_modules/
+logs/
 *.sqlite
 npm-debug.log*
 package-lock.json

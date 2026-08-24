@@ -149,6 +149,13 @@ function handlePlayerChat(room, player, msg, deps) {
           sendMsg(room, filterResult.message, player.id, filterResult.color || 0xFFCC00, 'bold');
         }
         console.log(`[CHAT-FILTER] ${displayName} engellendi: ${filterResult.reason}`);
+        if (deps.logger) {
+          deps.logger.event('chat_blocked', 'Chat blocked', {
+            playerId: player.id,
+            username: cleanedName,
+            reason: filterResult.reason,
+          });
+        }
         return false;
       }
     }
@@ -181,6 +188,16 @@ function handlePlayerChat(room, player, msg, deps) {
     roleCapabilities,
     hasCapability: (capability) => hasCapability(userData, capability, roleCapabilities),
   };
+
+  if (deps.logger) {
+    deps.logger.event('command_used', 'Command used', {
+      playerId: player.id,
+      username: cleanedName,
+      command,
+      commandKey,
+      role: ctx.role,
+    });
+  }
 
   for (const route of COMMAND_ROUTERS) {
     const result = route(ctx);

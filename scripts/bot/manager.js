@@ -11,7 +11,6 @@
  */
 
 const {
-  DEFAULTS,
   decide,
   configFromPhysics,
   makePersonality,
@@ -155,7 +154,6 @@ function createBotManager(options = {}) {
   let physicsStadium = null; // ayarların hangi stadyuma ait olduğu
   let ballCollisionFlag = null;
   let tickNumber = 0;
-  const roleState = new Map(); // team -> { attackerId, holdUntil }
 
   /**
    * Aktif haritanın playerPhysics değerlerini brain ayarlarına çevirir.
@@ -298,7 +296,7 @@ function createBotManager(options = {}) {
     };
   }
 
-  /** Takım başına tek, histerezisli hücumcu seçimi. */
+  /** Takım başına tek, her tick güncellenen ortak hücumcu seçimi. */
   function selectTeamAttackers(ball, walls, cfg) {
     const result = new Map();
     const now = Date.now();
@@ -334,7 +332,6 @@ function createBotManager(options = {}) {
         break;
       }
 
-      const state = roleState.get(teamId) || { attackerId: null, holdUntil: 0 };
       let attackerId;
       if (forced) {
         attackerId = forced.id;
@@ -343,18 +340,11 @@ function createBotManager(options = {}) {
         const choice = selectAttacker(
           squad,
           ballSnapshot,
-          { ...cfg, ballDamping: Number.isFinite(ball.damping) ? ball.damping : cfg.ballDamping },
-          state.attackerId,
-          tickNumber >= state.holdUntil
+          { ...cfg, ballDamping: Number.isFinite(ball.damping) ? ball.damping : cfg.ballDamping }
         );
         attackerId = choice.id;
-        if (attackerId !== state.attackerId) {
-          state.holdUntil = tickNumber + (cfg.roleMinHoldTicks || DEFAULTS.roleMinHoldTicks);
-        }
       }
 
-      state.attackerId = attackerId;
-      roleState.set(teamId, state);
       result.set(teamId, attackerId);
     }
 

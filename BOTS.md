@@ -277,10 +277,9 @@ Haxball play — you must work the ball close to score.
 ## 6. Roles
 
 The manager computes one **shared** attacker assignment per team (ties broken by
-player id), so bots never disagree. The current attacker is held for at least
-`roleMinHoldTicks`, and a challenger must improve ETA by
-`roleSwitchMarginTicks`; near-equal estimates therefore no longer swap the role
-back and forth every tick.
+player id), so bots never disagree. Assignment is recalculated from interception
+ETA every tick with no minimum hold; when another player becomes the best
+candidate, that player attacks immediately.
 
 | Role | Count | Behaviour |
 |---|---|---|
@@ -384,7 +383,8 @@ All in `scripts/bot/brain.js` → `DEFAULTS`.
 | `strikeContactPadding` | 2.5 | Wait slightly closer to the ball (must stay below `kickPadding`) |
 | `approachSideOffset` | 68 | Take a wider route around the ball when caught on the wrong side |
 | `incomingBallSpeed` | 3.5 | Treat fewer balls as high-speed receptions |
-| `roleSwitchMarginTicks` | 7 | Require a larger ETA gain before changing attacker |
+| `settleRadius` / `settleWakeRadius` | 8 / 18 | Stop positional-role micro-corrections near target |
+| `strikeSettleRadius` | 2 | Ignore sub-pixel strike-target jitter without delaying a real chase |
 | `defenderGoalOffset` | 135 | Hold the emergency block line farther from goal |
 | `contestOpponentDistance` | 82 | Detect contested balls from farther away |
 

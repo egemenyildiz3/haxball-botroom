@@ -241,6 +241,15 @@ test('pozisyon oyuncusu hedef çevresinde mikroskobik yön değişimleri yapmaz'
   assert.equal(memory.positionSettled, false);
 });
 
+test('hücumcu temas hedefindeki alt-piksel oynamaları kovalamaz', () => {
+  const self = { pos: { x: 100, y: 100 }, speed: { x: 0.05, y: 0 } };
+  const still = navigate(self, { x: 101, y: 99.5 }, DEFAULTS, {}, { strike: true });
+  assert.deepEqual(still, { dirX: 0, dirY: 0, brake: false });
+
+  const pursue = navigate(self, { x: 104, y: 100 }, DEFAULTS, {}, { strike: true });
+  assert.equal(pursue.dirX, 1);
+});
+
 test('kaleye yönelen top için defans köşe yerine kale koridorunu kapatır', () => {
   const view = makeView(
     { pos: { x: -850, y: 250 } },

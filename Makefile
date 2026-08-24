@@ -2,11 +2,15 @@ CONTAINER := haxball-headless
 DB_FILE := db/haxball-results.sqlite
 FILE_STORAGE_DIR := /home/egemen/file-storage/haxball
 DB_BACKUP_DIR := $(FILE_STORAGE_DIR)/backups
+LOG_DIR := $(FILE_STORAGE_DIR)/logs
 TOKEN_FILE := $(FILE_STORAGE_DIR)/spacebounce-botroom-token.txt
 CRON_LOG := $(DB_BACKUP_DIR)/cron.log
 BACKUP ?=
+LIMIT ?= 50
+EVENT ?=
+LEVEL ?=
 
-.PHONY: help up down ps logs logs-f logs-backend logs-chat attach token-file-init cron-install-db-backup cron-show db-all db-users db-games db-visited_users db-istekler db-blacklist db-users-today db-visited_users-today db-ljungberg db-make-superadmin db-user-with-auth db-blacklist-player db-unblacklist-player db-backup db-backups db-restore
+.PHONY: help up down ps logs logs-f logs-backend logs-chat logs-json logs-json-f logs-json-errors logs-json-player logs-json-event attach token-file-init cron-install-db-backup cron-show db-all db-users db-games db-visited_users db-istekler db-blacklist db-users-today db-visited_users-today db-ljungberg db-make-superadmin db-user-with-auth db-blacklist-player db-unblacklist-player db-backup db-backups db-restore
 
 help:
 	@echo "======================================================================"
@@ -22,6 +26,11 @@ help:
 	@echo "  make logs-f        : Canlı konteyner loglarını takip eder"
 	@echo "  make logs-backend  : Sadece [BACKEND-DB] veritabanı loglarını filtreler"
 	@echo "  make logs-chat     : Sadece [CHAT] loglarını filtreler"
+	@echo "  make logs-json     : JSONL operasyon loglarını tablo olarak gösterir"
+	@echo "  make logs-json-f   : Bugünün JSONL log dosyasını canlı takip eder"
+	@echo "  make logs-json-errors : JSONL error loglarını gösterir"
+	@echo "  make logs-json-player USERNAME='oyuncu' : Oyuncuya göre JSONL log arar"
+	@echo "  make logs-json-event EVENT='goal' : Event tipine göre JSONL log arar"
 	@echo "  make attach        : Konteyner terminaline bağlanır"
 	@echo "----------------------------------------------------------------------"
 	@echo "  make token-file-init : .env içindeki tokenı file-storage token dosyasına yazar"
@@ -71,6 +80,25 @@ logs-backend:
 
 logs-chat:
 	docker logs -f $(CONTAINER) | grep --line-buffered "\[CHAT\]"
+
+logs-json:
+	@LOG_DIR="$(LOG_DIR)" LIMIT="$(LIMIT)" node scripts/tools/logQuery.js
+
+logs-json-f:
+	@mkdir -p "$(LOG_DIR)"
+	@touch "$(LOG_DIR)/room-$$(date +%F).jsonl"
+	tail -f "$(LOG_DIR)/room-$$(date +%F).jsonl"
+
+logs-json-errors:
+	@LOG_DIR="$(LOG_DIR)" LIMIT="$(LIMIT)" LEVEL="error" node scripts/tools/logQuery.js
+
+logs-json-player:
+	@if [ -z "$(USERNAME)" ]; then echo "⚠️ HATA: USERNAME belirtilmedi! Örnek: make logs-json-player USERNAME='Longman'"; exit 1; fi
+	@LOG_DIR="$(LOG_DIR)" LIMIT="$(LIMIT)" USERNAME="$(USERNAME)" node scripts/tools/logQuery.js
+
+logs-json-event:
+	@if [ -z "$(EVENT)" ]; then echo "⚠️ HATA: EVENT belirtilmedi! Örnek: make logs-json-event EVENT='goal'"; exit 1; fi
+	@LOG_DIR="$(LOG_DIR)" LIMIT="$(LIMIT)" EVENT="$(EVENT)" node scripts/tools/logQuery.js
 
 attach:
 	docker attach haxball-headless
