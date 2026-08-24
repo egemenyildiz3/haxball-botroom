@@ -100,7 +100,7 @@ function handleAfk(ctx) {
   if (afkPlayers.has(player.id)) {
     const startedAt = afkStartedAt.get(key) || 0;
     const waitMs = minDurationMs - (now - startedAt);
-    const isAdmin = player.admin || (typeof ctx.hasCapability === 'function' && ctx.hasCapability('afk_exempt'));
+    const isAdmin = typeof ctx.hasCapability === 'function' && ctx.hasCapability('afk_exempt');
 
     if (!isAdmin && waitMs > 0) {
       const lastWarning = lastAfkEarlyWarningAt.get(key) || 0;
@@ -116,7 +116,7 @@ function handleAfk(ctx) {
     lastAfkEarlyWarningAt.delete(key);
     sendMsg(room, t('afk.back', { name: displayName }), null, 0x00FF7F, 'bold');
   } else {
-    const isAdmin = player.admin || (typeof ctx.hasCapability === 'function' && ctx.hasCapability('afk_exempt'));
+    const isAdmin = typeof ctx.hasCapability === 'function' && ctx.hasCapability('afk_exempt');
     const previous = lastAfkAt.get(key) || 0;
     const waitMs = cooldownMs - (now - previous);
 
@@ -199,11 +199,11 @@ function handleHelp(ctx) {
     t('help.adminRequest'),
     t('help.register'),
     t('help.login'),
-    player.admin || ctx.hasCapability('bot') ? t('help.bot') : '',
+    ctx.hasCapability('bot') ? t('help.bot') : '',
     ctx.hasCapability('auto') ? t('help.auto') : '',
-    player.admin || ctx.hasCapability('kick') ? t('help.kick') : '',
-    player.admin || ctx.hasCapability('ban') ? t('help.ban') : '',
-    player.admin || ctx.hasCapability('mute') ? t('help.mute') : '',
+    ctx.hasCapability('kick') ? t('help.kick') : '',
+    ctx.hasCapability('ban') ? t('help.ban') : '',
+    ctx.hasCapability('mute') ? t('help.mute') : '',
     ctx.hasCapability('unmute') ? t('help.unmute') : '',
     ctx.hasCapability('blacklist') ? t('help.blacklist') : '',
     ctx.hasCapability('clear_bans') ? t('help.clearbans') : '',

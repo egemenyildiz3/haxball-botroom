@@ -40,8 +40,12 @@ function duplicateJoinMatch(room, player, state, botManager) {
     const candidateConn = candidate.conn || '';
 
     if (isProtectedBotIdentity(botManager, candidate)) continue;
-    if (playerAuth && candidateAuth && playerAuth === candidateAuth) return { player: candidate, reason: 'auth' };
-    if (playerConn && candidateConn && playerConn === candidateConn) return { player: candidate, reason: 'conn' };
+    if (playerAuth && candidateAuth && playerAuth === candidateAuth) {
+      return { player: candidate, reason: 'auth', auth: candidateAuth };
+    }
+    if (playerConn && candidateConn && playerConn === candidateConn) {
+      return { player: candidate, reason: 'conn', auth: candidateAuth };
+    }
   }
 
   return null;
@@ -81,10 +85,13 @@ function blockDuplicateJoin(room, state, player, deps) {
   } } = deps;
   if (Number(CONFIG_ALLOW_MULTIPLE_JOIN) === 1) return false;
   if (isProtectedBotIdentity(botManager, player)) return false;
-  if (hasAuthCapability(db, player.auth, 'duplicate_join_exempt', config && config.adminRules && config.adminRules.roleCapabilities)) return false;
 
   const match = duplicateJoinMatch(room, player, state, botManager);
   if (!match) return false;
+
+  const roleCapabilities = config && config.adminRules && config.adminRules.roleCapabilities;
+  if (hasAuthCapability(db, player.auth, 'duplicate_join_exempt', roleCapabilities)) return false;
+  if (hasAuthCapability(db, match.auth, 'duplicate_join_exempt', roleCapabilities)) return false;
 
   const cleanName = getCleanName(player);
   const existingName = getCleanName(match.player);

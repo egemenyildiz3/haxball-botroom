@@ -3,7 +3,22 @@ const { sendMsg } = require('../commands/helpers');
 const { restoreAutoManageIfNoAdmins } = require('./autoManager');
 const { rebalanceTeams } = require('./teamBalancer');
 const { isProtectedBotIdentity } = require('./botPolicy');
-const { hasCapability, isOwnerPlayer } = require('../roles');
+const { hasCapability, isOwnerPlayer, roleOfUser } = require('../roles');
+
+function canUseNativeModeration(userData) {
+  const role = roleOfUser(userData);
+  return role === 'owner' || role === 'mod';
+}
+
+function punishUnauthorizedNativeModeration(room, safeBy, reason) {
+  try {
+    if (typeof room.setPlayerAdmin === 'function') room.setPlayerAdmin(safeBy.id, false);
+  } catch (e) {}
+
+  try {
+    room.kickPlayer(safeBy.id, reason, false);
+  } catch (e) {}
+}
 
 function handlePlayerKicked(room, state, kickedPlayer, reason, ban, byPlayer, deps, sanitizePlayer) {
   if (!byPlayer || byPlayer.id === 0) return;
@@ -14,6 +29,8 @@ function handlePlayerKicked(room, state, kickedPlayer, reason, ban, byPlayer, de
       'guard.ownerAttackPunished': `🛡️ ${vars.name}, Kurucuyu atmaya çalıştığı için cezalandırıldı!`,
       'guard.ownerAttackReason': 'Kurucuya yetki uygulamaya çalıştığınız için banlandınız!',
       'guard.adminBanDisabled': `⚠️ Adminlerin ban yetkisi kapalıdır! ${vars.name} üzerindeki ban kaldırıldı.`,
+      'guard.kickDisabled': '⚠️ Bu admin görünümü yetki vermez. Oyuncu atma yetkiniz yok.',
+      'guard.nativeModerationReason': 'Yetkisiz admin aksiyonu kullandınız.',
     };
     return messages[key] || key;
   } } = deps;
@@ -21,6 +38,8 @@ function handlePlayerKicked(room, state, kickedPlayer, reason, ban, byPlayer, de
   const safeBy = sanitizePlayer(room, byPlayer, state);
   const kickedClean = getCleanName(safeKicked);
   const byClean = getCleanName(safeBy);
+  const byUser = loggedInPlayers && loggedInPlayers.get(safeBy.id);
+  const canUseNativeModerationTools = canUseNativeModeration(byUser);
 
   const isProtectedBot = isProtectedBotIdentity(botManager, safeKicked);
 
@@ -29,11 +48,10 @@ function handlePlayerKicked(room, state, kickedPlayer, reason, ban, byPlayer, de
 
     try { room.clearBan(safeKicked.id); } catch (e) {}
 
-    try {
-      if (typeof room.setPlayerAdmin === 'function') room.setPlayerAdmin(safeBy.id, false);
-    } catch (e) {}
-
     sendMsg(room, t('guard.botBanProtected'), safeBy.id, 0xFFCC00, 'bold');
+    if (!canUseNativeModerationTools) {
+      punishUnauthorizedNativeModeration(room, safeBy, t('guard.nativeModerationReason'));
+    }
     return;
   }
 
@@ -54,17 +72,22 @@ function handlePlayerKicked(room, state, kickedPlayer, reason, ban, byPlayer, de
     return;
   }
 
-  const byUser = loggedInPlayers && loggedInPlayers.get(safeBy.id);
-  if (ban && !hasCapability(byUser, 'ban', roleCapabilities)) {
-    console.warn(`[SECURITY] ${byClean} ban atmaya çalıştı fakat ban capability yok!`);
+  if (ban && !canUseNativeModerationTools) {
+    console.warn(`[SECURITY] ${byClean} native ban kullanmaya çalıştı fakat owner/mod değil!`);
 
     try { room.clearBan(safeKicked.id); } catch (e) {}
 
-    try {
-      room.setPlayerAdmin(safeBy.id, false);
-    } catch (e) {}
-
     sendMsg(room, t('guard.adminBanDisabled', { name: kickedClean }), null, 0xFF5555, 'bold');
+    punishUnauthorizedNativeModeration(room, safeBy, t('guard.nativeModerationReason'));
+    return;
+  }
+
+  if (!ban && !canUseNativeModerationTools) {
+    console.warn(`[SECURITY] ${byClean} native kick kullanmaya çalıştı fakat owner/mod değil!`);
+
+    sendMsg(room, t('guard.kickDisabled'), safeBy.id, 0xFF5555, 'bold');
+    punishUnauthorizedNativeModeration(room, safeBy, t('guard.nativeModerationReason'));
+    return;
   }
 
   if (state.autoManageEnabled) {
@@ -109,8 +132,10 @@ function handlePlayerAdminChange(room, state, changedPlayer, byPlayer, deps, san
 }
 
 function handlePlayerTeamChange(room, state, changedPlayer, byPlayer, deps, sanitizePlayer) {
-  const { t = (key) => (
-    key === 'guard.afkTeamBlocked' ? '💤 AFK modundasınız. Sahaya girmek için sohbetten !afk yazmalısınız.' : key
+  const { loggedInPlayers, config, t = (key) => (
+    key === 'guard.afkTeamBlocked' ? '💤 AFK modundasınız. Sahaya girmek için sohbetten !afk yazmalısınız.'
+      : key === 'guard.teamMoveDisabled' ? '⚠️ Bu admin görünümü yetki vermez. Oyuncu taşıma yetkiniz yok.'
+        : key
   ) } = deps;
   const safePlayer = sanitizePlayer(room, changedPlayer, state);
   const changedByHost = !byPlayer || byPlayer.id === 0;
@@ -140,8 +165,23 @@ function handlePlayerTeamChange(room, state, changedPlayer, byPlayer, deps, sani
   }
 
   if (byPlayer && byPlayer.id !== 0) {
+    const safeBy = sanitizePlayer(room, byPlayer, state);
+    const byUser = loggedInPlayers && loggedInPlayers.get(safeBy.id);
+    const roleCapabilities = config && config.adminRules && config.adminRules.roleCapabilities;
+
+    if (!hasCapability(byUser, 'auto', roleCapabilities)) {
+      console.warn(`[SECURITY] ${getCleanName(safeBy)} takım taşıma denedi fakat auto capability yok!`);
+      try {
+        room.setPlayerAdmin(safeBy.id, false);
+      } catch (e) {}
+      sendMsg(room, t('guard.teamMoveDisabled'), safeBy.id, 0xFF5555, 'bold');
+      rebalanceTeams(room, state, deps)
+        .catch((err) => console.warn('[AUTO] Yetkisiz takım değişimi sonrası dengeleme başarısız:', err.message));
+      return;
+    }
+
     state.manualPlacements.set(safePlayer.id, safePlayer.team);
-    console.log(`[MANUAL] ${getCleanName(sanitizePlayer(room, byPlayer, state))}, ${getCleanName(safePlayer)} oyuncusunu elle taşıdı (takım: ${safePlayer.team}). Otomatik dağıtım bu oyuncuya dokunmayacak.`);
+    console.log(`[MANUAL] ${getCleanName(safeBy)}, ${getCleanName(safePlayer)} oyuncusunu elle taşıdı (takım: ${safePlayer.team}). Otomatik dağıtım bu oyuncuya dokunmayacak.`);
     return;
   }
 

@@ -45,6 +45,9 @@ const MESSAGES = {
     'guard.adminBanDisabled': '⚠️ Adminlerin ban yetkisi kapalıdır! {name} üzerindeki ban kaldırıldı.',
     'guard.adminGiveDisabled': '⚠️ Adminlerin başkasına yetki verme yetkisi kapalıdır!',
     'guard.afkTeamBlocked': '💤 AFK modundasınız. Sahaya girmek için sohbetten !afk yazmalısınız.',
+    'guard.kickDisabled': '⚠️ Bu admin görünümü yetki vermez. Oyuncu atma yetkiniz yok.',
+    'guard.teamMoveDisabled': '⚠️ Bu admin görünümü yetki vermez. Oyuncu taşıma yetkiniz yok.',
+    'guard.nativeModerationReason': 'Yetkisiz admin aksiyonu kullandınız.',
 
     'account.autoLogin': '🟢 Otomatik giriş yapıldı! Hoş geldin, {name}.',
     'account.registeredDetected': '🟡 Kayıtlı hesap tespit edildi. Giriş yapmak için: !giriş / !giris <şifre>',
@@ -231,6 +234,9 @@ const MESSAGES = {
     'guard.adminBanDisabled': '⚠️ Admin ban permission is disabled. The ban on {name} was removed.',
     'guard.adminGiveDisabled': '⚠️ Admins are not allowed to give admin rights to others.',
     'guard.afkTeamBlocked': '💤 You are AFK. Type !afk in chat before joining the field.',
+    'guard.kickDisabled': '⚠️ This admin badge does not grant permission to kick players.',
+    'guard.teamMoveDisabled': '⚠️ This admin badge does not grant permission to move players.',
+    'guard.nativeModerationReason': 'You used an unauthorized admin action.',
 
     'account.autoLogin': '🟢 Auto-login complete. Welcome, {name}.',
     'account.registeredDetected': '🟡 Registered account detected. Login with: !login <password>',

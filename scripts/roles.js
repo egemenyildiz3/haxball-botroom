@@ -5,6 +5,12 @@ const DEFAULT_ROLE_CAPABILITIES = {
   admin: [
     'admin_chat',
     'afk_exempt',
+    'mute_exempt',
+    'native_admin',
+  ],
+  mod: [
+    'admin_chat',
+    'afk_exempt',
     'auto',
     'ban',
     'blacklist',
@@ -17,19 +23,7 @@ const DEFAULT_ROLE_CAPABILITIES = {
     'native_admin',
     'unmute',
   ],
-  mod: [
-    'admin_chat',
-    'afk_exempt',
-    'auto',
-    'kick',
-    'mute',
-    'mute_exempt',
-    'native_admin',
-    'unmute',
-  ],
-  vip: [
-    'unmute',
-  ],
+  vip: [],
   player: [],
 };
 

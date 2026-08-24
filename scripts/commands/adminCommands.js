@@ -145,7 +145,7 @@ function handleAdminPassword(ctx) {
 function handleBan(ctx) {
   const { room, player, args, loggedInPlayers, playerAssignments, botManager } = ctx;
   const t = ctx.t || fallbackT;
-  if (!player.admin && !(typeof ctx.hasCapability === 'function' && ctx.hasCapability('ban'))) {
+  if (!(typeof ctx.hasCapability === 'function' && ctx.hasCapability('ban'))) {
     sendMsg(room, t('admin.needAdmin'), player.id, 0xFF5555, 'bold');
     return false;
   }
@@ -188,7 +188,7 @@ function handleBan(ctx) {
 function handleKick(ctx) {
   const { room, player, args, loggedInPlayers, playerAssignments } = ctx;
   const t = ctx.t || fallbackT;
-  if (!player.admin && !(typeof ctx.hasCapability === 'function' && ctx.hasCapability('kick'))) {
+  if (!(typeof ctx.hasCapability === 'function' && ctx.hasCapability('kick'))) {
     sendMsg(room, t('admin.needAdmin'), player.id, 0xFF5555, 'bold');
     return false;
   }

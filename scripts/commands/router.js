@@ -25,10 +25,28 @@ const TEAM_RADIO_COLORS = {
   2: 0x77A7FF,
 };
 
-function adminChatPrefix(isAdminChat, isSuperAdmin) {
+function chatPrefix(userData, isAdminChat, isSuperAdmin) {
+  const role = roleOfUser(userData);
   if (isSuperAdmin) return '[OWNER] ';
+  if (role === 'vip') return '[VIP] ';
   if (isAdminChat) return '[ADMIN] ';
   return '';
+}
+
+function chatStyleForPlayer({ userData, isAdminChat, chatConfig }) {
+  const role = roleOfUser(userData);
+  const roleColors = (chatConfig && chatConfig.roleColors) || {};
+  const roleColor = roleColors[role];
+
+  if (roleColor) {
+    return { color: roleColor, style: 'bold' };
+  }
+
+  if (isAdminChat) {
+    return { color: (chatConfig && chatConfig.adminColor) || 0xCC99FF, style: 'bold' };
+  }
+
+  return { color: (chatConfig && chatConfig.normalColor) || 0xFFFFFF, style: 'normal' };
 }
 
 function playerTeamId(player) {
@@ -39,7 +57,7 @@ function playerTeamId(player) {
 
 function isAdminLike(player, loggedInPlayers) {
   const userData = loggedInPlayers && loggedInPlayers.get(player.id);
-  return !!(player.admin || hasCapability(userData, 'admin_chat'));
+  return !!hasCapability(userData, 'admin_chat');
 }
 
 function fallbackT(key, vars = {}) {
@@ -125,7 +143,7 @@ function handlePlayerChat(room, player, msg, deps) {
 
   if (!text.startsWith('!')) {
     const chatText = text.toLocaleLowerCase('tr-TR');
-    const isAdminChat = player.admin || isRoleAdminChat;
+    const isAdminChat = isRoleAdminChat;
 
     if (deps.chatMuted && !isAdminChat) {
       sendMsg(room, t('chat.muted'), player.id, 0xFFCC00, 'bold');
@@ -160,12 +178,14 @@ function handlePlayerChat(room, player, msg, deps) {
       }
     }
 
+    const chatStyle = chatStyleForPlayer({ userData, isAdminChat, chatConfig });
+
     sendMsg(
       room,
-      `💬 ${adminChatPrefix(isAdminChat, isSuperAdmin)}${displayName}: ${chatText}`,
+      `💬 ${chatPrefix(userData, isAdminChat, isSuperAdmin)}${displayName}: ${chatText}`,
       null,
-      isAdminChat ? (chatConfig.adminColor || 0xCC99FF) : (chatConfig.normalColor || 0xFFFFFF),
-      isAdminChat ? 'bold' : 'normal'
+      chatStyle.color,
+      chatStyle.style
     );
     return false;
   }

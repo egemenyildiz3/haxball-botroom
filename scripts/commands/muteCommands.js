@@ -94,7 +94,7 @@ function routeMuteCommand(ctx) {
   if (ctx.commandKey === 'unmute') return unmuteTargetPlayer(ctx);
   if (ctx.commandKey !== 'mute') return null;
 
-  if (!player.admin && !(typeof ctx.hasCapability === 'function' && ctx.hasCapability('mute'))) {
+  if (!(typeof ctx.hasCapability === 'function' && ctx.hasCapability('mute'))) {
     sendMsg(room, t('mute.needAdmin'), player.id, 0xFF5555, 'bold');
     return false;
   }
@@ -174,7 +174,7 @@ function muteTargetPlayer(ctx) {
   }
 
   const targetUserData = loggedInPlayers && loggedInPlayers.get(target.id);
-  if (target.admin || hasCapability(targetUserData, 'mute_exempt', roleCapabilities)) {
+  if (hasCapability(targetUserData, 'mute_exempt', roleCapabilities)) {
     sendMsg(room, t('mute.adminProtected'), player.id, 0xFFCC00, 'bold');
     return false;
   }

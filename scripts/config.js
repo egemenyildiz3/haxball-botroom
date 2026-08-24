@@ -37,7 +37,7 @@ const DEFAULT_CONFIG = {
       owner: ['*'],
       admin: ['admin_chat', 'afk_exempt', 'auto', 'ban', 'blacklist', 'bot', 'clear_bans', 'duplicate_join_exempt', 'kick', 'mute', 'mute_exempt', 'native_admin', 'unmute'],
       mod: ['admin_chat', 'afk_exempt', 'auto', 'kick', 'mute', 'mute_exempt', 'native_admin', 'unmute'],
-      vip: ['unmute'],
+      vip: [],
       player: [],
     },
   },
@@ -58,6 +58,12 @@ const DEFAULT_CONFIG = {
     maxLength: 60,
     adminColor: 'CC99FF',
     normalColor: 'FFFFFF',
+    roleColors: {
+      owner: 'CC99FF',
+      admin: 'FFD166',
+      mod: 'FF6B6B',
+      vip: 'FFE066',
+    },
   },
 
   adminRequests: {
@@ -287,6 +293,12 @@ const config = {
     maxLength: numberFromEnv('CHAT_MAX_LENGTH', fileConfig.chat.maxLength, { min: 1, max: 500 }),
     adminColor: colorFromEnv('CHAT_ADMIN_COLOR', fileConfig.chat.adminColor),
     normalColor: colorFromEnv('CHAT_NORMAL_COLOR', fileConfig.chat.normalColor),
+    roleColors: {
+      owner: colorFromEnv('CHAT_OWNER_COLOR', fileConfig.chat.roleColors.owner),
+      admin: colorFromEnv('CHAT_ADMIN_ROLE_COLOR', fileConfig.chat.roleColors.admin),
+      mod: colorFromEnv('CHAT_MOD_COLOR', fileConfig.chat.roleColors.mod),
+      vip: colorFromEnv('CHAT_VIP_COLOR', fileConfig.chat.roleColors.vip),
+    },
   },
 
   adminRequests: {

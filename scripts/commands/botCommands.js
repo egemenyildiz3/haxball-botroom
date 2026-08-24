@@ -10,7 +10,7 @@ function routeBotCommand(ctx) {
   }[key] || key));
   if (ctx.commandKey !== 'bot') return null;
 
-  if (!player.admin && !(typeof ctx.hasCapability === 'function' && ctx.hasCapability('bot'))) {
+  if (!(typeof ctx.hasCapability === 'function' && ctx.hasCapability('bot'))) {
     sendMsg(room, t('bot.needAdmin'), player.id, 0xFF5555, 'bold');
     return false;
   }

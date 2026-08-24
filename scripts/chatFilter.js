@@ -320,8 +320,6 @@ function isCommand(text) {
 }
 
 function isPrivileged(player, loggedInPlayers) {
-  if (player && player.admin) return true;
-
   const userData = loggedInPlayers && loggedInPlayers.get(player.id);
   return hasCapability(userData, 'admin_chat') || hasCapability(userData, 'chat_filter_exempt');
 }
