@@ -13,6 +13,7 @@ function createRoomState(options = {}) {
     joinIdsByPlayer: new Map(),
     nextJoinOrder: 1,
     playerAuths: new Map(),
+    pendingJoinPlayers: new Set(),
     afkPlayers: new Set([0]),
     manualPlacements: new Map(),
     isRebalancing: false,

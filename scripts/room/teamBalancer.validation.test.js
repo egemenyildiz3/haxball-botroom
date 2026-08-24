@@ -5,6 +5,7 @@ function makeState() {
   return {
     autoManageEnabled: true,
     afkPlayers: new Set(),
+    pendingJoinPlayers: new Set(),
     manualPlacements: new Map(),
     isRebalancing: false,
     rebalanceRequested: false,
@@ -248,6 +249,35 @@ async function testManuallyBenchedBotCanStillFillMissingTeamSlot() {
   assert.equal([503, 504].some((id) => room.players.find((p) => p.id === id).team === 2), true);
 }
 
+async function testPendingJoinDoesNotReceivePromotionNotice() {
+  const botIds = new Set([501, 502, 503, 504]);
+  const players = [
+    makePlayer(1, 1),
+    makePlayer(501, 1, true),
+    makePlayer(502, 1, true),
+    makePlayer(2, 2),
+    makePlayer(503, 2, true),
+    makePlayer(504, 2, true),
+    makePlayer(3, 0),
+  ];
+  const room = makeRoom(players);
+  const state = makeState();
+  const messages = [];
+  state.pendingJoinPlayers.add(3);
+
+  await rebalanceTeams(room, state, {
+    botManager: makeBotManager(botIds),
+    playerJoinOrder: new Map(players.map((p, index) => [p.id, index + 1])),
+    sleep: async () => {},
+    sendMsg: (targetRoom, text, targetId) => messages.push({ text, targetId }),
+    t: (key) => (key === 'team.preparePromotion' ? 'GET READY' : key),
+    config: { teamManagement: { promotionNotice: { enabled: true, color: 0x00BFFF } } },
+  });
+
+  assert.deepEqual(messages, []);
+  assert.equal(room.players.find((p) => p.id === 3).team, 0);
+}
+
 function testDoesNotStartGameDuringMatchRotation() {
   const state = makeState();
   state.matchRotationPending = true;
@@ -300,6 +330,7 @@ async function run() {
   await testSpectatorHumanReplacesBotWhenTeamsAlreadyEven();
   await testPromotionNoticeBeforeHumanReplacesBot();
   await testManuallyBenchedBotCanStillFillMissingTeamSlot();
+  await testPendingJoinDoesNotReceivePromotionNotice();
   testDoesNotStartGameDuringMatchRotation();
   testExtraBotComesFromHeavyTeam();
   console.log('teamBalancer validation tests passed');

@@ -221,6 +221,7 @@ async function createRoom(room, deps) {
 
   room.onPlayerJoin = async function (player) {
     if (!player) return;
+    state.pendingJoinPlayers.add(player.id);
 
     if (player.auth) {
       state.playerAuths.set(String(player.id), player.auth);
@@ -235,6 +236,7 @@ async function createRoom(room, deps) {
       if (logger) logger.event('bot_join', 'Bot joined', { playerId: safePlayer.id, username: cleanedName });
       assignPlayerInternal(room, safePlayer, state, roomDeps);
       await sleep(800);
+      state.pendingJoinPlayers.delete(safePlayer.id);
       await handlePlayerJoin(room, sanitizePlayer(room, safePlayer, state), state, roomDeps);
       return;
     }
@@ -277,6 +279,7 @@ async function createRoom(room, deps) {
     handleAutoLogin(room, updatedPlayer, { db, DB_FILE, loggedInPlayers, persistDatabase, t });
     notifyActiveMuteOnJoin(room, state, sanitizePlayer(room, updatedPlayer, state), roomDeps);
     markOwnerAfkOnJoin(room, state, sanitizePlayer(room, updatedPlayer, state), roomDeps);
+    state.pendingJoinPlayers.delete(updatedPlayer.id);
     await handlePlayerJoin(room, updatedPlayer, state, roomDeps);
   };
 
@@ -398,6 +401,7 @@ function handlePlayerLeave(room, player, state, deps) {
     state.afkPlayers.delete(player.id);
     state.manualPlacements.delete(player.id);
     state.playerAuths.delete(String(player.id));
+    state.pendingJoinPlayers.delete(player.id);
     state.lastInputAt.delete(player.id);
     state.inactivityWarnings.delete(player.id);
     state.chatFilter.forget(player.id);

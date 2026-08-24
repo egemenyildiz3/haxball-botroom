@@ -30,6 +30,7 @@ function isAutoEligiblePlayer(player, state, isBot = () => false) {
   return !!(
     player
     && player.id !== 0
+    && !state.pendingJoinPlayers.has(player.id)
     && !state.afkPlayers.has(player.id)
     && (isBot(player) || !(player.team === 0 && state.manualPlacements.has(player.id)))
   );
@@ -535,6 +536,7 @@ function spectatorsByType(players, state, playerJoinOrder, isBot, wantBot) {
     .filter((p) => (
       p.id !== 0
       && p.team === 0
+      && !state.pendingJoinPlayers.has(p.id)
       && !state.afkPlayers.has(p.id)
       && (isBot(p) || !state.manualPlacements.has(p.id))
       && isBot(p) === wantBot
