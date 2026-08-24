@@ -7,6 +7,7 @@ const {
   DEFAULTS,
   decide,
   defenderTarget,
+  navigate,
   predictBall,
   selectAttacker,
   solveIntercept,
@@ -215,23 +216,29 @@ test('canlı stadyum düzlemleri top için ±590 merkez sınırına çevrilir', 
   });
 });
 
-test('hücumcu küçük ETA farkında değişmez, belirgin farkta değişir', () => {
+test('en iyi kesişime sahip oyuncu bekletilmeden hücumcu olur', () => {
   const ball = { pos: { x: 0, y: 0 }, speed: { x: 0, y: 0 }, radius: 10 };
   const close = { id: 500, pos: { x: -80, y: 0 }, speed: { x: 0, y: 0 }, radius: 15 };
-  const current = { id: 501, pos: { x: -90, y: 0 }, speed: { x: 0, y: 0 }, radius: 15 };
+  const previous = { id: 501, pos: { x: -500, y: 0 }, speed: { x: 0, y: 0 }, radius: 15 };
 
-  const held = selectAttacker([close, current], ball, DEFAULTS, current.id, false);
-  assert.equal(held.id, current.id, 'asgari rol süresinde mevcut hücumcu korunmalı');
+  const selected = selectAttacker([close, previous], ball, DEFAULTS);
+  assert.equal(selected.id, close.id, 'önceki hücumcu için hiçbir zorunlu bekleme olmamalı');
+});
 
-  current.pos.x = -500;
-  const switched = selectAttacker(
-    [close, current],
-    ball,
-    { ...DEFAULTS, roleSwitchMarginTicks: 1 },
-    current.id,
-    true
-  );
-  assert.equal(switched.id, close.id, 'belirgin hızlı oyuncuya rol devredilmeli');
+test('pozisyon oyuncusu hedef çevresinde mikroskobik yön değişimleri yapmaz', () => {
+  const memory = {};
+  const self = { pos: { x: 100, y: 100 }, speed: { x: 0.1, y: -0.1 } };
+
+  const arrived = navigate(self, { x: 104, y: 97 }, DEFAULTS, memory, { strike: false });
+  assert.deepEqual(arrived, { dirX: 0, dirY: 0, brake: false });
+  assert.equal(memory.positionSettled, true);
+
+  const jitter = navigate(self, { x: 89, y: 108 }, DEFAULTS, memory, { strike: false });
+  assert.deepEqual(jitter, { dirX: 0, dirY: 0, brake: false });
+
+  const wake = navigate(self, { x: 130, y: 100 }, DEFAULTS, memory, { strike: false });
+  assert.equal(wake.dirX, 1);
+  assert.equal(memory.positionSettled, false);
 });
 
 test('kaleye yönelen top için defans köşe yerine kale koridorunu kapatır', () => {

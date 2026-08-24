@@ -49,6 +49,13 @@ const DEFAULTS = {
   minBrakeSpeed: 0.5, // bu hızın altında frene gerek yok
   brakeMargin: 1.1, // fren mesafesi payı
 
+  // Pozisyon oyuncusu hedefe vardığında birkaç birimlik hedef/hız değişimini
+  // kovalamayı bıraksın. Aksi halde destek/defans hedefinin çevresinde dört
+  // yöne mikroskobik tuşlar basarak aynı yerde titriyor.
+  settleRadius: 8,
+  settleWakeRadius: 18,
+  settleMaxSpeed: 0.35,
+
   // Fren histerezisi: basma eşiği yüksek, bırakma eşiği düşük. Tek eşik
   // kullanılınca fren her birkaç tick'te açılıp kapanıyor (tuş spam'i) ve
   // ortalama sönümleme düştüğü için bot gerçekten yavaşlayamıyor.
@@ -123,10 +130,6 @@ const DEFAULTS = {
   defenderCorridorDepth: 0.38,
   defenderMaxLateral: 190,
 
-  // Rol yöneticisi bu değerleri tüm takım için ortak kullanır. Birkaç ticklik
-  // küçük ETA farkında hücumcu değişmesin; zigzag ve çift kararsızlık azalır.
-  roleSwitchMarginTicks: 7,
-  roleMinHoldTicks: 36,
 };
 
 // --- Vektör yardımcıları -------------------------------------------------
@@ -541,31 +544,23 @@ function chooseClearPoint(view) {
 // --- Rol dağılımı --------------------------------------------------------
 
 /**
- * Takımın hücumcusunu seçer. Yönetici mevcut hücumcuyu ve kilit durumunu
- * vererek bu saf fonksiyonu bütün takım için bir kez çağırır.
+ * Takımın hücumcusunu seçer. Yönetici bu saf fonksiyonu bütün takım için bir
+ * kez çağırır ve sonucu tüm botlarla paylaşır.
  */
-function selectAttacker(squad, ball, cfg, currentId = null, canSwitch = true) {
+function selectAttacker(squad, ball, cfg) {
   const ranked = squad
-    .map((player) => ({ id: player.id, intercept: solveIntercept(player, ball, cfg) }))
+    .map((player) => ({
+      id: player.id,
+      intercept: solveIntercept(player, ball, cfg),
+    }))
     .sort((a, b) => a.intercept.ticks - b.intercept.ticks || a.id - b.id);
 
-  if (ranked.length === 0) return { id: null, intercept: null, changed: false, ranked };
+  if (ranked.length === 0) return { id: null, intercept: null, ranked };
 
   const best = ranked[0];
-  const current = ranked.find((entry) => entry.id === currentId);
-  const margin = Number.isFinite(cfg.roleSwitchMarginTicks)
-    ? cfg.roleSwitchMarginTicks
-    : DEFAULTS.roleSwitchMarginTicks;
-
-  if (current && current.id !== best.id &&
-      (!canSwitch || current.intercept.ticks - best.intercept.ticks < margin)) {
-    return { id: current.id, intercept: current.intercept, changed: false, ranked };
-  }
-
   return {
     id: best.id,
     intercept: best.intercept,
-    changed: currentId !== null && currentId !== best.id,
     ranked,
   };
 }
@@ -885,6 +880,26 @@ function navigate(self, target, cfg, memory = {}, opts = {}) {
   const vel = self.speed || { x: 0, y: 0 };
   const speed = len(vel);
 
+  // Hücumcu hareketli bir temas noktasını takip etmeye devam etmeli. Defans ve
+  // destek ise hedef çevresinde düşük hızla durulunca giriş üretmeyi keser;
+  // hedef settleWakeRadius dışına çıkana kadar küçük oynamaları yok sayar.
+  if (opts.strike) {
+    memory.positionSettled = false;
+  } else {
+    if (memory.positionSettled && dist < cfg.settleWakeRadius) {
+      memory.braking = false;
+      memory.brakeHold = 0;
+      return { dirX: 0, dirY: 0, brake: false };
+    }
+    if (dist <= cfg.settleRadius && speed <= cfg.settleMaxSpeed) {
+      memory.positionSettled = true;
+      memory.braking = false;
+      memory.brakeHold = 0;
+      return { dirX: 0, dirY: 0, brake: false };
+    }
+    memory.positionSettled = false;
+  }
+
   // Kalan mesafede frenle atılabilecek hız payı.
   const kd = cfg.kickingDamping;
   const shedable = kd >= 1 ? cfg.cruiseSpeed : (dist * (1 - kd)) / (kd * cfg.brakeMargin);
@@ -961,7 +976,6 @@ function decide(view, memory, config) {
     kickPadding: activeCfg.kickPadding,
     predictTicks: activeCfg.predictTicks,
     ballDamping: activeCfg.ballDamping,
-    roleSwitchMarginTicks: activeCfg.roleSwitchMarginTicks,
   };
 
   const assigned = assignRoles(view, roleCfg);
