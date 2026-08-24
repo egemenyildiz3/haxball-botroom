@@ -1,12 +1,64 @@
-const { normalizeCmd } = require('../util');
+const { getCleanName, normalizeCmd } = require('../util');
 const { sendMsg, resolveTargetPlayer, candidateList } = require('./helpers');
 const { hasCapability } = require('../roles');
 
 const DEFAULT_PLAYER_MUTE_MINUTES = 10;
-const MAX_PLAYER_MUTE_MINUTES = 60;
+const MAX_PLAYER_MUTE_MINUTES = 30;
 
 function muteKey(player) {
   return player && (player.auth || player.conn || String(player.id));
+}
+
+function normalizedMuteName(name) {
+  return String(name || '').trim().toLocaleLowerCase('tr-TR');
+}
+
+function muteKeysForPlayer(player, userData = null, playerAssignments = null) {
+  if (!player) return [];
+
+  const keys = new Set();
+  if (player.auth) keys.add(`auth:${player.auth}`);
+  if (player.conn) keys.add(`conn:${player.conn}`);
+  if (userData && userData.player_uid) keys.add(`uid:${userData.player_uid}`);
+
+  const assignedName = playerAssignments && playerAssignments.get(player.id);
+  const cleanName = normalizedMuteName(getCleanName(player));
+  const displayName = normalizedMuteName(assignedName || cleanName);
+  if (cleanName) keys.add(`name:${cleanName}`);
+  if (displayName) keys.add(`name:${displayName.replace(/^\[\d+\]\s*/, '').trim()}`);
+
+  const legacyKey = muteKey(player);
+  if (legacyKey) keys.add(legacyKey);
+  if (player.id !== undefined && player.id !== null) keys.add(`id:${player.id}`);
+  return [...keys].filter(Boolean);
+}
+
+function storeMute(mutedPlayers, player, userData, playerAssignments, mute) {
+  const keys = muteKeysForPlayer(player, userData, playerAssignments);
+  const entry = { ...mute, keys };
+  for (const key of keys) {
+    mutedPlayers.set(key, entry);
+  }
+  return entry;
+}
+
+function deleteMuteEntry(mutedPlayers, entry, fallbackKey = null) {
+  const keys = new Set([fallbackKey, ...((entry && entry.keys) || [])].filter(Boolean));
+  if (keys.size === 0 && fallbackKey) keys.add(fallbackKey);
+  for (const key of keys) mutedPlayers.delete(key);
+}
+
+function findActiveMute(mutedPlayers, player, userData = null, playerAssignments = null, now = Date.now()) {
+  if (!mutedPlayers) return null;
+
+  for (const key of muteKeysForPlayer(player, userData, playerAssignments)) {
+    const mute = mutedPlayers.get(key);
+    if (!mute) continue;
+    if (mute.until > now) return { key, mute };
+    deleteMuteEntry(mutedPlayers, mute, key);
+  }
+
+  return null;
 }
 
 function minutesLeft(ms) {
@@ -127,15 +179,15 @@ function muteTargetPlayer(ctx) {
     return false;
   }
 
-  const key = muteKey(target);
-  if (!key) {
+  const keys = muteKeysForPlayer(target, targetUserData, playerAssignments);
+  if (keys.length === 0) {
     sendMsg(room, t('mute.noIdentity'), player.id, 0xFF5555, 'bold');
     return false;
   }
 
   const until = Date.now() + minutes * 60 * 1000;
   const name = (playerAssignments && playerAssignments.get(target.id)) || target.name || 'Oyuncu';
-  mutedPlayers.set(key, { until, name });
+  storeMute(mutedPlayers, target, targetUserData, playerAssignments, { until, name });
 
   if (wasCapped) {
     sendMsg(room, t('mute.durationCapped', { max: MAX_PLAYER_MUTE_MINUTES }), player.id, 0xFFCC00, 'bold');
@@ -150,7 +202,10 @@ function findMutedByName(mutedPlayers, args) {
   if (!input) return null;
 
   let found = null;
+  const seenEntries = new Set();
   for (const [key, value] of mutedPlayers.entries()) {
+    if (seenEntries.has(value)) continue;
+    seenEntries.add(value);
     const name = String((value && value.name) || '').toLowerCase();
     if (name === input || name.includes(input)) {
       if (found) return { ambiguous: true };
@@ -161,7 +216,7 @@ function findMutedByName(mutedPlayers, args) {
 }
 
 function unmuteTargetPlayer(ctx) {
-  const { room, player, args, playerAssignments, mutedPlayers } = ctx;
+  const { room, player, args, playerAssignments, mutedPlayers, loggedInPlayers } = ctx;
   const t = ctx.t || ((key, vars = {}) => {
     const messages = {
       'mute.needUnmute': '❌ Susturma kaldırma komutunu kullanamazsınız.',
@@ -189,11 +244,12 @@ function unmuteTargetPlayer(ctx) {
     return false;
   }
 
-  const key = target ? muteKey(target) : null;
+  const targetUserData = target && loggedInPlayers && loggedInPlayers.get(target.id);
   let name = target && ((playerAssignments && playerAssignments.get(target.id)) || target.name || 'Oyuncu');
 
-  if (key && mutedPlayers.has(key)) {
-    mutedPlayers.delete(key);
+  const activeMute = target ? findActiveMute(mutedPlayers, target, targetUserData, playerAssignments) : null;
+  if (activeMute) {
+    deleteMuteEntry(mutedPlayers, activeMute.mute, activeMute.key);
     sendMsg(room, t('mute.targetUnmuted', { name }), null, 0x00FF7F, 'bold');
     return false;
   }
@@ -204,7 +260,7 @@ function unmuteTargetPlayer(ctx) {
     return false;
   }
   if (mutedMatch) {
-    mutedPlayers.delete(mutedMatch.key);
+    deleteMuteEntry(mutedPlayers, mutedPlayers.get(mutedMatch.key), mutedMatch.key);
     sendMsg(room, t('mute.targetUnmuted', { name: mutedMatch.name }), null, 0x00FF7F, 'bold');
     return false;
   }
@@ -213,4 +269,11 @@ function unmuteTargetPlayer(ctx) {
   return false;
 }
 
-module.exports = { routeMuteCommand, muteKey, minutesLeft };
+module.exports = {
+  routeMuteCommand,
+  muteKey,
+  muteKeysForPlayer,
+  findActiveMute,
+  deleteMuteEntry,
+  minutesLeft,
+};

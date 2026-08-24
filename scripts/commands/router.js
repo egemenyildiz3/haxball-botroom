@@ -6,7 +6,7 @@ const { routePlayerCommand } = require('./playerCommands');
 const { routeBotCommand } = require('./botCommands');
 const { routeAutoCommand } = require('./autoCommands');
 const { routeRequestCommand } = require('./requestCommands');
-const { routeMuteCommand, muteKey, minutesLeft } = require('./muteCommands');
+const { routeMuteCommand, findActiveMute, deleteMuteEntry, minutesLeft } = require('./muteCommands');
 const { resolveCommandKey } = require('./commandAliases');
 const { hasCapability, isOwner, roleOfUser } = require('../roles');
 
@@ -133,13 +133,13 @@ function handlePlayerChat(room, player, msg, deps) {
     }
 
     if (deps.mutedPlayers && !isAdminChat) {
-      const key = muteKey(player);
-      const mute = key ? deps.mutedPlayers.get(key) : null;
-      if (mute && mute.until > Date.now()) {
+      const activeMute = findActiveMute(deps.mutedPlayers, player, userData, deps.playerAssignments);
+      const mute = activeMute && activeMute.mute;
+      if (mute) {
         sendMsg(room, t('chat.playerMuted', { minutes: minutesLeft(mute.until - Date.now()) }), player.id, 0xFFCC00, 'bold');
         return false;
       }
-      if (mute) deps.mutedPlayers.delete(key);
+      if (activeMute) deleteMuteEntry(deps.mutedPlayers, activeMute.mute, activeMute.key);
     }
 
     if (deps.chatFilter && typeof deps.chatFilter.check === 'function') {

@@ -1,6 +1,7 @@
 const { getCleanName } = require('./util');
 const { logVisitedUser, isUserBlacklisted } = require('./db');
 const { sendMsg, handleAutoLogin, handlePlayerChat } = require('./commands');
+const { findActiveMute, minutesLeft } = require('./commands/muteCommands');
 const { createRoomState } = require('./room/state');
 const { sanitizePlayer, assignPlayerInternal } = require('./room/playerIdentity');
 const { repairOutOfBoundsBall } = require('./room/spacebounceSafety');
@@ -118,6 +119,21 @@ function markOwnerAfkOnJoin(room, state, player, deps) {
 
   deps.sendMsg(room, deps.t('superadmin.autoAfk'), player.id, 0xFFCC00, 'bold');
   console.log(`${deps.getTimestamp()} [AFK] Owner girişte otomatik AFK yapıldı: ${getCleanName(player)} (ID: ${player.id})`);
+  return true;
+}
+
+function notifyActiveMuteOnJoin(room, state, player, deps) {
+  const userData = deps.loggedInPlayers.get(player.id);
+  const activeMute = findActiveMute(state.mutedPlayers, player, userData, deps.playerAssignments);
+  if (!activeMute) return false;
+
+  deps.sendMsg(
+    room,
+    deps.t('chat.playerMuted', { minutes: minutesLeft(activeMute.mute.until - Date.now()) }),
+    player.id,
+    0xFFCC00,
+    'bold'
+  );
   return true;
 }
 
@@ -259,6 +275,7 @@ async function createRoom(room, deps) {
 
     const updatedPlayer = sanitizePlayer(room, safePlayer, state);
     handleAutoLogin(room, updatedPlayer, { db, DB_FILE, loggedInPlayers, persistDatabase, t });
+    notifyActiveMuteOnJoin(room, state, sanitizePlayer(room, updatedPlayer, state), roomDeps);
     markOwnerAfkOnJoin(room, state, sanitizePlayer(room, updatedPlayer, state), roomDeps);
     await handlePlayerJoin(room, updatedPlayer, state, roomDeps);
   };
