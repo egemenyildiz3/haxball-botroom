@@ -399,11 +399,20 @@ function handlePlayerLeave(room, player, state, deps) {
   }
 
   scheduleRebalance(room, state, deps);
+  scheduleRebalanceRetry(room, state, deps);
 }
 
 function scheduleRebalance(room, state, deps) {
   return rebalanceTeams(room, state, deps)
     .catch((err) => console.warn('[AUTO] Takım dengeleme başarısız:', err.message));
+}
+
+function scheduleRebalanceRetry(room, state, deps, delayMs = 800) {
+  if (!state.autoManageEnabled) return;
+  setTimeout(() => {
+    if (!state.autoManageEnabled) return;
+    scheduleRebalance(room, state, deps);
+  }, delayMs);
 }
 
 module.exports = {

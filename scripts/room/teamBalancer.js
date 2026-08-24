@@ -26,12 +26,12 @@ function canMoveForBotBalance(player, state) {
   return player && !state.manualPlacements.has(player.id);
 }
 
-function isAutoEligiblePlayer(player, state) {
+function isAutoEligiblePlayer(player, state, isBot = () => false) {
   return !!(
     player
     && player.id !== 0
     && !state.afkPlayers.has(player.id)
-    && !(player.team === 0 && state.manualPlacements.has(player.id))
+    && (isBot(player) || !(player.team === 0 && state.manualPlacements.has(player.id)))
   );
 }
 
@@ -178,7 +178,7 @@ async function validateTeamDistribution(room, state, deps = {}) {
     if (!state.autoManageEnabled) return;
 
     const players = room.getPlayerList();
-    const eligiblePlayers = players.filter((p) => isAutoEligiblePlayer(p, state));
+    const eligiblePlayers = players.filter((p) => isAutoEligiblePlayer(p, state, isBot));
     const realPlayers = eligiblePlayers.filter((p) => !isBot(p));
     const botPlayers = eligiblePlayers.filter(isBot);
     const targetBotCount = desiredBotCount(realPlayers.length, botPlayers.length, MAX_ACTIVE_PLAYERS);
@@ -413,7 +413,7 @@ async function runRebalanceOnce(room, state, { playerJoinOrder, botManager, slee
   }
 
   const isBot = (p) => isBotPlayer(botManager, p);
-  let autoEligiblePlayers = players.filter((p) => isAutoEligiblePlayer(p, state));
+  let autoEligiblePlayers = players.filter((p) => isAutoEligiblePlayer(p, state, isBot));
   let realPlayers = autoEligiblePlayers.filter((p) => !isBot(p));
   let botPlayers = autoEligiblePlayers.filter(isBot);
   let targetBotCount = desiredBotCount(realPlayers.length, botPlayers.length);
@@ -433,7 +433,7 @@ async function runRebalanceOnce(room, state, { playerJoinOrder, botManager, slee
     await sleep(joinDelay);
     if (!state.autoManageEnabled) return;
     players = room.getPlayerList();
-    autoEligiblePlayers = players.filter((p) => isAutoEligiblePlayer(p, state));
+    autoEligiblePlayers = players.filter((p) => isAutoEligiblePlayer(p, state, isBot));
     realPlayers = autoEligiblePlayers.filter((p) => !isBot(p));
     botPlayers = autoEligiblePlayers.filter(isBot);
     targetBotCount = desiredBotCount(realPlayers.length, botPlayers.length);
@@ -536,7 +536,7 @@ function spectatorsByType(players, state, playerJoinOrder, isBot, wantBot) {
       p.id !== 0
       && p.team === 0
       && !state.afkPlayers.has(p.id)
-      && !state.manualPlacements.has(p.id)
+      && (isBot(p) || !state.manualPlacements.has(p.id))
       && isBot(p) === wantBot
     ))
     .sort((a, b) => (playerJoinOrder.get(a.id) ?? 0) - (playerJoinOrder.get(b.id) ?? 0));

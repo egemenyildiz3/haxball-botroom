@@ -220,6 +220,34 @@ async function testPromotionNoticeBeforeHumanReplacesBot() {
   assert.equal(room.players.find((p) => p.id === 3).team !== 0, true);
 }
 
+async function testManuallyBenchedBotCanStillFillMissingTeamSlot() {
+  const botIds = new Set([501, 502, 503, 504]);
+  const players = [
+    makePlayer(1, 1),
+    makePlayer(2, 1),
+    makePlayer(3, 1),
+    makePlayer(501, 1, true),
+    makePlayer(4, 2),
+    makePlayer(5, 2),
+    makePlayer(502, 2, true),
+    makePlayer(503, 0, true),
+    makePlayer(504, 0, true),
+  ];
+  const state = makeState();
+  state.manualPlacements.set(503, 0);
+  state.manualPlacements.set(504, 0);
+
+  const room = makeRoom(players);
+  await rebalanceTeams(room, state, {
+    botManager: makeBotManager(botIds),
+    playerJoinOrder: new Map(players.map((p, index) => [p.id, index + 1])),
+    sleep: async () => {},
+  });
+
+  assert.deepEqual(teamCounts(room.players), { red: 4, blue: 4, spec: 1 });
+  assert.equal([503, 504].some((id) => room.players.find((p) => p.id === id).team === 2), true);
+}
+
 function testDoesNotStartGameDuringMatchRotation() {
   const state = makeState();
   state.matchRotationPending = true;
@@ -271,6 +299,7 @@ async function run() {
   await testAvoidsFollowUpBotSwapWhenBenchingExtraPlayer();
   await testSpectatorHumanReplacesBotWhenTeamsAlreadyEven();
   await testPromotionNoticeBeforeHumanReplacesBot();
+  await testManuallyBenchedBotCanStillFillMissingTeamSlot();
   testDoesNotStartGameDuringMatchRotation();
   testExtraBotComesFromHeavyTeam();
   console.log('teamBalancer validation tests passed');
