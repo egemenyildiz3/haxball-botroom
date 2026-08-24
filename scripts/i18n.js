@@ -1,6 +1,6 @@
 const MESSAGES = {
   tr: {
-    'common.unknownCommand': '❌ Hatalı komut! Yardım için !yardım yazabilirsiniz.',
+    'common.unknownCommand': '❓ Bilinmeyen komut. Komutları görmek için !komutlar / !commands / !help yazabilirsiniz.',
     'common.dbError': '❌ Veritabanı hatası oluştu. Lütfen Kurucuya bildirin.',
     'common.multipleMatches': '⚠️ Birden fazla eşleşen oyuncu bulundu: {candidates}. Lütfen net bir ID/isim belirtin.',
     'common.playerNotFound': '❌ Oyuncu bulunamadı! Kullanım: {usage}',
@@ -183,7 +183,7 @@ const MESSAGES = {
   },
 
   en: {
-    'common.unknownCommand': '❌ Unknown command. Type !help for the command list.',
+    'common.unknownCommand': '❓ Unknown command. Type !komutlar / !commands / !help to see the command list.',
     'common.dbError': '❌ Database error. Please report this to an Owner.',
     'common.multipleMatches': '⚠️ Multiple matching players found: {candidates}. Please use a clearer ID/name.',
     'common.playerNotFound': '❌ Player not found. Usage: {usage}',

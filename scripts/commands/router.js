@@ -44,7 +44,7 @@ function isAdminLike(player, loggedInPlayers) {
 
 function fallbackT(key, vars = {}) {
   const messages = {
-    'common.unknownCommand': '❌ Hatalı komut! Yardım için !yardım yazabilirsiniz.',
+    'common.unknownCommand': '❓ Bilinmeyen komut. Komutları görmek için !komutlar / !commands / !help yazabilirsiniz.',
     'chat.muted': '🔇 Sohbet şu anda kapalı. Komutları kullanabilirsin.',
     'chat.playerMuted': `🔇 ${vars.minutes} dk daha susturuldunuz. Komutları kullanabilirsiniz.`,
     'teamRadio.onlyPlayers': '📻 Telsizi sadece sahadaki oyuncular kullanabilir.',

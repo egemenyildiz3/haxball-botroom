@@ -1,7 +1,7 @@
 const { normalizeCmd } = require('../util');
 
 const COMMAND_ALIASES = {
-  help: ['!help', '!yardim', '!yardım'],
+  help: ['!help', '!commands', '!komutlar', '!yardim', '!yardım'],
   players: ['!players', '!oyuncular', '!oyunculistesi'],
   stats: ['!s', '!stats', '!istatistik'],
   goals: ['!goals', '!goller', '!golkralı', '!golkrali'],
