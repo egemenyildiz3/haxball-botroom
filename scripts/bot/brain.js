@@ -61,7 +61,21 @@ const DEFAULTS = {
   releaseTicks: 3, // tekrar vurabilmek için tuşu bırakma süresi
   preKickReleaseMargin: 18, // topa girmeden önce fren/kick tuşunu bırakmaya başla
   preKickReleaseTicks: 1, // temas anında yeni kick kaydolması için kısa hazırlık
+  strikeContactPadding: 2.5, // topa değmeden, vuruş menzilinin içinde bekle
   postInset: 22, // direğe bu kadar içeriden nişan al
+
+  // Topun yanlış tarafındaysak düz çizgide topun içinden geçmek, topu kendi
+  // kalemize sürükler. Yakında küçük bir yanal yay çizip vuruş tarafına geç.
+  approachDetourRange: 190,
+  approachSideOffset: 68,
+  approachBehindOffset: 10,
+
+  // Hızlı gelen top için fren tuşunu daha erken bırak ve tamamen tersine
+  // çevrilemeyen şutlarda bile kendi kalemize gidiş hızını azaltan dokunuşa
+  // izin ver. Aksi halde güvenlik kuralı en kritik topa hiç vurmuyordu.
+  incomingBallSpeed: 3.5,
+  incomingReleaseTicks: 3,
+  defensiveTouchMinGain: 0.5,
 
   // Bölgeye göre vuruş kararı:
   //  - Kaleye yakınsak gerçek isabet kontrolü yap (goalMargin)
@@ -161,17 +175,6 @@ function rayHitsSegment(origin, dir, p0, p1) {
 function ballTravelDistance(speed, damping) {
   if (!(damping < 1)) return Infinity;
   return (speed * damping) / (1 - damping);
-}
-
-/**
- * Vuruştan sonra topun gideceği gerçek yön.
- * Haxball'da vuruş, topun MEVCUT hızına kickStrength kadar bir itki ekler;
- * yani hareket hâlindeki topa körü körüne kaleye doğru vurmak sapmaya yol
- * açar. Bileşke vektörü hesaplıyoruz.
- */
-function resultingBallDirection(ballVel, kickDir, kickStrength) {
-  const result = add(ballVel || { x: 0, y: 0 }, scale(kickDir, kickStrength));
-  return normalize(result);
 }
 
 /**
@@ -364,6 +367,52 @@ function solveIntercept(from, ball, cfg) {
   return {
     ticks: ticksAhead + 1 + len(sub(far, from.pos)) / 10000,
     point: far,
+  };
+}
+
+/**
+ * Hücumcunun merkezinin, topa vurmaya hazır olduğu konumu hesaplar.
+ *
+ * `solveIntercept` rol seçimi için topun yakalanabileceği anı bulur. Ancak
+ * hücumcu top merkezine değil, nişan yönünün tersinde ve vuruş mesafesinde bir
+ * noktaya ulaşmalıdır. Eski kod önce top kesişimini çözüp bu sabit mesafeyi
+ * sonradan çıkarıyordu; özellikle hızlı/yanal toplarda seçilen nokta gerçekte
+ * erişilemez kalıyor ve bot son anda topun yanından geçiyordu.
+ */
+function solveStrikeIntercept(from, ball, kickDirection, cfg) {
+  const num = (value, fallback) => (Number.isFinite(value) ? value : fallback);
+  const accel = num(cfg.accel, DEFAULTS.accel);
+  const padding = num(cfg.kickPadding, DEFAULTS.kickPadding);
+  const contactPadding = clamp(
+    num(cfg.strikeContactPadding, DEFAULTS.strikeContactPadding),
+    0,
+    Math.max(0, padding - 0.5)
+  );
+  const ticksAhead = num(cfg.predictTicks, DEFAULTS.predictTicks);
+  const damping = num(cfg.ballDamping, DEFAULTS.ballDamping);
+  const direction = normalize(kickDirection);
+  const contactDistance = (from.radius || 15) + (ball.radius || 10) + contactPadding;
+  const tolerance = Math.max(1, padding - contactPadding);
+  const vel = from.speed || { x: 0, y: 0 };
+
+  let last = null;
+  for (let t = 0; t <= ticksAhead; t++) {
+    const ballPoint = predictBall(ball, t, damping);
+    const point = sub(ballPoint, scale(direction, contactDistance));
+    const toPoint = sub(point, from.pos);
+    const distance = len(toPoint);
+    const speedTowards = dot(vel, normalize(toPoint));
+    last = { ticks: t, point, ballPoint };
+
+    if (reachableDistance(t, speedTowards, accel) + tolerance >= distance) {
+      return last;
+    }
+  }
+
+  return last || {
+    ticks: ticksAhead,
+    ballPoint: ball.pos,
+    point: sub(ball.pos, scale(direction, contactDistance)),
   };
 }
 
@@ -568,6 +617,63 @@ function botOnlyNudgeTarget(view, target, cfg, memory) {
   };
 }
 
+/**
+ * Hücumcu topun önünde kaldıysa doğrudan temas noktasına gitmek topun içinden
+ * geçmek demektir. Bu durumda aynı tarafta kalan küçük bir yanal ara hedef
+ * seçilir. Taraf bellekte tutulduğu için her tick sağ/sol kararı değişmez.
+ */
+function safeStrikeTarget(view, strikePlan, kickDirection, cfg, memory) {
+  const ballToSelf = sub(view.self.pos, view.ball.pos);
+  const distance = len(ballToSelf);
+  const direction = normalize(kickDirection);
+  const along = dot(ballToSelf, direction);
+  const sideAxis = { x: -direction.y, y: direction.x };
+  const lateral = dot(ballToSelf, sideAxis);
+  const relativeVelocity = sub(
+    view.ball.speed || { x: 0, y: 0 },
+    view.self.speed || { x: 0, y: 0 }
+  );
+  const closingSpeed = distance > 1e-6 ? dot(relativeVelocity, normalize(ballToSelf)) : 0;
+  const fastIncoming = closingSpeed >= cfg.incomingBallSpeed;
+
+  // Negatif `along` topun doğru (kendi kale) tarafında olduğumuz anlamına
+  // gelir. Yeterince arkaya geçince ara hedefi bırakıp kesin temas noktasına git.
+  const wrongSide = along > -cfg.approachBehindOffset;
+  if (!wrongSide || distance > cfg.approachDetourRange || fastIncoming) {
+    if (!wrongSide || distance > cfg.approachDetourRange * 1.35) {
+      memory.approachSide = 0;
+    }
+    return { target: strikePlan.point, detouring: false };
+  }
+
+  if (!memory.approachSide) {
+    if (Math.abs(lateral) > 8) {
+      memory.approachSide = Math.sign(lateral);
+    } else {
+      const f = fieldOf(view);
+      const plusSpace = f.maxY - view.ball.pos.y;
+      const minusSpace = view.ball.pos.y - f.minY;
+      memory.approachSide = plusSpace === minusSpace
+        ? (view.self.id % 2 === 0 ? 1 : -1)
+        : (plusSpace > minusSpace ? 1 : -1);
+    }
+  }
+
+  const f = fieldOf(view);
+  const behindDistance =
+    (view.self.radius || 15) + (view.ball.radius || 10) + cfg.approachBehindOffset;
+  const orbitCenter = sub(view.ball.pos, scale(direction, behindDistance));
+  const waypoint = add(orbitCenter, scale(sideAxis, memory.approachSide * cfg.approachSideOffset));
+
+  return {
+    target: {
+      x: clamp(waypoint.x, f.minX * 0.97, f.maxX * 0.97),
+      y: clamp(waypoint.y, f.minY * 0.9, f.maxY * 0.9),
+    },
+    detouring: true,
+  };
+}
+
 // --- Sürüş kontrolü ------------------------------------------------------
 
 /**
@@ -592,9 +698,17 @@ function navigate(self, target, cfg, memory = {}, opts = {}) {
   // bırakmak istemiyoruz: varış hızı strikeImpactSpeed olacak şekilde planla.
   // Böylece uzakta hızlanır, yaklaşırken fazlalığı frenleyip topa kontrollü
   // bir hızla girer.
-  const desiredSpeed = opts.strike
+  let desiredSpeed = opts.strike
     ? Math.min(cfg.strikeSpeed, cfg.strikeImpactSpeed + shedable)
     : Math.min(cfg.cruiseSpeed, shedable);
+
+  // Hareketli topun temas noktası kısa süre içinde önümüzden geçecekse salt
+  // "hedefte kontrollü dur" hızı yetişmez. Kesişim süresinden gereken asgari
+  // ortalama hızı çıkar; üst sınır yine strikeSpeed, yani bot kontrolden çıkmaz.
+  if (opts.strike && Number.isFinite(opts.arrivalTicks) && opts.arrivalTicks > 0) {
+    const interceptSpeed = dist / Math.max(1, opts.arrivalTicks) + cfg.accel * opts.arrivalTicks * 0.25;
+    desiredSpeed = Math.max(desiredSpeed, Math.min(cfg.strikeSpeed, interceptSpeed));
+  }
 
   const desiredVel = scale(dir, desiredSpeed);
   const deltaV = sub(desiredVel, vel);
@@ -656,7 +770,6 @@ function decide(view, memory, config) {
 
   const assigned = assignRoles(view, roleCfg);
   const role = view.forceBall ? 'attacker' : assigned.role;
-  const intercept = assigned.intercept;
   const slot = assigned.slot;
 
   const ownCenter = mid(view.ownGoal.p0, view.ownGoal.p1);
@@ -674,15 +787,35 @@ function decide(view, memory, config) {
 
   // Topun mevcut hızını hesaba katarak hangi yönden vurmamız gerektiğini bul.
   // Konumlanmayı da buna göre yapıyoruz ki hareketli topu doğru yere gönderelim.
-  const ballToAim = aimKickDirection(toAim, view.ball.speed, activeCfg.kickStrength);
+  // Çok hızlı biçimde doğrudan üstümüze gelen topta ise kusursuz nişan aramak
+  // son anda yana kaçmaya yol açar. Önce topun geliş hattını kapat; temas
+  // sağlandıktan sonra sonraki ticklerde yeniden kaleye/kaçış noktasına nişanla.
+  const currentToBall = sub(view.ball.pos, view.self.pos);
+  const currentBallDistance = len(currentToBall);
+  const currentRelativeVelocity = sub(
+    view.ball.speed || { x: 0, y: 0 },
+    view.self.speed || { x: 0, y: 0 }
+  );
+  const incomingClosingSpeed = currentBallDistance > 1e-6
+    ? dot(currentRelativeVelocity, normalize(scale(currentToBall, -1)))
+    : 0;
+  const receivingFastBall = incomingClosingSpeed >= activeCfg.incomingBallSpeed &&
+    currentBallDistance <= activeCfg.approachDetourRange * 2;
+  const ballToAim = receivingFastBall
+    ? normalize(currentToBall)
+    : aimKickDirection(toAim, view.ball.speed, activeCfg.kickStrength);
 
   let target;
+  let strikePlan = null;
+  let approach = { detouring: false };
   if (view.forceBall) {
     target = view.ball.pos;
   } else if (role === 'attacker') {
-    // Topun arkasına geç: vuruş yönü hedefe baksın
-    const standOff = (view.self.radius || 15) + (view.ball.radius || 10);
-    target = sub(intercept.point, scale(ballToAim, standOff * 0.95));
+    // Topun gelecekteki konumunu ve oyuncunun gerçek temas merkezini birlikte
+    // çöz. Sonra yanlış taraftaysak topun içinden geçmeden yanal yay çiz.
+    strikePlan = solveStrikeIntercept(view.self, view.ball, ballToAim, activeCfg);
+    approach = safeStrikeTarget(view, strikePlan, ballToAim, activeCfg, memory);
+    target = approach.target;
   } else if (role === 'defender') {
     target = defenderTarget(view, activeCfg);
   } else {
@@ -692,7 +825,10 @@ function decide(view, memory, config) {
   target = view.forceBall ? target : botOnlyNudgeTarget(view, target, activeCfg, memory);
 
   // Hücumcuysak topa hızla dalıyoruz; destekçiysek pozisyonda durmak istiyoruz.
-  const nav = navigate(view.self, target, activeCfg, memory, { strike: role === 'attacker' });
+  const nav = navigate(view.self, target, activeCfg, memory, {
+    strike: role === 'attacker',
+    arrivalTicks: strikePlan && !approach.detouring ? strikePlan.ticks : undefined,
+  });
 
   // --- Vuruş kararı ---
   const toBall = sub(view.ball.pos, view.self.pos);
@@ -702,7 +838,9 @@ function decide(view, memory, config) {
 
   // Şimdi vurursak top hangi yöne gider? (vuruş yönü + topun mevcut hızı)
   const kickDir = normalize(toBall);
-  const shotDir = resultingBallDirection(view.ball.speed, kickDir, activeCfg.kickStrength);
+  const ballVelocity = view.ball.speed || { x: 0, y: 0 };
+  const resultVelocity = add(ballVelocity, scale(kickDir, activeCfg.kickStrength));
+  const shotDir = normalize(resultVelocity);
   const forwardness = dot(shotDir, upfield); // gerçek gidiş yönü ileriye mi
 
   // Şut bölgesi: top kaleye yakın OLMAKLA kalmayıp, vuruşun kaleye
@@ -710,7 +848,7 @@ function decide(view, memory, config) {
   // sönümlendiği için şut ~495 birimde ölüyor; sabit bir "şut menzili"
   // kullanınca bot ulaşamayacağı mesafeden isabet arayıp hiç vurmuyordu.
   const distBallToOppGoal = len(sub(oppCenter, view.ball.pos));
-  const speedTowardGoal = Math.max(0, dot(view.ball.speed || { x: 0, y: 0 }, toAim));
+  const speedTowardGoal = Math.max(0, dot(ballVelocity, toAim));
   const bestReach = ballTravelDistance(activeCfg.kickStrength + speedTowardGoal, ballDamping);
   const goalReachable = bestReach >= distBallToOppGoal * 1.1;
 
@@ -718,6 +856,17 @@ function decide(view, memory, config) {
 
   // Kendi kalemize doğru vuruş her koşulda yasak.
   const safeDirection = forwardness > activeCfg.ownGoalGuard;
+
+  // Hızlı top bazen kickStrength'ten güçlü biçimde kendi kalemize geliyor.
+  // Bileşke hâlâ geriye baktığı için eski güvenlik kuralı hiç vurmuyordu.
+  // Vuruş ileri bileşeni anlamlı ölçüde iyileştiriyorsa bu bir şut değil,
+  // kurtarıcı bloktur; topu tek dokunuşta çeviremese de yavaşlatmasına izin ver.
+  const beforeForwardSpeed = dot(ballVelocity, upfield);
+  const afterForwardSpeed = dot(resultVelocity, upfield);
+  const defensiveTouch = beforeForwardSpeed <= -activeCfg.incomingBallSpeed &&
+    dot(kickDir, upfield) > 0.15 &&
+    afterForwardSpeed >= beforeForwardSpeed + activeCfg.defensiveTouchMinGain;
+  const safeTouch = safeDirection || defensiveTouch;
 
   // Şut bölgesinde: top gerçekten kale ağzına gidiyor mu VE oraya ulaşıyor mu?
   // (sabit açı konisi yerine ışın-kale kesişimi; boş kale ıskalamasın)
@@ -728,22 +877,31 @@ function decide(view, memory, config) {
 
     if (hit && hit.s >= margin && hit.s <= 1 - margin) {
       // Vuruş sonrası hız, topu kale çizgisine kadar taşıyabiliyor mu?
-      const resultSpeed = len(add(view.ball.speed || { x: 0, y: 0 }, scale(kickDir, activeCfg.kickStrength)));
+      const resultSpeed = len(resultVelocity);
       const reach = ballTravelDistance(resultSpeed, ballDamping);
       onTarget = reach >= hit.distance * 1.1; // %10 emniyet payı
     }
   }
 
   // Kaleye yakınsak isabet şartı ara; uzaktaysak topa vur ve ileri gönder.
-  const forceKick = view.forceBall && inKickRange && safeDirection;
+  const forceKick = view.forceBall && inKickRange && safeTouch;
 
-  const wantKick = forceKick || (inKickRange && safeDirection && (
+  const wantKick = forceKick || (inKickRange && (defensiveTouch || (safeDirection && (
     inShootingRange ? onTarget : forwardness >= activeCfg.clearConeCos
-  ));
+  ))));
 
-  const nearKickRange = distToBall <= kickRange + activeCfg.preKickReleaseMargin;
-  const likelyKickSoon = role === 'attacker' && nearKickRange && safeDirection && (
-    inShootingRange ? true : forwardness >= activeCfg.clearConeCos
+  const relativeVelocity = sub(ballVelocity, view.self.speed || { x: 0, y: 0 });
+  const closingSpeed = distToBall > 1e-6
+    ? Math.max(0, dot(relativeVelocity, normalize(sub(view.self.pos, view.ball.pos))))
+    : 0;
+  const dynamicReleaseMargin = Math.max(
+    activeCfg.preKickReleaseMargin,
+    closingSpeed * activeCfg.incomingReleaseTicks
+  );
+  const nearKickRange = distToBall <= kickRange + dynamicReleaseMargin;
+  const interceptImminent = strikePlan && strikePlan.ticks <= activeCfg.incomingReleaseTicks;
+  const likelyKickSoon = role === 'attacker' && (nearKickRange || interceptImminent) && safeTouch && (
+    defensiveTouch || inShootingRange || forwardness >= activeCfg.clearConeCos
   );
 
   if (!inKickRange && likelyKickSoon && (nav.brake || memory.lastKeyDown)) {
@@ -783,6 +941,9 @@ function decide(view, memory, config) {
   // bu yüzden menzil içinde frene izin vermiyoruz.
   const braking = nav.brake && !inKickRange && !releasingForKick;
   const keyDown = shot || braking;
+  // navigate() fren niyetini belleğe yazar; ancak kick hazırlığı bunu gerçekten
+  // tuşa göndermediyse sonraki tick hayali bir "fren hâlâ basılı" durumu görmesin.
+  memory.braking = braking;
   memory.lastKeyDown = keyDown;
 
   return {
@@ -802,6 +963,7 @@ module.exports = {
   DEFAULTS,
   predictBall,
   solveIntercept,
+  solveStrikeIntercept,
   brakingDistance,
   reachableDistance,
   navigate,

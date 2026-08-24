@@ -1,0 +1,175 @@
+'use strict';
+
+const assert = require('node:assert/strict');
+const test = require('node:test');
+
+const {
+  DEFAULTS,
+  decide,
+  solveIntercept,
+  solveStrikeIntercept,
+} = require('./brain');
+
+function makeView(self, ball, flipped = false) {
+  return {
+    self: {
+      id: 500,
+      pos: { ...self.pos },
+      speed: { ...(self.speed || { x: 0, y: 0 }) },
+      radius: 15,
+    },
+    ball: {
+      pos: { ...ball.pos },
+      speed: { ...(ball.speed || { x: 0, y: 0 }) },
+      radius: 10,
+      damping: 0.99,
+    },
+    teammates: [],
+    opponents: [],
+    ownGoal: flipped
+      ? { p0: { x: 1200, y: -100 }, p1: { x: 1200, y: 100 } }
+      : { p0: { x: -1200, y: -100 }, p1: { x: -1200, y: 100 } },
+    oppGoal: flipped
+      ? { p0: { x: -1200, y: -100 }, p1: { x: -1200, y: 100 } }
+      : { p0: { x: 1200, y: -100 }, p1: { x: 1200, y: 100 } },
+    stadium: { width: 2400, height: 1500 },
+    field: { minX: -1300, maxX: 1300, minY: -750, maxY: 750 },
+    botOnly: false,
+  };
+}
+
+test('hareketli topun kesişimi oyuncunun gerçek temas merkezini içerir', () => {
+  const self = { pos: { x: -200, y: 20 }, speed: { x: 0, y: 0 }, radius: 15 };
+  const ball = { pos: { x: 100, y: 0 }, speed: { x: -8, y: 0 }, radius: 10 };
+
+  const centerOnly = solveIntercept(self, ball, DEFAULTS);
+  const strike = solveStrikeIntercept(self, ball, { x: 1, y: 0 }, DEFAULTS);
+  const contactDistance = Math.hypot(
+    strike.ballPoint.x - strike.point.x,
+    strike.ballPoint.y - strike.point.y
+  );
+
+  assert.equal(centerOnly.ticks, 39);
+  assert.equal(strike.ticks, 40);
+  assert.equal(contactDistance, 27.5);
+  assert.ok(strike.point.x < strike.ballPoint.x, 'oyuncu topun vuruş tarafında kalmalı');
+});
+
+test('topun önünde kalan hücumcu kendi kaleye doğru topun içinden geçmez', () => {
+  const view = makeView({ pos: { x: 70, y: 0 } }, { pos: { x: 0, y: 0 } });
+  const memory = {};
+  const move = decide(view, memory, {});
+
+  assert.equal(move.role, 'attacker');
+  assert.equal(move.dirX, -1);
+  assert.notEqual(move.dirY, 0, 'doğrudan topa değil, yanal ara hedefe gitmeli');
+  assert.notEqual(memory.approachSide, 0, 'seçilen dolaşma tarafı tickler arasında korunmalı');
+});
+
+test('güçlü biçimde kendi kaleye gelen topu tamamen çeviremese de bloklar', () => {
+  const view = makeView(
+    { pos: { x: -627, y: 0 } },
+    { pos: { x: -600, y: 0 }, speed: { x: -8, y: 0 } }
+  );
+  const move = decide(view, {}, {});
+
+  assert.equal(move.kick, true);
+  assert.equal(move.dirY, 0, 'hızlı top karşısında kusursuz nişan için yana kaçmamalı');
+});
+
+test('hızlı top yaklaşırken fren tuşunu sabit mesafeden daha erken bırakır', () => {
+  const view = makeView(
+    { pos: { x: -662, y: 0 } },
+    { pos: { x: -600, y: 0 }, speed: { x: -12, y: 0 } }
+  );
+  const memory = { lastKeyDown: true, braking: true, brakeHold: 5 };
+  const move = decide(view, memory, {});
+
+  assert.equal(move.kick, false);
+  assert.equal(move.braking, false);
+  assert.equal(memory.lastKeyDown, false, 'temas tickinde yeni kick kaydolabilmeli');
+});
+
+test('çapraz ve hızlı gelen topu kapalı döngüde kaçırmadan karşılar', () => {
+  const view = makeView(
+    { pos: { x: 0, y: 0 } },
+    { pos: { x: 160, y: 35 }, speed: { x: -7, y: -0.8 } }
+  );
+  const memory = {};
+  let kickTick = null;
+  let kickDistance = Infinity;
+
+  for (let tick = 0; tick < 80; tick++) {
+    const move = decide(view, memory, {});
+    const dx = view.ball.pos.x - view.self.pos.x;
+    const dy = view.ball.pos.y - view.self.pos.y;
+    const distance = Math.hypot(dx, dy);
+
+    if (move.kick && distance <= 29) {
+      kickTick = tick;
+      kickDistance = distance;
+      break;
+    }
+
+    const damping = move.kick ? DEFAULTS.kickingDamping : DEFAULTS.damping;
+    const accel = move.kick ? DEFAULTS.kickAccel : DEFAULTS.accel;
+    view.self.speed.x = (view.self.speed.x + accel * move.dirX) * damping;
+    view.self.speed.y = (view.self.speed.y + accel * move.dirY) * damping;
+    view.self.pos.x += view.self.speed.x;
+    view.self.pos.y += view.self.speed.y;
+
+    view.ball.speed.x *= view.ball.damping;
+    view.ball.speed.y *= view.ball.damping;
+    view.ball.pos.x += view.ball.speed.x;
+    view.ball.pos.y += view.ball.speed.y;
+  }
+
+  assert.notEqual(kickTick, null, 'bot hızlı top için vuruş penceresi bulmalı');
+  assert.ok(kickTick <= 30, `vuruş çok geç kaldı: ${kickTick}`);
+  assert.ok(kickDistance <= 29, `vuruş menzil dışında kaldı: ${kickDistance}`);
+});
+
+test('yeni temas mesafesi yakın şut isabetini bozmaz', () => {
+  for (const ballY of [-80, -40, 0, 40, 80]) {
+    const view = makeView(
+      { pos: { x: 810, y: ballY + (ballY >= 0 ? 20 : -20) } },
+      { pos: { x: 950, y: ballY } }
+    );
+    const memory = {};
+    let previousX = view.ball.pos.x;
+    let goalY = null;
+
+    for (let tick = 0; tick < 700; tick++) {
+      const move = decide(view, memory, {});
+      const dx = view.ball.pos.x - view.self.pos.x;
+      const dy = view.ball.pos.y - view.self.pos.y;
+      const distance = Math.hypot(dx, dy);
+
+      if (move.kick && distance <= 29) {
+        view.ball.speed.x += (dx / distance) * DEFAULTS.kickStrength;
+        view.ball.speed.y += (dy / distance) * DEFAULTS.kickStrength;
+      }
+
+      const damping = move.kick ? DEFAULTS.kickingDamping : DEFAULTS.damping;
+      const accel = move.kick ? DEFAULTS.kickAccel : DEFAULTS.accel;
+      view.self.speed.x = (view.self.speed.x + accel * move.dirX) * damping;
+      view.self.speed.y = (view.self.speed.y + accel * move.dirY) * damping;
+      view.self.pos.x += view.self.speed.x;
+      view.self.pos.y += view.self.speed.y;
+
+      view.ball.speed.x *= view.ball.damping;
+      view.ball.speed.y *= view.ball.damping;
+      view.ball.pos.x += view.ball.speed.x;
+      view.ball.pos.y += view.ball.speed.y;
+
+      if (previousX < 1200 && view.ball.pos.x >= 1200) {
+        goalY = view.ball.pos.y;
+        break;
+      }
+      previousX = view.ball.pos.x;
+    }
+
+    assert.notEqual(goalY, null, `y=${ballY}: top kale çizgisine ulaşmadı`);
+    assert.ok(Math.abs(goalY) <= 100, `y=${ballY}: şut kale ağzını ıskaladı (${goalY})`);
+  }
+});

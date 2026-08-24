@@ -192,6 +192,32 @@ Measured over a 600-unit approach:
 them. Strike mode reaches the ball in 205 ticks against a **theoretical floor of
 207** — approach speed is now physics-limited, not logic-limited.
 
+### 4.4 Moving-ball contact planning
+
+Role selection still asks "who reaches the ball first?", but the attacker now
+solves a second, more exact interception: **where must the player's centre be**
+to meet the predicted ball from the intended kick direction? The old code found
+the ball centre first and subtracted the contact offset afterwards. On fast or
+diagonal balls that shifted an otherwise reachable interception out of reach,
+which caused the last-second turn-and-miss behaviour.
+
+The target is kept just outside physical collision distance but inside kick
+range (`strikeContactPadding`). This gives the fresh kick press a window before
+the player starts accidentally carrying the ball.
+
+### 4.5 Wrong-side and fast-ball handling
+
+When the attacker is in front of the ball, a straight path to the desired
+contact point crosses the ball and pushes it toward its own goal. Inside
+`approachDetourRange`, the bot now chooses one lateral side, remembers it, and
+goes around the ball before completing the strike.
+
+For a fast ball coming directly at the player, precision aiming is temporarily
+deprioritised: the bot closes the incoming line first, releases the shared
+brake/kick key based on time-to-contact, and blocks. If the incoming momentum is
+too strong to reverse in one kick, a touch is allowed when it still materially
+reduces the ball's speed toward the bot's own goal.
+
 ---
 
 ## 5. Shooting
@@ -332,6 +358,9 @@ All in `scripts/bot/brain.js` → `DEFAULTS`.
 | `defenderFar` | 0.7 | Push the defender further up when attacking (max 0.8) |
 | `supportSpread` | 220 | Widen the gap between supporting bots |
 | `cruiseSpeed` | 10 | Move faster when positioning |
+| `strikeContactPadding` | 2.5 | Wait slightly closer to the ball (must stay below `kickPadding`) |
+| `approachSideOffset` | 68 | Take a wider route around the ball when caught on the wrong side |
+| `incomingBallSpeed` | 3.5 | Treat fewer balls as high-speed receptions |
 
 Env overrides: `HAXBALL_BOT_NAME`, `HAXBALL_BOT_MAX`, `HAXBALL_BOT_AVATAR`,
 `HAXBALL_BOT_AUTOSTART`, `HAXBALL_BOT_LEARNING`, `HAXBALL_BOT_LEARNING_FILE`.
@@ -345,7 +374,8 @@ live room:
 
 - **Closed-loop physics simulation** — steps the *actual* map physics
   (`v = (v + a·dir)·d`) and asserts on outcomes: does it arrive and stop, does
-  the shot enter the goal, does the brake chatter.
+  the shot enter the goal, does the brake chatter, and does it meet a fast
+  diagonal ball inside the kick window.
 - **Mock room integration** — a fake room object exercises `createRoom`,
   join/leave handling, the `!bot` and `!oto` commands, and the admin-reset path.
 - **Invariant tests** — 120 randomised squads confirming role assignment never

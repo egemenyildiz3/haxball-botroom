@@ -33,7 +33,7 @@
   },
   "adminRequests": {
     "cooldownMs": 900000,
-    "announceMs": 300000
+    "announceMs": 600000
   },
   "afk": {
     "cooldownMs": 600000,
