@@ -1,1 +1,205 @@
-{"name":"Spacebouncebrakes from HaxMaps","width":900,"height":540,"spawnDistance":350,"bg":{"type":"hockey","width":550,"height":240,"kickOffRadius":80,"cornerRadius":0},"vertexes":[{"x":-550,"y":240,"trait":"ballArea"},{"x":-550,"y":80,"trait":"ballArea"},{"x":-550,"y":-80,"trait":"ballArea"},{"x":-550,"y":-240,"trait":"ballArea"},{"x":550,"y":240,"trait":"ballArea"},{"x":550,"y":80,"trait":"ballArea"},{"x":550,"y":-80,"trait":"ballArea"},{"x":550,"y":-240,"trait":"ballArea"},{"x":0,"y":540,"trait":"kickOffBarrier"},{"x":0,"y":80,"trait":"kickOffBarrier"},{"x":0,"y":-80,"trait":"kickOffBarrier"},{"x":0,"y":-540,"trait":"kickOffBarrier"},{"x":-560,"y":-80,"trait":"goalNet"},{"x":-580,"y":-60,"trait":"goalNet"},{"x":-580,"y":60,"trait":"goalNet"},{"x":-560,"y":80,"trait":"goalNet"},{"x":560,"y":-80,"trait":"goalNet"},{"x":580,"y":-60,"trait":"goalNet"},{"x":580,"y":60,"trait":"goalNet"},{"x":560,"y":80,"trait":"goalNet"}],"segments":[{"v0":0,"v1":1,"trait":"ballArea"},{"v0":2,"v1":3,"trait":"ballArea"},{"v0":4,"v1":5,"trait":"ballArea"},{"v0":6,"v1":7,"trait":"ballArea"},{"v0":12,"v1":13,"trait":"goalNet","curve":-90},{"v0":13,"v1":14,"trait":"goalNet"},{"v0":14,"v1":15,"trait":"goalNet","curve":-90},{"v0":16,"v1":17,"trait":"goalNet","curve":90},{"v0":17,"v1":18,"trait":"goalNet"},{"v0":18,"v1":19,"trait":"goalNet","curve":90},{"v0":8,"v1":9,"trait":"kickOffBarrier"},{"v0":9,"v1":10,"trait":"kickOffBarrier","curve":180,"cGroup":["blueKO"]},{"v0":9,"v1":10,"trait":"kickOffBarrier","curve":-180,"cGroup":["redKO"]},{"v0":10,"v1":11,"trait":"kickOffBarrier"}],"goals":[{"p0":[-550,80],"p1":[-550,-80],"team":"red"},{"p0":[550,80],"p1":[550,-80],"team":"blue"}],"discs":[{"pos":[-550,80],"trait":"goalPost","color":"FFCCCC"},{"pos":[-550,-80],"trait":"goalPost","color":"FFCCCC"},{"pos":[550,80],"trait":"goalPost","color":"CCCCFF"},{"pos":[550,-80],"trait":"goalPost","color":"CCCCFF"}],"planes":[{"normal":[0,1],"dist":-240,"trait":"ballArea"},{"normal":[0,-1],"dist":-240,"trait":"ballArea"},{"normal":[0,1],"dist":-540,"bCoef":0.1},{"normal":[0,-1],"dist":-540,"bCoef":0.1},{"normal":[1,0],"dist":-900,"bCoef":0.1},{"normal":[-1,0],"dist":-900,"bCoef":0.1}],"traits":{"cornerflag":{"radius":3,"invMass":0,"bCoef":0.5,"color":"FFFF00","cGroup":[""]},"ballArea":{"vis":false,"bCoef":1,"cMask":["ball"]},"goalPost":{"radius":8,"invMass":0,"bCoef":0.5},"goalNet":{"vis":true,"bCoef":0.1,"cMask":["ball"]},"kickOffBarrier":{"vis":false,"bCoef":0.1,"cGroup":["redKO","blueKO"],"cMask":["red","blue"]}},"playerPhysics":{"bCoef":1.5,"invMass":0.5,"damping":0.9995,"acceleration":0.025,"kickingAcceleration":0.0175,"kickingDamping":0.99,"kickStrength":5},"ballPhysics":{"radius":10,"bCoef":0.5,"invMass":1,"damping":0.99,"color":"FFFFFF","cMask":["all"],"cGroup":["ball"]}}
+{
+
+	"name" : "Spacebounce V3",
+
+	"width" : 900,
+
+	"height" : 540,
+
+	"spawnDistance" : 350,
+
+	"bg" : { "type" : "hockey", "width" : 550, "height" : 240, "kickOffRadius" : 80, "cornerRadius" : 0 },
+
+	"vertexes" : [
+		/* 0 */ { "x" : -550, "y" : 240, "trait" : "ballArea", "color" : "7c8a99" },
+		/* 1 */ { "x" : -550, "y" : 80, "trait" : "ballArea", "color" : "7c8a99" },
+		/* 2 */ { "x" : -550, "y" : -80, "trait" : "ballArea", "color" : "7c8a99" },
+		/* 3 */ { "x" : -550, "y" : -240, "trait" : "ballArea", "color" : "7c8a99" },
+		/* 4 */ { "x" : 550, "y" : 240, "trait" : "ballArea", "color" : "7c8a99" },
+		/* 5 */ { "x" : 550, "y" : 80, "trait" : "ballArea", "color" : "7c8a99" },
+		/* 6 */ { "x" : 550, "y" : -80, "trait" : "ballArea", "color" : "7c8a99" },
+		/* 7 */ { "x" : 550, "y" : -240, "trait" : "ballArea", "color" : "7c8a99" },
+
+		/* 8 */ { "x" : 0, "y" : 540, "trait" : "kickOffBarrier", "color" : "7c8a99" },
+		/* 9 */ { "x" : 0, "y" : 80, "trait" : "kickOffBarrier", "color" : "7c8a99" },
+		/* 10 */ { "x" : 0, "y" : -80, "trait" : "kickOffBarrier", "color" : "7c8a99" },
+		/* 11 */ { "x" : 0, "y" : -540, "trait" : "kickOffBarrier", "color" : "7c8a99" },
+
+		/* 12 */ { "x" : -560, "y" : -80, "trait" : "goalNet", "color" : "280957" },
+		/* 13 */ { "x" : -580, "y" : -60, "trait" : "goalNet", "color" : "280957" },
+		/* 14 */ { "x" : -580, "y" : 60, "trait" : "goalNet", "color" : "280957" },
+		/* 15 */ { "x" : -560, "y" : 80, "trait" : "goalNet", "color" : "280957" },
+		/* 16 */ { "x" : 560, "y" : -80, "trait" : "goalNet", "color" : "280957" },
+		/* 17 */ { "x" : 580, "y" : -60, "trait" : "goalNet", "color" : "280957" },
+		/* 18 */ { "x" : 580, "y" : 60, "trait" : "goalNet", "color" : "280957" },
+		/* 19 */ { "x" : 560, "y" : 80, "trait" : "goalNet", "color" : "280957" },
+
+		/* 20 */ { "x" : -54, "y" : -53.49676342729104, "trait" : "teslaLogo", "color" : "280957" },
+		/* 21 */ { "x" : 54, "y" : -53.49676342729104, "trait" : "teslaLogo", "color" : "280957" },
+		/* 22 */ { "x" : -54, "y" : -53.49676342729104, "trait" : "teslaLogo", "color" : "280957" },
+		/* 23 */ { "x" : -54, "y" : -31.496763427291043, "trait" : "teslaLogo", "color" : "280957" },
+		/* 24 */ { "x" : -54, "y" : -31.496763427291043, "trait" : "teslaLogo", "color" : "280957" },
+		/* 25 */ { "x" : -18, "y" : -45.49676342729104, "trait" : "teslaLogo", "color" : "280957" },
+		/* 26 */ { "x" : 18, "y" : -45.49676342729104, "trait" : "teslaLogo", "color" : "280957" },
+		/* 27 */ { "x" : 54, "y" : -31.496763427291043, "trait" : "teslaLogo", "color" : "280957" },
+		/* 28 */ { "x" : 54, "y" : -31.496763427291043, "trait" : "teslaLogo", "color" : "280957" },
+		/* 29 */ { "x" : 54, "y" : -53.49676342729104, "trait" : "teslaLogo", "color" : "280957" },
+		/* 30 */ { "x" : -18, "y" : -45.49676342729104, "trait" : "teslaLogo", "color" : "280957" },
+		/* 31 */ { "x" : -18, "y" : 46.50323657270896, "trait" : "teslaLogo", "color" : "280957" },
+		/* 32 */ { "x" : 18, "y" : -45.49676342729104, "trait" : "teslaLogo", "color" : "280957" },
+		/* 33 */ { "x" : 18, "y" : 46.50323657270896, "trait" : "teslaLogo", "color" : "280957" },
+		/* 34 */ { "x" : -18, "y" : 46.50323657270896, "trait" : "teslaLogo", "color" : "280957" },
+		/* 35 */ { "x" : -34, "y" : 66.50323657270896, "trait" : "teslaLogo", "color" : "280957" },
+		/* 36 */ { "x" : -34, "y" : 66.50323657270896, "trait" : "teslaLogo", "color" : "280957" },
+		/* 37 */ { "x" : 34, "y" : 66.50323657270896, "trait" : "teslaLogo", "color" : "280957" },
+		/* 38 */ { "x" : 34, "y" : 66.50323657270896, "trait" : "teslaLogo", "color" : "280957" },
+		/* 39 */ { "x" : 18, "y" : 46.50323657270896, "trait" : "teslaLogo", "color" : "280957" },
+
+		/* 40 */ { "x" : 0, "y" : -43.49676342729104, "trait" : "teslaLogoAccent", "color" : "280957" },
+		/* 41 */ { "x" : 0, "y" : 42.50323657270896, "trait" : "teslaLogoAccent", "color" : "280957" },
+
+		/* 42 */ { "x" : -550, "y" : -240, "trait" : "cosmeticFieldLine", "color" : "7991ab" },
+		/* 43 */ { "x" : 550, "y" : -240, "trait" : "cosmeticFieldLine", "color" : "7991ab" },
+		/* 44 */ { "x" : 550, "y" : -240, "trait" : "cosmeticFieldLine", "color" : "7991ab" },
+		/* 45 */ { "x" : 550, "y" : 240, "trait" : "cosmeticFieldLine", "color" : "7991ab" },
+		/* 46 */ { "x" : 550, "y" : 240, "trait" : "cosmeticFieldLine", "color" : "7991ab" },
+		/* 47 */ { "x" : -550, "y" : 240, "trait" : "cosmeticFieldLine", "color" : "7991ab" },
+		/* 48 */ { "x" : -550, "y" : 240, "trait" : "cosmeticFieldLine", "color" : "7991ab" },
+		/* 49 */ { "x" : -550, "y" : -240, "trait" : "cosmeticFieldLine", "color" : "7991ab" },
+		/* 50 */ { "x" : 0, "y" : -240, "trait" : "cosmeticFieldLine", "color" : "7991ab" },
+		/* 51 */ { "x" : 0, "y" : -80.76000000000005, "trait" : "cosmeticFieldLine", "color" : "7991ab" },
+		/* 52 */ { "x" : 0, "y" : -80, "trait" : "cosmeticFieldLine", "color" : "7991ab" },
+		/* 53 */ { "x" : 0, "y" : 80, "trait" : "cosmeticFieldLine", "color" : "7991ab" },
+
+		/* 54 */ { "x" : 18, "y" : -45.49676342729104, "trait" : "teslaLogo", "color" : "280957" },
+		/* 55 */ { "x" : 18, "y" : 46.50323657270896, "trait" : "teslaLogo", "color" : "280957" },
+		/* 56 */ { "x" : -0.008962816732520196, "y" : -47.24203266413796, "trait" : "teslaLogo", "color" : "280957" },
+		/* 57 */ { "x" : -0.09734911132840651, "y" : 59.14749391073801, "trait" : "teslaLogo", "color" : "280957" },
+
+		/* 58 */ { "x" : -3.552713678800501e-15, "y" : 80.14978990537617, "trait" : "cosmeticFieldLine", "color" : "7991ab" },
+		/* 59 */ { "x" : 0, "y" : 240.00000000000003, "trait" : "cosmeticFieldLine", "color" : "7991ab" }
+
+	],
+
+	"segments" : [
+		{ "v0" : 0, "v1" : 1, "color" : "7c8a99", "trait" : "ballArea" },
+		{ "v0" : 2, "v1" : 3, "color" : "7c8a99", "trait" : "ballArea" },
+		{ "v0" : 4, "v1" : 5, "color" : "7c8a99", "trait" : "ballArea" },
+		{ "v0" : 6, "v1" : 7, "color" : "7c8a99", "trait" : "ballArea" },
+
+		{ "v0" : 12, "v1" : 13, "curve" : -90, "color" : "280957", "trait" : "goalNet" },
+		{ "v0" : 13, "v1" : 14, "color" : "280957", "trait" : "goalNet" },
+		{ "v0" : 14, "v1" : 15, "curve" : -90, "color" : "280957", "trait" : "goalNet" },
+		{ "v0" : 16, "v1" : 17, "curve" : 90, "color" : "280957", "trait" : "goalNet" },
+		{ "v0" : 17, "v1" : 18, "color" : "280957", "trait" : "goalNet" },
+		{ "v0" : 18, "v1" : 19, "curve" : 90, "color" : "280957", "trait" : "goalNet" },
+
+		{ "v0" : 8, "v1" : 9, "color" : "7c8a99", "trait" : "kickOffBarrier" },
+		{ "v0" : 9, "v1" : 10, "curve" : 180, "color" : "7c8a99", "cGroup" : ["blueKO" ], "trait" : "kickOffBarrier" },
+		{ "v0" : 9, "v1" : 10, "curve" : -180, "color" : "7c8a99", "cGroup" : ["redKO" ], "trait" : "kickOffBarrier" },
+		{ "v0" : 10, "v1" : 11, "color" : "7c8a99", "trait" : "kickOffBarrier" },
+
+		{ "v0" : 20, "v1" : 21, "color" : "280957", "trait" : "teslaLogo" },
+		{ "v0" : 22, "v1" : 23, "color" : "280957", "trait" : "teslaLogo" },
+		{ "v0" : 24, "v1" : 25, "color" : "280957", "trait" : "teslaLogo" },
+		{ "v0" : 26, "v1" : 27, "color" : "280957", "trait" : "teslaLogo" },
+		{ "v0" : 28, "v1" : 29, "color" : "280957", "trait" : "teslaLogo" },
+		{ "v0" : 30, "v1" : 31, "color" : "280957", "trait" : "teslaLogo" },
+		{ "v0" : 32, "v1" : 33, "color" : "280957", "trait" : "teslaLogo" },
+		{ "v0" : 34, "v1" : 35, "color" : "280957", "trait" : "teslaLogo" },
+		{ "v0" : 36, "v1" : 37, "color" : "280957", "trait" : "teslaLogo" },
+		{ "v0" : 38, "v1" : 39, "color" : "280957", "trait" : "teslaLogo" },
+
+		{ "v0" : 40, "v1" : 41, "color" : "280957", "trait" : "teslaLogoAccent" },
+
+		{ "v0" : 42, "v1" : 43, "color" : "7991ab", "cMask" : [ ], "cGroup" : [ ], "trait" : "cosmeticFieldLine" },
+		{ "v0" : 44, "v1" : 45, "color" : "7991ab", "cMask" : [ ], "cGroup" : [ ], "trait" : "cosmeticFieldLine" },
+		{ "v0" : 46, "v1" : 47, "color" : "7991ab", "cMask" : [ ], "cGroup" : [ ], "trait" : "cosmeticFieldLine" },
+		{ "v0" : 48, "v1" : 49, "color" : "7991ab", "cMask" : [ ], "cGroup" : [ ], "trait" : "cosmeticFieldLine" },
+		{ "v0" : 50, "v1" : 51, "color" : "7991ab", "cMask" : [ ], "cGroup" : [ ], "trait" : "cosmeticFieldLine" },
+		{ "v0" : 52, "v1" : 53, "curve" : 180, "color" : "7991ab", "cMask" : [ ], "cGroup" : [ ], "trait" : "cosmeticFieldLine" },
+		{ "v0" : 52, "v1" : 53, "curve" : -180, "color" : "7991ab", "cMask" : [ ], "cGroup" : [ ], "trait" : "cosmeticFieldLine" },
+
+		{ "v0" : 54, "v1" : 55, "color" : "280957", "trait" : "teslaLogo" },
+		{ "v0" : 56, "v1" : 57, "color" : "280957", "trait" : "teslaLogo" },
+
+		{ "v0" : 58, "v1" : 59, "color" : "7991ab", "cMask" : [ ], "cGroup" : [ ], "trait" : "cosmeticFieldLine" }
+
+	],
+
+	"goals" : [
+		{ "p0" : [-550,80 ], "p1" : [-550,-80 ], "team" : "red" },
+		{ "p0" : [550,80 ], "p1" : [550,-80 ], "team" : "blue" }
+
+	],
+
+	"discs" : [
+		{ "pos" : [-550,80 ], "color" : "3d117d", "trait" : "goalPost" },
+		{ "pos" : [-550,-80 ], "color" : "3d117d", "trait" : "goalPost" },
+		{ "pos" : [550,80 ], "color" : "3d117d", "trait" : "goalPost" },
+		{ "pos" : [550,-80 ], "color" : "3d117d", "trait" : "goalPost" }
+
+	],
+
+	"planes" : [
+		{ "normal" : [0,1 ], "dist" : -240, "trait" : "ballArea" },
+		{ "normal" : [0,-1 ], "dist" : -240, "trait" : "ballArea" },
+
+		{ "normal" : [0,1 ], "dist" : -540, "bCoef" : 0.1 },
+		{ "normal" : [0,-1 ], "dist" : -540, "bCoef" : 0.1 },
+		{ "normal" : [1,0 ], "dist" : -900, "bCoef" : 0.1 },
+		{ "normal" : [-1,0 ], "dist" : -900, "bCoef" : 0.1 }
+
+	],
+
+	"traits" : {
+		"cornerflag" : { "radius" : 3, "invMass" : 0, "bCoef" : 0.5, "color" : "FFFF00", "cGroup" : ["" ] },
+		"ballArea" : { "vis" : false, "bCoef" : 1, "cMask" : ["ball" ] },
+		"goalPost" : { "radius" : 8, "invMass" : 0, "bCoef" : 0.5 },
+		"goalNet" : { "vis" : true, "bCoef" : 0.1, "cMask" : ["ball" ] },
+		"kickOffBarrier" : { "vis" : false, "bCoef" : 0.1, "cGroup" : ["redKO","blueKO" ], "cMask" : ["red","blue" ] },
+		"teslaLogo" : { "vis" : true, "bCoef" : 0, "cMask" : [ ], "cGroup" : [ ], "color" : "8a42f5" },
+		"teslaLogoAccent" : { "vis" : true, "bCoef" : 0, "cMask" : [ ], "cGroup" : [ ], "color" : "C000FF" },
+		"cosmeticFieldLine" : { "vis" : true, "bCoef" : 0, "cMask" : [ ], "cGroup" : [ ], "color" : "7991ab" }
+
+	},
+
+	"playerPhysics" : {
+		"bCoef" : 1.5,
+		"invMass" : 0.5,
+		"damping" : 0.9995,
+		"acceleration" : 0.025,
+		"kickingAcceleration" : 0.0175,
+		"kickingDamping" : 0.99,
+		"kickStrength" : 5
+
+	},
+
+	"ballPhysics" : {
+		"radius" : 10,
+		"bCoef" : 0.5,
+		"invMass" : 1,
+		"damping" : 0.99,
+		"color" : "FFFFFF",
+		"cMask" : [ "all"
+		],
+		"cGroup" : [ "ball"
+		]
+
+	},
+
+	"joints" : [
+
+
+	],
+
+	"redSpawnPoints" : [
+
+
+	],
+
+	"blueSpawnPoints" : [
+
+
+	]
+}
