@@ -222,6 +222,38 @@ async function testPromotionNoticeBeforeHumanReplacesBot() {
   assert.equal(room.players.find((p) => p.id === 3).team !== 0, true);
 }
 
+async function testJoiningHumanReplacesBotOnBotHeavyTeam() {
+  const botIds = new Set([501, 502, 503]);
+  const players = [
+    makePlayer(1, 1),
+    makePlayer(501, 1, true),
+    makePlayer(502, 2, true),
+    makePlayer(503, 2, true),
+    makePlayer(2, 0),
+  ];
+
+  const room = makeRoom(players);
+  await rebalanceTeams(room, makeState(), {
+    botManager: makeBotManager(botIds),
+    playerJoinOrder: new Map(players.map((p, index) => [p.id, index + 1])),
+    sleep: async () => {},
+    config: {
+      teamManagement: {
+        maxTeamSize: 4,
+        maxActivePlayers: 4,
+      },
+    },
+  });
+
+  assert.deepEqual(teamCounts(room.players), { red: 2, blue: 2, spec: 1 });
+  assert.deepEqual(botCounts(room.players, botIds), { red: 1, blue: 1 });
+  assert.equal(room.players.find((p) => p.id === 2).team, 2);
+  assert.equal(room.players.find((p) => p.id === 1).team, 1);
+  assert.equal(room.moves[0].team, 0);
+  assert.equal(room.moves[1].id, 2);
+  assert.equal(room.moves[1].team, 2);
+}
+
 async function testManuallyBenchedBotCanStillFillMissingTeamSlot() {
   const botIds = new Set([501, 502, 503, 504]);
   const players = [
@@ -377,6 +409,7 @@ async function run() {
   await testAvoidsFollowUpBotSwapWhenBenchingExtraPlayer();
   await testSpectatorHumanReplacesBotWhenTeamsAlreadyEven();
   await testPromotionNoticeBeforeHumanReplacesBot();
+  await testJoiningHumanReplacesBotOnBotHeavyTeam();
   await testManuallyBenchedBotCanStillFillMissingTeamSlot();
   await testPendingJoinDoesNotReceivePromotionNotice();
   await testV3ProfileKeepsThreeVsThree();

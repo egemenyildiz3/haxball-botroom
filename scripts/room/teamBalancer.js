@@ -439,7 +439,7 @@ async function runRebalanceOnce(room, state, { playerJoinOrder, botManager, slee
   let activeBots = botPlayers.filter((p) => p.team === 1 || p.team === 2);
   let desiredActiveCount = desiredEvenActiveCount(realPlayers.length, botPlayers.length, maxActivePlayers);
   const activePlayers = players.filter((p) => p.id !== 0 && (p.team === 1 || p.team === 2) && !state.afkPlayers.has(p.id));
-  const waitingHumans = spectatorsByType(players, state, playerJoinOrder, isBot, false);
+  let waitingHumans = spectatorsByType(players, state, playerJoinOrder, isBot, false);
   const joinDelay = waitingHumans.length > 0 && activeBots.length > targetBotCount
     ? PLAYER_REPLACES_BOT_DELAY_MS
     : (waitingHumans.length > 0 && activePlayers.length < desiredActiveCount ? PLAYER_EMPTY_SLOT_DELAY_MS : 0);
@@ -458,14 +458,26 @@ async function runRebalanceOnce(room, state, { playerJoinOrder, botManager, slee
     targetBotCount = desiredBotCount(realPlayers.length, botPlayers.length, maxActivePlayers);
     activeBots = botPlayers.filter((p) => p.team === 1 || p.team === 2);
     desiredActiveCount = desiredEvenActiveCount(realPlayers.length, botPlayers.length, maxActivePlayers);
+    waitingHumans = spectatorsByType(players, state, playerJoinOrder, isBot, false);
   }
 
   if (activeBots.length > targetBotCount) {
     const extraBots = pickExtraActiveBots(players, state, isBot, targetBotCount, playerJoinOrder);
+    const replacementHumans = waitingHumans.slice(0, extraBots.length);
+
     for (const bot of extraBots) {
       if (!state.autoManageEnabled) return;
+      const replacement = replacementHumans.shift();
+      const replacementTeam = bot.team;
+
       try { room.setPlayerTeam(bot.id, 0); } catch (e) {}
       await sleep(REBALANCE_MOVE_DELAY_MS);
+
+      if (replacement && replacementTeam !== 0) {
+        if (!state.autoManageEnabled) return;
+        try { room.setPlayerTeam(replacement.id, replacementTeam); } catch (e) {}
+        await sleep(REBALANCE_MOVE_DELAY_MS);
+      }
     }
     players = room.getPlayerList();
   }

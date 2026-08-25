@@ -50,6 +50,23 @@ function markPlayerInput(state, player, botManager) {
   state.inactivityWarnings.delete(player.id);
 }
 
+function forgetPlayerState(player, state, deps) {
+  if (!player || typeof player.id === 'undefined') return;
+
+  const { playerAssignments, playerJoinOrder, loggedInPlayers } = deps;
+  playerAssignments.delete(player.id);
+  state.joinIdsByPlayer.delete(player.id);
+  playerJoinOrder.delete(player.id);
+  loggedInPlayers.delete(player.id);
+  state.afkPlayers.delete(player.id);
+  state.manualPlacements.delete(player.id);
+  state.playerAuths.delete(String(player.id));
+  state.pendingJoinPlayers.delete(player.id);
+  state.lastInputAt.delete(player.id);
+  state.inactivityWarnings.delete(player.id);
+  state.chatFilter.forget(player.id);
+}
+
 function getRawPlayerInput(room, playerId) {
   const rawRoom = room && room.nhInstance;
   if (!rawRoom) return null;
@@ -234,7 +251,11 @@ async function createRoom(room, deps) {
   };
 
   room.onPlayerKicked = function (kickedPlayer, reason, ban, byPlayer) {
-    handlePlayerKicked(room, state, kickedPlayer, reason, ban, byPlayer, roomDeps, sanitizePlayer);
+    const safePlayer = sanitizePlayer(room, kickedPlayer, state);
+    handlePlayerKicked(room, state, safePlayer, reason, ban, byPlayer, roomDeps, sanitizePlayer);
+    forgetPlayerState(safePlayer, state, roomDeps);
+    scheduleRebalanceRetry(room, state, roomDeps, 250);
+    scheduleRebalanceRetry(room, state, roomDeps, 1200);
   };
 
   room.onPlayerAdminChange = function (changedPlayer, byPlayer) {
@@ -433,19 +454,7 @@ function handlePlayerLeave(room, player, state, deps) {
     if (logger) logger.event('player_leave', 'Player left', { playerId: player.id, username: cleanedName });
   }
 
-  if (player && typeof player.id !== 'undefined') {
-    playerAssignments.delete(player.id);
-    state.joinIdsByPlayer.delete(player.id);
-    playerJoinOrder.delete(player.id);
-    loggedInPlayers.delete(player.id);
-    state.afkPlayers.delete(player.id);
-    state.manualPlacements.delete(player.id);
-    state.playerAuths.delete(String(player.id));
-    state.pendingJoinPlayers.delete(player.id);
-    state.lastInputAt.delete(player.id);
-    state.inactivityWarnings.delete(player.id);
-    state.chatFilter.forget(player.id);
-  }
+  forgetPlayerState(player, state, deps);
 
   if (typeof room.getPlayerList !== 'function') return;
 
