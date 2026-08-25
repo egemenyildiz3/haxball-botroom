@@ -218,7 +218,7 @@ async function testPromotionNoticeBeforeHumanReplacesBot() {
     },
   });
 
-  assert.deepEqual(messages, [{ text: 'GET READY', targetId: 3, color: 0x00BFFF, style: 'bold' }]);
+  assert.deepEqual(messages, [{ text: 'GET READY', targetId: 3, color: 0xFFCC00, style: 'bold' }]);
   assert.equal(room.players.find((p) => p.id === 3).team !== 0, true);
 }
 
@@ -272,7 +272,7 @@ async function testPendingJoinDoesNotReceivePromotionNotice() {
     sleep: async () => {},
     sendMsg: (targetRoom, text, targetId) => messages.push({ text, targetId }),
     t: (key) => (key === 'team.preparePromotion' ? 'GET READY' : key),
-    config: { teamManagement: { promotionNotice: { enabled: true, color: 0x00BFFF } } },
+    config: { teamManagement: { promotionNotice: { enabled: true, color: 0xFFCC00 } } },
   });
 
   assert.deepEqual(messages, []);

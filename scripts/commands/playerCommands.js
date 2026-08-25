@@ -172,13 +172,13 @@ function handleHelp(ctx) {
   const gameMode = `${maxTeamSize}v${maxTeamSize}`;
   const t = ctx.t || ((key, vars = {}) => ({
     'help.title': `📖 Spacebounce ${vars.mode || gameMode} - Komutlar`,
-    'help.public': 'Genel: !oyuncular . !s . !golkralı . !asistkralı . !top . !afk . !bb . !admin <mesaj> . !t <mesaj>',
-    'help.account': 'Hesap: !kaydol <şifre> . !giris <şifre>',
-    'help.bot': 'Bot: !bot aç [adet] . !bot kapat . !bot hepsi . !bot durum',
-    'help.auto': 'Oto: !oto aç . !oto kapat . !oto durum',
-    'help.moderation': 'Yetki: !kick <id/isim> . !ban <id/isim> . !mute [id/isim] [dk] . !unmute <id/isim>',
-    'help.roomMute': 'Oda: !muteroom . !unmuteroom',
-    'help.owner': 'Owner: !blacklist <id/isim> . !clearbans',
+    'help.public': 'Genel: !oyuncular | !s | !golkralı | !asistkralı | !top | !afk | !bb | !admin <mesaj> | !t <mesaj>',
+    'help.account': 'Hesap: !kaydol <şifre> | !giris <şifre>',
+    'help.bot': 'Bot: !bot aç [adet] | !bot kapat | !bot hepsi | !bot durum',
+    'help.auto': 'Oto: !oto aç | !oto kapat | !oto durum',
+    'help.moderation': 'Yetki: !kick <id/isim> | !ban <id/isim> | !mute [id/isim] [dk] | !unmute <id/isim>',
+    'help.roomMute': 'Oda: !muteroom | !unmuteroom',
+    'help.owner': 'Owner: !blacklist <id/isim> | !clearbans',
   }[key] || key));
   const helpText = [
     t('help.title', { mode: gameMode }),

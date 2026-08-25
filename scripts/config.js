@@ -93,7 +93,7 @@ const DEFAULT_CONFIG = {
     maxActivePlayers: 8,
     promotionNotice: {
       enabled: true,
-      color: '00BFFF',
+      color: 'FFCC00',
     },
   },
 
