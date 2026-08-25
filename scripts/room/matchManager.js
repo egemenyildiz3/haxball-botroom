@@ -7,6 +7,8 @@ const ROTATION_START_DELAY_MS = 600;
 const ROTATION_MOVE_DELAY_MS = 300;
 const ROTATION_END_DELAY_MS = 450;
 const KICKOFF_TOUCH_DELAY_MS = 4 * 1000;
+const KICKOFF_FORCE_RETRY_MS = 2 * 1000;
+const KICKOFF_MAX_FORCE_ATTEMPTS = 6;
 
 function shuffle(players) {
   const result = [...players];
@@ -50,7 +52,8 @@ function startKickoffWatch(state, team = null) {
   state.kickoffWatch = {
     team,
     startedAt: Date.now(),
-    triggered: false,
+    lastForceAt: 0,
+    attempts: 0,
   };
 }
 
@@ -64,25 +67,40 @@ function clearKickoffWatch(state, player = null) {
 function checkKickoffWatch(room, state, deps) {
   const { botManager } = deps;
   const watch = state.kickoffWatch;
-  if (!watch || watch.triggered || !state.currentGame) return;
-  if (Date.now() - watch.startedAt < KICKOFF_TOUCH_DELAY_MS) return;
+  if (!watch || !state.currentGame) return;
+
+  const now = Date.now();
+  if (now - watch.startedAt < KICKOFF_TOUCH_DELAY_MS) return;
+  if (watch.lastForceAt && now - watch.lastForceAt < KICKOFF_FORCE_RETRY_MS) return;
+
   if (!botManager || typeof botManager.forceClosestBotToBall !== 'function') {
-    watch.triggered = true;
+    state.kickoffWatch = null;
     console.log('[KICKOFF-WATCH] Bot manager hazır değil; santra müdahalesi atlandı.');
     return;
   }
 
   const teams = watch.team ? [watch.team] : [1, 2];
+  let forcedCount = 0;
+
   for (const team of teams) {
     if (botManager.forceClosestBotToBall(team)) {
-      watch.triggered = true;
-      console.log(`[KICKOFF-WATCH] ${team} takımındaki en yakın bot santra için topa gönderildi.`);
-      return;
+      forcedCount++;
     }
   }
 
-  watch.triggered = true;
-  console.log(`[KICKOFF-WATCH] Santra müdahalesi tetiklendi ama team=${teams.join(',')} için uygun bot bulunamadı.`);
+  watch.attempts = (watch.attempts || 0) + 1;
+  watch.lastForceAt = now;
+
+  if (forcedCount > 0) {
+    console.log(`[KICKOFF-WATCH] Santra müdahalesi ${watch.attempts}/${KICKOFF_MAX_FORCE_ATTEMPTS}: team=${teams.join(',')} için ${forcedCount} bot topa yönlendirildi.`);
+  } else {
+    console.log(`[KICKOFF-WATCH] Santra müdahalesi ${watch.attempts}/${KICKOFF_MAX_FORCE_ATTEMPTS}: team=${teams.join(',')} için uygun bot bulunamadı.`);
+  }
+
+  if (watch.attempts >= KICKOFF_MAX_FORCE_ATTEMPTS) {
+    state.kickoffWatch = null;
+    console.log(`[KICKOFF-WATCH] Santra müdahalesi maksimum deneme sayısına ulaştı; takip kapatıldı (team=${teams.join(',')}).`);
+  }
 }
 
 function formatDuration(seconds) {
