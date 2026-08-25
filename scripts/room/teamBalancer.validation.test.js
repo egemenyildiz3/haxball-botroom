@@ -212,7 +212,7 @@ async function testPromotionNoticeBeforeHumanReplacesBot() {
       teamManagement: {
         promotionNotice: {
           enabled: true,
-          color: 0x00BFFF,
+          color: 0xFFCC00,
         },
       },
     },
