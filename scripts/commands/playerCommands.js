@@ -170,45 +170,27 @@ function handleHelp(ctx) {
     ? ctx.config.teamManagement.maxTeamSize
     : 4;
   const gameMode = `${maxTeamSize}v${maxTeamSize}`;
-  const t = ctx.t || ((key) => ({
-    'help.title': `📖 Spacebounce ${gameMode} - Komut listesi:`,
-    'help.players': '• !oyuncular — Odadaki oyuncuları ve ID\'lerini listeler',
-    'help.stats': '• !s / !stats / !istatistik — İstatistiklerinizi gösterir',
-    'help.leaderboards': '• !golkralı / !asistkralı / !top — Liderlik tablolarını gösterir',
-    'help.afk': '• !afk — AFK modunu açar/kapatır',
-    'help.bb': '• !bb — Tatlı bir vedayla odadan ayrılır',
-    'help.adminRequest': '• !admin <açıklama> — Adminlere istek, talep veya şikayet gönderir',
-    'help.register': '• !kaydol <şifre> — Hesap oluşturur ve oturum açar',
-    'help.login': '• !giris <şifre> — Mevcut hesabınıza giriş yapar',
-    'help.bot': '• !bot aç [adet] / !bot kapat / !bot hepsi / !bot durum — Yapay zeka botunu yönetir (Admin)',
-    'help.auto': '• !oto aç / !oto kapat / !oto durum — Otomatik takım dağıtımı ve maç başlatmayı açar/kapatır (Kurucu)',
-    'help.kick': '• !kick <id/isim> [sebep] — Oyuncuyu odadan atar (Admin)',
-    'help.ban': '• !ban <id/isim> [sebep] — Oyuncuyu odadan banlar (Admin)',
-    'help.mute': '• !mute [id/isim] [dk] — Sohbeti veya bir oyuncuyu susturur (Admin)',
-    'help.muteRoom': '• !muteroom / !unmuteroom — Oda sohbetini Owner/Mod dışına kapatır (Owner/Mod)',
-    'help.unmute': '• !unmute <id/isim> — Susturulan oyuncunun tekrar yazmasını sağlar',
-    'help.blacklist': '• !blacklist <id/isim> [sebep] — Oyuncuyu veritabanı kara listesine ekler (Kurucu)',
-    'help.clearbans': '• !clearbans — Tüm banları temizler (Kurucu)',
+  const t = ctx.t || ((key, vars = {}) => ({
+    'help.title': `📖 Spacebounce ${vars.mode || gameMode} - Komutlar`,
+    'help.public': 'Genel: !oyuncular . !s . !golkralı . !asistkralı . !top . !afk . !bb . !admin <mesaj> . !t <mesaj>',
+    'help.account': 'Hesap: !kaydol <şifre> . !giris <şifre>',
+    'help.bot': 'Bot: !bot aç [adet] . !bot kapat . !bot hepsi . !bot durum',
+    'help.auto': 'Oto: !oto aç . !oto kapat . !oto durum',
+    'help.moderation': 'Yetki: !kick <id/isim> . !ban <id/isim> . !mute [id/isim] [dk] . !unmute <id/isim>',
+    'help.roomMute': 'Oda: !muteroom . !unmuteroom',
+    'help.owner': 'Owner: !blacklist <id/isim> . !clearbans',
   }[key] || key));
   const helpText = [
     t('help.title', { mode: gameMode }),
-    t('help.players'),
-    t('help.stats'),
-    t('help.leaderboards'),
-    t('help.afk'),
-    t('help.bb'),
-    t('help.adminRequest'),
-    t('help.register'),
-    t('help.login'),
+    t('help.public'),
+    t('help.account'),
     ctx.hasCapability('bot') ? t('help.bot') : '',
     ctx.hasCapability('auto') ? t('help.auto') : '',
-    ctx.hasCapability('kick') ? t('help.kick') : '',
-    ctx.hasCapability('ban') ? t('help.ban') : '',
-    ctx.hasCapability('mute') ? t('help.mute') : '',
-    ['owner', 'mod'].includes(ctx.role) ? t('help.muteRoom') : '',
-    ctx.hasCapability('unmute') ? t('help.unmute') : '',
-    ctx.hasCapability('blacklist') ? t('help.blacklist') : '',
-    ctx.hasCapability('clear_bans') ? t('help.clearbans') : '',
+    (ctx.hasCapability('kick') || ctx.hasCapability('ban') || ctx.hasCapability('mute') || ctx.hasCapability('unmute'))
+      ? t('help.moderation')
+      : '',
+    ['owner', 'mod'].includes(ctx.role) ? t('help.roomMute') : '',
+    (ctx.hasCapability('blacklist') || ctx.hasCapability('clear_bans')) ? t('help.owner') : '',
   ]
     .filter(Boolean)
     .join('\n');
