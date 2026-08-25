@@ -20,8 +20,8 @@
       "owner": ["*"],
       "mod": ["admin_chat", "afk_exempt", "auto", "ban", "blacklist", "bot", "clear_bans", "duplicate_join_exempt", "kick", "mute", "mute_exempt", "native_admin", "unmute"],
       "admin": ["admin_chat", "afk_exempt", "mute_exempt", "native_admin"],
-      "vip": [],
-      "player": []
+      "vip": ["afk_exempt"],
+      "player": ["afk_exempt"]
     }
   },
   "bot": {
