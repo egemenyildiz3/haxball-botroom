@@ -97,6 +97,18 @@ const DEFAULT_CONFIG = {
     },
   },
 
+  ballRecovery: {
+    safeMargin: 80,
+    bounds: {
+      minX: -1200,
+      maxX: 1200,
+      minY: -600,
+      maxY: 600,
+      goalMinY: -110,
+      goalMaxY: 110,
+    },
+  },
+
   logging: {
     enabled: true,
     jsonl: true,
@@ -332,6 +344,18 @@ const config = {
     },
   },
 
+  ballRecovery: {
+    safeMargin: numberFromEnv('BALL_RECOVERY_SAFE_MARGIN', fileConfig.ballRecovery.safeMargin, { min: 0, max: 500 }),
+    bounds: {
+      minX: numberFromEnv('BALL_RECOVERY_MIN_X', fileConfig.ballRecovery.bounds.minX, { min: -10000, max: 10000 }),
+      maxX: numberFromEnv('BALL_RECOVERY_MAX_X', fileConfig.ballRecovery.bounds.maxX, { min: -10000, max: 10000 }),
+      minY: numberFromEnv('BALL_RECOVERY_MIN_Y', fileConfig.ballRecovery.bounds.minY, { min: -10000, max: 10000 }),
+      maxY: numberFromEnv('BALL_RECOVERY_MAX_Y', fileConfig.ballRecovery.bounds.maxY, { min: -10000, max: 10000 }),
+      goalMinY: numberFromEnv('BALL_RECOVERY_GOAL_MIN_Y', fileConfig.ballRecovery.bounds.goalMinY, { min: -10000, max: 10000 }),
+      goalMaxY: numberFromEnv('BALL_RECOVERY_GOAL_MAX_Y', fileConfig.ballRecovery.bounds.goalMaxY, { min: -10000, max: 10000 }),
+    },
+  },
+
   logging: {
     enabled: boolFromEnv('LOGGING_ENABLED', fileConfig.logging.enabled),
     jsonl: boolFromEnv('LOGGING_JSONL', fileConfig.logging.jsonl),
@@ -373,6 +397,15 @@ function validateConfig(cfg = config) {
   }
   if (cfg.teamManagement.maxActivePlayers % 2 !== 0) {
     throw new Error('TEAM_MAX_ACTIVE_PLAYERS çift sayı olmalı.');
+  }
+  if (cfg.ballRecovery.bounds.minX >= cfg.ballRecovery.bounds.maxX) {
+    throw new Error('BALL_RECOVERY_MIN_X, BALL_RECOVERY_MAX_X değerinden küçük olmalı.');
+  }
+  if (cfg.ballRecovery.bounds.minY >= cfg.ballRecovery.bounds.maxY) {
+    throw new Error('BALL_RECOVERY_MIN_Y, BALL_RECOVERY_MAX_Y değerinden küçük olmalı.');
+  }
+  if (cfg.ballRecovery.bounds.goalMinY >= cfg.ballRecovery.bounds.goalMaxY) {
+    throw new Error('BALL_RECOVERY_GOAL_MIN_Y, BALL_RECOVERY_GOAL_MAX_Y değerinden küçük olmalı.');
   }
   if (cfg.room.promotionCount > cfg.teamManagement.maxTeamSize) {
     throw new Error('HAXBALL_PROMOTION_COUNT, TEAM_MAX_SIZE değerinden büyük olamaz.');

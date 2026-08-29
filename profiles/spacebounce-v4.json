@@ -1,6 +1,11 @@
 {
   "room": {
-    "name": "🛰️ 𝕋𝔼𝕊𝕃𝔸 🛰️ SPACEBOUNCE v4 🪐 𝔸𝕀"
+    "name": "🛰️ 𝕋𝔼𝕊𝕃𝔸 🛰️ SPACEBOUNCE v4 🪐 AI",
+    "geo": {
+      "code": "tr",
+      "lat": 37.0208,
+      "lon": 30.8541
+    }
   },
   "map": {
     "file": "maps/SpacebounceV4.hbs"

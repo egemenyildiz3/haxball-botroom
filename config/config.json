@@ -72,6 +72,17 @@
       "color": "FFCC00"
     }
   },
+  "ballRecovery": {
+    "safeMargin": 80,
+    "bounds": {
+      "minX": -1200,
+      "maxX": 1200,
+      "minY": -600,
+      "maxY": 600,
+      "goalMinY": -110,
+      "goalMaxY": 110
+    }
+  },
   "logging": {
     "enabled": true,
     "jsonl": true,

@@ -1,4 +1,4 @@
-const MAP_BOUNDS = {
+const DEFAULT_MAP_BOUNDS = {
   minX: -1200,
   maxX: 1200,
   minY: -600,
@@ -7,35 +7,43 @@ const MAP_BOUNDS = {
   goalMaxY: 110,
 };
 
-const SAFE_MARGIN = 80;
+const DEFAULT_SAFE_MARGIN = 80;
 const RECOVERY_DELAY_MS = 2 * 1000;
 
-function nearestSafeCorner(pos) {
-  const left = {
-    x: MAP_BOUNDS.minX + SAFE_MARGIN,
-    y: pos.y < 0 ? MAP_BOUNDS.minY + SAFE_MARGIN : MAP_BOUNDS.maxY - SAFE_MARGIN,
-  };
-  const right = {
-    x: MAP_BOUNDS.maxX - SAFE_MARGIN,
-    y: pos.y < 0 ? MAP_BOUNDS.minY + SAFE_MARGIN : MAP_BOUNDS.maxY - SAFE_MARGIN,
-  };
-
-  if (pos.x < MAP_BOUNDS.minX) return left;
-  if (pos.x > MAP_BOUNDS.maxX) return right;
-
+function recoverySettings(config = {}) {
+  const recovery = config.ballRecovery || {};
   return {
-    x: pos.x < 0 ? left.x : right.x,
-    y: pos.y < 0 ? MAP_BOUNDS.minY + SAFE_MARGIN : MAP_BOUNDS.maxY - SAFE_MARGIN,
+    bounds: { ...DEFAULT_MAP_BOUNDS, ...(recovery.bounds || {}) },
+    safeMargin: Number.isFinite(recovery.safeMargin) ? recovery.safeMargin : DEFAULT_SAFE_MARGIN,
   };
 }
 
-function isOutOfBoundsPosition(ballPosition) {
-  let isOutOfBounds = ballPosition.y < MAP_BOUNDS.minY || ballPosition.y > MAP_BOUNDS.maxY;
+function nearestSafeCorner(pos, bounds = DEFAULT_MAP_BOUNDS, safeMargin = DEFAULT_SAFE_MARGIN) {
+  const left = {
+    x: bounds.minX + safeMargin,
+    y: pos.y < 0 ? bounds.minY + safeMargin : bounds.maxY - safeMargin,
+  };
+  const right = {
+    x: bounds.maxX - safeMargin,
+    y: pos.y < 0 ? bounds.minY + safeMargin : bounds.maxY - safeMargin,
+  };
 
-  const isInsideGoalY = ballPosition.y > MAP_BOUNDS.goalMinY && ballPosition.y < MAP_BOUNDS.goalMaxY;
+  if (pos.x < bounds.minX) return left;
+  if (pos.x > bounds.maxX) return right;
+
+  return {
+    x: pos.x < 0 ? left.x : right.x,
+    y: pos.y < 0 ? bounds.minY + safeMargin : bounds.maxY - safeMargin,
+  };
+}
+
+function isOutOfBoundsPosition(ballPosition, bounds = DEFAULT_MAP_BOUNDS) {
+  let isOutOfBounds = ballPosition.y < bounds.minY || ballPosition.y > bounds.maxY;
+
+  const isInsideGoalY = ballPosition.y > bounds.goalMinY && ballPosition.y < bounds.goalMaxY;
 
   if (!isInsideGoalY) {
-    isOutOfBounds = isOutOfBounds || ballPosition.x < MAP_BOUNDS.minX || ballPosition.x > MAP_BOUNDS.maxX;
+    isOutOfBounds = isOutOfBounds || ballPosition.x < bounds.minX || ballPosition.x > bounds.maxX;
   }
 
   return isOutOfBounds;
@@ -49,13 +57,15 @@ function fallbackT(key) {
   return messages[key] || key;
 }
 
-function repairOutOfBoundsBall(room, state, sendMsg, t = fallbackT) {
+function repairOutOfBoundsBall(room, state, sendMsg, t = fallbackT, config = {}) {
   if (typeof room.getBallPosition !== 'function') return;
 
   const ballPosition = room.getBallPosition();
   if (!ballPosition) return;
 
-  if (!isOutOfBoundsPosition(ballPosition)) {
+  const { bounds, safeMargin } = recoverySettings(config);
+
+  if (!isOutOfBoundsPosition(ballPosition, bounds)) {
     state.ballRecovery = null;
     return;
   }
@@ -69,7 +79,7 @@ function repairOutOfBoundsBall(room, state, sendMsg, t = fallbackT) {
   if (Date.now() - state.ballRecovery.startedAt < RECOVERY_DELAY_MS) return;
   if (typeof room.setDiscProperties !== 'function') return;
 
-  const { x, y } = nearestSafeCorner(ballPosition);
+  const { x, y } = nearestSafeCorner(ballPosition, bounds, safeMargin);
 
   room.setDiscProperties(0, {
     x,
@@ -82,9 +92,10 @@ function repairOutOfBoundsBall(room, state, sendMsg, t = fallbackT) {
 }
 
 module.exports = {
-  MAP_BOUNDS,
-  SAFE_MARGIN,
+  DEFAULT_MAP_BOUNDS,
+  DEFAULT_SAFE_MARGIN,
   RECOVERY_DELAY_MS,
+  recoverySettings,
   nearestSafeCorner,
   isOutOfBoundsPosition,
   repairOutOfBoundsBall,

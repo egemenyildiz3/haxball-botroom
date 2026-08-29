@@ -1,8 +1,13 @@
 {
   "room": {
-    "name": "🛰️ 𝕋𝔼𝕊𝕃𝔸 🛰️ SPACEBOUNCE v3 🪐 𝔸𝕀",
+    "name": "🛰️ 𝕋𝔼𝕊𝕃𝔸 🛰️ SPACEBOUNCE v3 🪐 AI",
     "maxPlayers": 14,
-    "promotionCount": 3
+    "promotionCount": 3,
+    "geo": {
+      "code": "nl",
+      "lat": 49.0907,
+      "lon": 11.1214
+    }
   },
   "map": {
     "file": "maps/SpacebounceV3.hbs"
@@ -17,6 +22,17 @@
   "teamManagement": {
     "maxTeamSize": 3,
     "maxActivePlayers": 6
+  },
+  "ballRecovery": {
+    "safeMargin": 45,
+    "bounds": {
+      "minX": -550,
+      "maxX": 550,
+      "minY": -240,
+      "maxY": 240,
+      "goalMinY": -80,
+      "goalMaxY": 80
+    }
   },
   "logging": {
     "dir": "/usr/src/app/logs/v3"
