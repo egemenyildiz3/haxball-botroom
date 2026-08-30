@@ -278,7 +278,11 @@ async function createRoom(room, deps) {
 
     const safePlayer = sanitizePlayer(room, player, state);
     const cleanedName = getCleanName(safePlayer);
-    const isOwnBot = !!(botManager && botManager.isExpectedBotName(cleanedName));
+    const isOwnBot = !!(
+      botManager
+      && botManager.isExpectedBotName(cleanedName)
+      && isProtectedBotIdentity(botManager, safePlayer)
+    );
 
     if (isOwnBot) {
       console.log(`${getTimestamp()} [BOT] Bot oyuncu olarak tanındı: ${cleanedName} (ID: ${safePlayer.id})`);

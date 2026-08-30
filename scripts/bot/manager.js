@@ -15,7 +15,7 @@ const BRAIN_MODULES = {
   smallPitch: require('./brainSmallPitch'),
 };
 
-const FIRST_BOT_ID = 500; // gerçek oyuncu id'leriyle çakışmasın diye yüksek başlıyoruz
+const FIRST_BOT_ID = 900000; // gerçek oyuncu id sayacı günlerce çalışınca 500'lere ulaşabiliyor
 const BOT_CONN_PREFIX = 'bot-conn-';
 const BOT_AUTH_PREFIX = 'bot-auth-';
 const KICKOFF_FORCE_MS = 15 * 1000;
@@ -190,17 +190,37 @@ function createBotManager(options = {}) {
 
   function isExpectedBotName(cleanName) {
     if (!cleanName) return false;
-    for (const name of bots.keys()) {
+    for (let i = 0; i < maxBots; i++) {
+      const name = expectedName(i);
       if (name.toLowerCase() === String(cleanName).toLowerCase()) return true;
     }
     return false;
   }
 
-  function isBotPlayer(playerId) {
+  function playerMatchesBot(player, bot) {
+    if (!player || !bot || player.id !== bot.id) return false;
+    const auth = player.auth || '';
+    const conn = player.conn || '';
+    const name = String(player.name || '').trim().toLowerCase();
+    const botName = String(bot.name || '').trim().toLowerCase();
+
+    return auth === `${BOT_AUTH_PREFIX}${bot.id}`
+      || conn === `${BOT_CONN_PREFIX}${bot.id}`
+      || (name && botName && name === botName);
+  }
+
+  function botByPlayerId(playerId) {
     for (const bot of bots.values()) {
-      if (bot.id === playerId) return true;
+      if (bot.id === playerId) return bot;
     }
-    return false;
+    return null;
+  }
+
+  function isBotPlayer(playerId) {
+    const bot = botByPlayerId(playerId);
+    if (!bot) return false;
+    if (!raw || typeof raw.getPlayer !== 'function') return true;
+    return playerMatchesBot(raw.getPlayer(playerId), bot);
   }
 
   function isBotAuth(value) {
@@ -213,7 +233,7 @@ function createBotManager(options = {}) {
 
   function isProtectedBotIdentity(player) {
     if (!player) return false;
-    return isBotPlayer(player.id) || isBotAuth(player.auth) || isBotConn(player.conn);
+    return isBotAuth(player.auth) || isBotConn(player.conn) || isBotPlayer(player.id);
   }
 
   function translateTrait(trait) {
@@ -229,6 +249,7 @@ function createBotManager(options = {}) {
     if (!gameState || !gameState.physicsState) return null;
 
     const me = raw.getPlayer(bot.id);
+    if (!playerMatchesBot(me, bot)) return null;
     if (!me || !me.disc || !me.team) return null;
 
     const teamId = me.team.id;
@@ -328,7 +349,7 @@ function createBotManager(options = {}) {
           ball.pos.x - bot.forceBallOrigin.x,
           ball.pos.y - bot.forceBallOrigin.y
         ) > KICKOFF_RELEASE_DISTANCE;
-        if (bot.forceBallUntil <= now || moved || !player || !player.team ||
+        if (bot.forceBallUntil <= now || moved || !playerMatchesBot(player, bot) || !player.team ||
             (player.team.id !== 1 && player.team.id !== 2)) {
           clearForce(bot);
           continue;
@@ -370,6 +391,12 @@ function createBotManager(options = {}) {
     const traceThisTick = telemetry && tickNumber % telemetryEveryTicks === 0;
 
     for (const bot of bots.values()) {
+      if (!playerMatchesBot(raw.getPlayer(bot.id), bot)) {
+        bot.memory.kickCooldown = 0;
+        bot.lastInput = 0;
+        continue;
+      }
+
       // Kişiliği taban ayarların üstüne uygula (taban değişirse yeniden birleştir)
       if (bot.cfgBase !== cfg) {
         bot.cfgBase = cfg;
@@ -408,11 +435,28 @@ function createBotManager(options = {}) {
     }
   }
 
+  function allocateBotId() {
+    for (let attempts = 0; attempts < 10000; attempts++) {
+      const candidate = nextId++;
+      const tracked = [...bots.values()].some((bot) => bot.id === candidate);
+      const occupied = raw && typeof raw.getPlayer === 'function' && raw.getPlayer(candidate);
+      if (!tracked && !occupied) return candidate;
+    }
+
+    throw new Error('Bot ID üretilemedi; bot ID aralığı dolu görünüyor.');
+  }
+
   function spawnOne(index) {
     const name = expectedName(index);
     if (bots.has(name)) return false;
 
-    const id = nextId++;
+    let id;
+    try {
+      id = allocateBotId();
+    } catch (err) {
+      log(`🤖 [BOT] ${name} eklenemedi: ${err.message}`);
+      return false;
+    }
 
     // Her bot kendi tohumuyla biraz farklı bir kişilik alır
     const seed = (Math.random() * 0xffffffff) >>> 0;
@@ -445,8 +489,13 @@ function createBotManager(options = {}) {
   }
 
   function removeOne(bot) {
-    try { raw.fakeSendPlayerInput(0, bot.id); } catch (e) {}
-    try { raw.fakePlayerLeave(bot.id); } catch (e) {}
+    const player = raw && typeof raw.getPlayer === 'function' ? raw.getPlayer(bot.id) : null;
+    if (playerMatchesBot(player, bot)) {
+      try { raw.fakeSendPlayerInput(0, bot.id); } catch (e) {}
+      try { raw.fakePlayerLeave(bot.id); } catch (e) {}
+    } else if (player) {
+      log(`🤖 [BOT] ${bot.name} silinirken id=${bot.id} gerçek/farklı oyuncuya ait göründü (${player.name || 'isimsiz'}); oyuncuya dokunulmadı.`);
+    }
     bots.delete(bot.name);
   }
 
@@ -455,10 +504,15 @@ function createBotManager(options = {}) {
 
     let removed = 0;
     for (const bot of [...bots.values()]) {
-      if (raw.getPlayer(bot.id)) continue;
+      const player = raw.getPlayer(bot.id);
+      if (playerMatchesBot(player, bot)) continue;
       bots.delete(bot.name);
       removed++;
-      log(`🤖 [BOT] ${bot.name} odada görünmüyor; bot kaydı temizlendi.`);
+      if (player) {
+        log(`🤖 [BOT] ${bot.name} id=${bot.id} artık gerçek/farklı oyuncuya ait görünüyor (${player.name || 'isimsiz'}); bot kaydı temizlendi.`);
+      } else {
+        log(`🤖 [BOT] ${bot.name} odada görünmüyor; bot kaydı temizlendi.`);
+      }
     }
     return removed;
   }
@@ -527,14 +581,14 @@ function createBotManager(options = {}) {
       const ball = raw.gameState.physicsState.discs[0];
       const candidates = [...bots.values()]
         .map((bot) => ({ bot, player: raw.getPlayer(bot.id) }))
-        .filter(({ player }) => player && player.disc && player.team && player.team.id === teamId)
+        .filter(({ bot, player }) => playerMatchesBot(player, bot) && player.disc && player.team && player.team.id === teamId)
         .sort((a, b) => distanceToBall(a.player, ball) - distanceToBall(b.player, ball));
 
       const chosen = candidates[0];
       if (!chosen) {
         const teamBots = [...bots.values()]
           .map((bot) => ({ bot, player: raw.getPlayer(bot.id) }))
-          .filter(({ player }) => player)
+          .filter(({ bot, player }) => playerMatchesBot(player, bot))
           .map(({ bot, player }) => `${bot.name}:team=${player.team && player.team.id}`);
         log(`🤖 [BOT] Santra watchdog atlandı: team=${teamId} için uygun bot yok. Botlar=[${teamBots.join(', ')}]`);
         return false;
@@ -542,7 +596,7 @@ function createBotManager(options = {}) {
 
       for (const bot of bots.values()) {
         const player = raw.getPlayer(bot.id);
-        if (player && player.team && player.team.id === teamId) clearForce(bot);
+        if (playerMatchesBot(player, bot) && player.team && player.team.id === teamId) clearForce(bot);
       }
       chosen.bot.forceBallUntil = Date.now() + durationMs;
       chosen.bot.forceBallOrigin = { x: ball.pos.x, y: ball.pos.y };
