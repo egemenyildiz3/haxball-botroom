@@ -10,14 +10,13 @@ const V3_BOUNDS = {
   maxX: 550,
   minY: -240,
   maxY: 240,
-  goalMinY: -80,
-  goalMaxY: 80,
 };
 
 function run() {
   assert.equal(isOutOfBoundsPosition({ x: 700, y: 120 }, DEFAULT_MAP_BOUNDS), false);
   assert.equal(isOutOfBoundsPosition({ x: 700, y: 120 }, V3_BOUNDS), true);
-  assert.equal(isOutOfBoundsPosition({ x: 700, y: 0 }, V3_BOUNDS), false);
+  assert.equal(isOutOfBoundsPosition({ x: 700, y: 0 }, V3_BOUNDS), true);
+  assert.equal(isOutOfBoundsPosition({ x: 1250, y: 0 }, DEFAULT_MAP_BOUNDS), true);
   assert.equal(isOutOfBoundsPosition({ x: 0, y: 260 }, V3_BOUNDS), true);
 
   assert.deepEqual(nearestSafeCorner({ x: 700, y: 260 }, V3_BOUNDS, 45), {

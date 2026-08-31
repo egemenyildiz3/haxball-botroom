@@ -20,6 +20,7 @@ const BOT_CONN_PREFIX = 'bot-conn-';
 const BOT_AUTH_PREFIX = 'bot-auth-';
 const KICKOFF_FORCE_MS = 15 * 1000;
 const KICKOFF_RELEASE_DISTANCE = 85;
+const INPUT_RESEND_MS = 500;
 const DEFAULT_BOT_NAMES = [
   'Messi',
   'Ronaldo',
@@ -336,9 +337,11 @@ function createBotManager(options = {}) {
     };
 
     for (const teamId of [1, 2]) {
-      const players = raw.players.filter((player) =>
-        player.disc && player.team && player.team.id === teamId
-      );
+      const players = raw.players.filter((player) => {
+        if (!player || !player.disc || !player.team || player.team.id !== teamId) return false;
+        const bot = botByPlayerId(player.id);
+        return playerMatchesBot(player, bot);
+      });
       if (players.length === 0) continue;
 
       let forced = null;
@@ -383,6 +386,7 @@ function createBotManager(options = {}) {
     if (!raw || bots.size === 0) return;
 
     tickNumber++;
+    const now = Date.now();
     const cfg = currentBrainConfig();
     const gameState = raw.gameState;
     const ball = gameState && gameState.physicsState && gameState.physicsState.discs[0];
@@ -394,6 +398,7 @@ function createBotManager(options = {}) {
       if (!playerMatchesBot(raw.getPlayer(bot.id), bot)) {
         bot.memory.kickCooldown = 0;
         bot.lastInput = 0;
+        bot.lastInputSentAt = 0;
         continue;
       }
 
@@ -427,9 +432,12 @@ function createBotManager(options = {}) {
         input = 0;
       }
 
-      // Sadece değiştiğinde gönder (gereksiz olay üretmeyelim)
-      if (input !== bot.lastInput) {
+      const shouldRefreshInput = input !== 0
+        && (!bot.lastInputSentAt || now - bot.lastInputSentAt >= INPUT_RESEND_MS);
+
+      if (input !== bot.lastInput || shouldRefreshInput) {
         bot.lastInput = input;
+        bot.lastInputSentAt = now;
         try { raw.fakeSendPlayerInput(input, bot.id); } catch (e) {}
       }
     }
@@ -468,6 +476,7 @@ function createBotManager(options = {}) {
       name,
       memory: { kickCooldown: 0 },
       lastInput: 0,
+      lastInputSentAt: 0,
       seed,
       personality,
       trait: describePersonality(personality, baseCfg),
@@ -600,6 +609,7 @@ function createBotManager(options = {}) {
       }
       chosen.bot.forceBallUntil = Date.now() + durationMs;
       chosen.bot.forceBallOrigin = { x: ball.pos.x, y: ball.pos.y };
+      chosen.bot.lastInputSentAt = 0;
 
       const distance = distanceToBall(chosen.player, ball);
       log(`🤖 [BOT] Santra watchdog: ${chosen.bot.name} güvenli vuruş planıyla topa yönlendirildi (team=${teamId}, mesafe=${Math.round(distance)}).`);

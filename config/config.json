@@ -78,9 +78,7 @@
       "minX": -1200,
       "maxX": 1200,
       "minY": -600,
-      "maxY": 600,
-      "goalMinY": -110,
-      "goalMaxY": 110
+      "maxY": 600
     }
   },
   "logging": {

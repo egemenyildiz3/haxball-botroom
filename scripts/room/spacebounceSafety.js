@@ -3,8 +3,6 @@ const DEFAULT_MAP_BOUNDS = {
   maxX: 1200,
   minY: -600,
   maxY: 600,
-  goalMinY: -110,
-  goalMaxY: 110,
 };
 
 const DEFAULT_SAFE_MARGIN = 80;
@@ -38,15 +36,10 @@ function nearestSafeCorner(pos, bounds = DEFAULT_MAP_BOUNDS, safeMargin = DEFAUL
 }
 
 function isOutOfBoundsPosition(ballPosition, bounds = DEFAULT_MAP_BOUNDS) {
-  let isOutOfBounds = ballPosition.y < bounds.minY || ballPosition.y > bounds.maxY;
-
-  const isInsideGoalY = ballPosition.y > bounds.goalMinY && ballPosition.y < bounds.goalMaxY;
-
-  if (!isInsideGoalY) {
-    isOutOfBounds = isOutOfBounds || ballPosition.x < bounds.minX || ballPosition.x > bounds.maxX;
-  }
-
-  return isOutOfBounds;
+  return ballPosition.y < bounds.minY
+    || ballPosition.y > bounds.maxY
+    || ballPosition.x < bounds.minX
+    || ballPosition.x > bounds.maxX;
 }
 
 function fallbackT(key) {
