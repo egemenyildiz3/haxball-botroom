@@ -15,7 +15,8 @@ const BRAIN_MODULES = {
   smallPitch: require('./brainSmallPitch'),
 };
 
-const FIRST_BOT_ID = 900000; // gerçek oyuncu id sayacı günlerce çalışınca 500'lere ulaşabiliyor
+const BOT_ID_MIN = 60000;
+const BOT_ID_MAX = 65000;
 const BOT_CONN_PREFIX = 'bot-conn-';
 const BOT_AUTH_PREFIX = 'bot-auth-';
 const KICKOFF_FORCE_MS = 15 * 1000;
@@ -157,7 +158,7 @@ function createBotManager(options = {}) {
   let raw = null; // node-haxball ham oda nesnesi
   let keyState = null; // API.Utils.keyState
   let runAfterGameTick = null; // API.Utils.runAfterGameTick
-  let nextId = FIRST_BOT_ID;
+  let nextId = BOT_ID_MAX;
   let physicsCfg = null; // haritadan okunan fizik ayarları
   let physicsStadium = null; // ayarların hangi stadyuma ait olduğu
   let ballCollisionFlag = null;
@@ -457,8 +458,10 @@ function createBotManager(options = {}) {
   }
 
   function allocateBotId() {
-    for (let attempts = 0; attempts < 10000; attempts++) {
-      const candidate = nextId++;
+    const rangeSize = BOT_ID_MAX - BOT_ID_MIN + 1;
+    for (let attempts = 0; attempts < rangeSize; attempts++) {
+      const candidate = nextId--;
+      if (nextId < BOT_ID_MIN) nextId = BOT_ID_MAX;
       const tracked = [...bots.values()].some((bot) => bot.id === candidate);
       const occupied = raw && typeof raw.getPlayer === 'function' && raw.getPlayer(candidate);
       if (!tracked && !occupied) return candidate;

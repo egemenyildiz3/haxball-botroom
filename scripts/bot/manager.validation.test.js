@@ -47,11 +47,11 @@ function testPrunesIdCollisionAndRespawns() {
 
   const started = manager.start(1);
   assert.equal(started.ok, true);
-  assert.equal(raw.players[0].id, 900000);
-  assert.equal(manager.isBotPlayer(900000), true);
+  assert.equal(raw.players[0].id, 65000);
+  assert.equal(manager.isBotPlayer(65000), true);
 
   raw.players = [{
-    id: 900000,
+    id: 65000,
     name: 'Real Human',
     auth: 'real-auth',
     conn: 'real-conn',
@@ -64,7 +64,7 @@ function testPrunesIdCollisionAndRespawns() {
   assert.equal(ensured.ok, true);
   assert.equal(ensured.pruned, 1);
   assert.equal(ensured.started, 1);
-  assert.equal(manager.isBotPlayer(900001), true);
+  assert.equal(manager.isBotPlayer(64999), true);
   assert(logs.some((line) => line.includes('gerçek/farklı oyuncuya ait')));
 }
 
@@ -82,7 +82,7 @@ function testRemoveDoesNotKickRealPlayerOnOldBotId() {
 
   assert.equal(manager.start(1).ok, true);
   raw.players = [{
-    id: 900000,
+    id: 65000,
     name: 'Real Human',
     auth: 'real-auth',
     conn: 'real-conn',
@@ -91,7 +91,7 @@ function testRemoveDoesNotKickRealPlayerOnOldBotId() {
 
   const stopped = manager.stopLast();
   assert.equal(stopped.ok, true);
-  assert.equal(raw.getPlayer(900000).name, 'Real Human');
+  assert.equal(raw.getPlayer(65000).name, 'Real Human');
   assert(logs.some((line) => line.includes('oyuncuya dokunulmadı')));
 }
 
