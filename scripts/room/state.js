@@ -8,6 +8,8 @@ function createRoomState(options = {}) {
     touchHistory: [],
     currentGame: null,
     lastGameTickAt: null,
+    lastGoalAt: 0,
+    lastGameStartAt: 0,
     kickoffWatch: null,
     ballRecovery: null,
     joinIdsByPlayer: new Map(),

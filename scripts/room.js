@@ -262,6 +262,25 @@ async function createRoom(room, deps) {
     handlePlayerAdminChange(room, state, changedPlayer, byPlayer, roomDeps, sanitizePlayer);
   };
 
+  room.onPlayerSyncChange = function (playerId, value) {
+    const player = sanitizePlayer(room, { id: playerId }, state) || { id: playerId };
+    const cleanName = getCleanName(player) || `id=${playerId}`;
+    const status = value ? 'synchronized' : 'desynchronized';
+    const message = `[SYNC] ${cleanName} ${status}.`;
+
+    if (value) {
+      console.log(message);
+      if (logger) logger.event('player_sync', 'Player synchronized', { playerId, username: cleanName, synchronized: true });
+      return;
+    }
+
+    if (logger) {
+      logger.warn('player_sync', message, { playerId, username: cleanName, synchronized: false });
+    } else {
+      console.warn(message);
+    }
+  };
+
   room.onPlayerTeamChange = function (changedPlayer, byPlayer) {
     const safePlayer = sanitizePlayer(room, changedPlayer, state);
     markPlayerInput(state, safePlayer, botManager);

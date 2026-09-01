@@ -2,7 +2,9 @@ const assert = require('assert');
 const {
   DEFAULT_MAP_BOUNDS,
   isOutOfBoundsPosition,
+  isRecoveryTemporarilySuspended,
   nearestSafeCorner,
+  repairOutOfBoundsBall,
 } = require('./spacebounceSafety');
 
 const V3_BOUNDS = {
@@ -27,6 +29,19 @@ function run() {
     x: -505,
     y: -195,
   });
+
+  const now = Date.now();
+  assert.equal(isRecoveryTemporarilySuspended({ lastGoalAt: now }, now), true);
+  assert.equal(isRecoveryTemporarilySuspended({ lastGameStartAt: now }, now), true);
+
+  let moved = false;
+  const state = { lastGoalAt: Date.now(), ballRecovery: { startedAt: Date.now() - 5000 } };
+  repairOutOfBoundsBall({
+    getBallPosition: () => ({ x: 1300, y: 0 }),
+    setDiscProperties: () => { moved = true; },
+  }, state, () => {});
+  assert.equal(moved, false);
+  assert.equal(state.ballRecovery, null);
 
   console.log('spacebounceSafety validation tests passed');
 }

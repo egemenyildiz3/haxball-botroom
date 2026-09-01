@@ -20,7 +20,7 @@ const BOT_CONN_PREFIX = 'bot-conn-';
 const BOT_AUTH_PREFIX = 'bot-auth-';
 const KICKOFF_FORCE_MS = 15 * 1000;
 const KICKOFF_RELEASE_DISTANCE = 85;
-const INPUT_RESEND_MS = 500;
+const KICK_KEY_BIT = 16;
 const DEFAULT_BOT_NAMES = [
   'Messi',
   'Ronaldo',
@@ -156,6 +156,7 @@ function createBotManager(options = {}) {
 
   let raw = null; // node-haxball ham oda nesnesi
   let keyState = null; // API.Utils.keyState
+  let runAfterGameTick = null; // API.Utils.runAfterGameTick
   let nextId = FIRST_BOT_ID;
   let physicsCfg = null; // haritadan okunan fizik ayarları
   let physicsStadium = null; // ayarların hangi stadyuma ait olduğu
@@ -386,7 +387,6 @@ function createBotManager(options = {}) {
     if (!raw || bots.size === 0) return;
 
     tickNumber++;
-    const now = Date.now();
     const cfg = currentBrainConfig();
     const gameState = raw.gameState;
     const ball = gameState && gameState.physicsState && gameState.physicsState.discs[0];
@@ -395,10 +395,10 @@ function createBotManager(options = {}) {
     const traceThisTick = telemetry && tickNumber % telemetryEveryTicks === 0;
 
     for (const bot of bots.values()) {
-      if (!playerMatchesBot(raw.getPlayer(bot.id), bot)) {
+      const rawPlayer = raw.getPlayer(bot.id);
+      if (!playerMatchesBot(rawPlayer, bot)) {
         bot.memory.kickCooldown = 0;
         bot.lastInput = 0;
-        bot.lastInputSentAt = 0;
         continue;
       }
 
@@ -432,13 +432,26 @@ function createBotManager(options = {}) {
         input = 0;
       }
 
-      const shouldRefreshInput = input !== 0
-        && (!bot.lastInputSentAt || now - bot.lastInputSentAt >= INPUT_RESEND_MS);
+      const sendInput = (value) => {
+        try { raw.fakeSendPlayerInput(value, bot.id); } catch (e) {}
+      };
+      const sendAfterTick = (value) => {
+        if (typeof runAfterGameTick === 'function') {
+          try {
+            runAfterGameTick(() => sendInput(value), 1);
+            return;
+          } catch (e) {}
+        }
+        sendInput(value);
+      };
+      const wantsKick = (input & KICK_KEY_BIT) !== 0;
 
-      if (input !== bot.lastInput || shouldRefreshInput) {
+      if (input !== bot.lastInput) {
         bot.lastInput = input;
-        bot.lastInputSentAt = now;
-        try { raw.fakeSendPlayerInput(input, bot.id); } catch (e) {}
+        sendAfterTick(input);
+      } else if (wantsKick && rawPlayer && rawPlayer.isKicking === false) {
+        sendAfterTick(input & ~KICK_KEY_BIT);
+        sendAfterTick(input);
       }
     }
   }
@@ -476,7 +489,6 @@ function createBotManager(options = {}) {
       name,
       memory: { kickCooldown: 0 },
       lastInput: 0,
-      lastInputSentAt: 0,
       seed,
       personality,
       trait: describePersonality(personality, baseCfg),
@@ -533,6 +545,7 @@ function createBotManager(options = {}) {
     attach(rawRoom, api) {
       raw = rawRoom;
       keyState = api.Utils.keyState;
+      runAfterGameTick = api.Utils && api.Utils.runAfterGameTick;
       ballCollisionFlag = api.CollisionFlags && api.CollisionFlags.ball;
 
       // Oyun tick'ine bağlan; varsa mevcut kancayı da çağırmaya devam et
@@ -609,7 +622,7 @@ function createBotManager(options = {}) {
       }
       chosen.bot.forceBallUntil = Date.now() + durationMs;
       chosen.bot.forceBallOrigin = { x: ball.pos.x, y: ball.pos.y };
-      chosen.bot.lastInputSentAt = 0;
+      chosen.bot.lastInput = 0;
 
       const distance = distanceToBall(chosen.player, ball);
       log(`🤖 [BOT] Santra watchdog: ${chosen.bot.name} güvenli vuruş planıyla topa yönlendirildi (team=${teamId}, mesafe=${Math.round(distance)}).`);

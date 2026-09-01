@@ -7,6 +7,8 @@ const DEFAULT_MAP_BOUNDS = {
 
 const DEFAULT_SAFE_MARGIN = 80;
 const RECOVERY_DELAY_MS = 2 * 1000;
+const POST_GOAL_RECOVERY_GRACE_MS = 4 * 1000;
+const GAME_START_RECOVERY_GRACE_MS = 2 * 1000;
 
 function recoverySettings(config = {}) {
   const recovery = config.ballRecovery || {};
@@ -50,11 +52,22 @@ function fallbackT(key) {
   return messages[key] || key;
 }
 
+function isRecoveryTemporarilySuspended(state, now = Date.now()) {
+  if (!state) return false;
+  return (state.lastGoalAt && now - state.lastGoalAt < POST_GOAL_RECOVERY_GRACE_MS)
+    || (state.lastGameStartAt && now - state.lastGameStartAt < GAME_START_RECOVERY_GRACE_MS);
+}
+
 function repairOutOfBoundsBall(room, state, sendMsg, t = fallbackT, config = {}) {
   if (typeof room.getBallPosition !== 'function') return;
 
   const ballPosition = room.getBallPosition();
   if (!ballPosition) return;
+
+  if (isRecoveryTemporarilySuspended(state)) {
+    state.ballRecovery = null;
+    return;
+  }
 
   const { bounds, safeMargin } = recoverySettings(config);
 
@@ -88,8 +101,11 @@ module.exports = {
   DEFAULT_MAP_BOUNDS,
   DEFAULT_SAFE_MARGIN,
   RECOVERY_DELAY_MS,
+  POST_GOAL_RECOVERY_GRACE_MS,
+  GAME_START_RECOVERY_GRACE_MS,
   recoverySettings,
   nearestSafeCorner,
   isOutOfBoundsPosition,
+  isRecoveryTemporarilySuspended,
   repairOutOfBoundsBall,
 };

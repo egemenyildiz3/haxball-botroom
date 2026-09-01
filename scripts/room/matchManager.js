@@ -9,6 +9,7 @@ const ROTATION_END_DELAY_MS = 450;
 const KICKOFF_TOUCH_DELAY_MS = 4 * 1000;
 const KICKOFF_FORCE_RETRY_MS = 2 * 1000;
 const KICKOFF_MAX_FORCE_ATTEMPTS = 6;
+const KICKOFF_FORCE_BACKOFF_MS = 8 * 1000;
 
 function shuffle(players) {
   const result = [...players];
@@ -53,6 +54,7 @@ function startKickoffWatch(state, team = null) {
     team,
     startedAt: Date.now(),
     lastForceAt: 0,
+    nextForceAt: 0,
     attempts: 0,
   };
 }
@@ -71,6 +73,7 @@ function checkKickoffWatch(room, state, deps) {
 
   const now = Date.now();
   if (now - watch.startedAt < KICKOFF_TOUCH_DELAY_MS) return;
+  if (watch.nextForceAt && now < watch.nextForceAt) return;
   if (watch.lastForceAt && now - watch.lastForceAt < KICKOFF_FORCE_RETRY_MS) return;
 
   if (!botManager || typeof botManager.forceClosestBotToBall !== 'function') {
@@ -98,8 +101,9 @@ function checkKickoffWatch(room, state, deps) {
   }
 
   if (watch.attempts >= KICKOFF_MAX_FORCE_ATTEMPTS) {
-    state.kickoffWatch = null;
-    console.log(`[KICKOFF-WATCH] Santra müdahalesi maksimum deneme sayısına ulaştı; takip kapatıldı (team=${teams.join(',')}).`);
+    watch.attempts = 0;
+    watch.nextForceAt = now + KICKOFF_FORCE_BACKOFF_MS;
+    console.log(`[KICKOFF-WATCH] Santra müdahalesi maksimum deneme sayısına ulaştı; ${KICKOFF_FORCE_BACKOFF_MS / 1000} sn sonra tekrar denenecek (team=${teams.join(',')}).`);
   }
 }
 
@@ -197,6 +201,7 @@ function scoreVars(t, scores) {
 
 function handleTeamGoal(room, state, team, { getTimestamp, sendMsg, t = fallbackT, logger = null }) {
   state.ballRecovery = null;
+  state.lastGoalAt = Date.now();
   const liveScores = typeof room.getScores === 'function' ? room.getScores() : null;
 
   if (state.currentGame) {
@@ -297,6 +302,7 @@ function handleGameStart(room, state, { sendMsg, t = fallbackT, logger = null })
 
   endTeamTransitionLock(room, state);
   state.ballRecovery = null;
+  state.lastGameStartAt = Date.now();
   state.lastTouchPlayer = null;
   state.secondLastTouchPlayer = null;
   state.touchHistory = [];
