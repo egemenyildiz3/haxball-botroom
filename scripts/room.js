@@ -13,13 +13,48 @@ const { attachTerminalInput } = require('./room/terminal');
 const { isProtectedBotIdentity } = require('./room/botPolicy');
 const { blockDuplicateJoin, blockInvalidJoinName } = require('./room/joinGuards');
 const { isOwner, roleOfUser } = require('./roles');
+const { handleRoomReadError, isHeadlessRoomLostError, scheduleProcessRestart } = require('./room/runtimeHealth');
+
+const PROCESS_ERROR_LOG_WINDOW_MS = 10 * 1000;
+const PROCESS_ERROR_MAX_LOGS_PER_WINDOW = 3;
+const processErrorWindows = new Map();
+
+function logProcessError(kind, label, errorLike) {
+  const message = errorLike && errorLike.message ? errorLike.message : String(errorLike || '');
+  const stack = errorLike && errorLike.stack ? errorLike.stack : '';
+  const key = `${kind}:${message}:${stack.split('\n')[1] || ''}`;
+  const now = Date.now();
+  const current = processErrorWindows.get(key);
+
+  if (!current || now - current.startedAt > PROCESS_ERROR_LOG_WINDOW_MS) {
+    if (current && current.suppressed > 0) {
+      console.error(`${label} (${current.suppressed} tekrar bastırıldı)`);
+    }
+    processErrorWindows.set(key, { startedAt: now, count: 1, suppressed: 0 });
+    console.error(label, message, stack);
+    return;
+  }
+
+  current.count += 1;
+  if (current.count <= PROCESS_ERROR_MAX_LOGS_PER_WINDOW) {
+    console.error(label, message, stack);
+  } else {
+    current.suppressed += 1;
+  }
+}
 
 process.on('uncaughtException', (err) => {
-  console.error('❌ [CRITICAL ERROR] Yakalanmamış İstisna:', err.message, err.stack);
+  logProcessError('uncaughtException', '❌ [CRITICAL ERROR] Yakalanmamış İstisna:', err);
+  if (isHeadlessRoomLostError(err)) {
+    scheduleProcessRestart('Yakalanmamış node-haxball oda state hatası görüldü.');
+  }
 });
 
 process.on('unhandledRejection', (reason) => {
-  console.error('⚠️ [UNHANDLED REJECTION] İşlenmemiş Promise Reddi:', reason);
+  logProcessError('unhandledRejection', '⚠️ [UNHANDLED REJECTION] İşlenmemiş Promise Reddi:', reason);
+  if (isHeadlessRoomLostError(reason)) {
+    scheduleProcessRestart('Yakalanmamış node-haxball oda state hatası görüldü.');
+  }
 });
 
 function applyTeamColors(room, teamColors) {
@@ -50,6 +85,17 @@ function markPlayerInput(state, player, botManager) {
   state.inactivityWarnings.delete(player.id);
 }
 
+function safeGetPlayerList(room, context = 'room') {
+  if (!room || typeof room.getPlayerList !== 'function') return [];
+
+  try {
+    return room.getPlayerList();
+  } catch (err) {
+    handleRoomReadError(context, err);
+    return [];
+  }
+}
+
 function forgetPlayerState(player, state, deps) {
   if (!player || typeof player.id === 'undefined') return;
 
@@ -71,9 +117,15 @@ function getRawPlayerInput(room, playerId) {
   const rawRoom = room && room.nhInstance;
   if (!rawRoom) return null;
 
-  const rawPlayer = typeof rawRoom.getPlayer === 'function'
-    ? rawRoom.getPlayer(playerId)
-    : (rawRoom.players || []).find((candidate) => candidate.id === playerId);
+  let rawPlayer = null;
+  try {
+    rawPlayer = typeof rawRoom.getPlayer === 'function'
+      ? rawRoom.getPlayer(playerId)
+      : (rawRoom.players || []).find((candidate) => candidate.id === playerId);
+  } catch (err) {
+    handleRoomReadError('INPUT', err);
+    return null;
+  }
 
   return rawPlayer && typeof rawPlayer.input === 'number' ? rawPlayer.input : null;
 }
@@ -90,7 +142,7 @@ function attachInactivityKick(room, state, deps) {
     if (!state.currentGame || typeof room.getPlayerList !== 'function') return;
 
     const now = Date.now();
-    for (const player of room.getPlayerList()) {
+    for (const player of safeGetPlayerList(room, 'INACTIVITY')) {
       if (!isPlayableHuman(player, state, botManager)) continue;
 
       const currentInput = getRawPlayerInput(room, player.id);
@@ -395,10 +447,8 @@ async function createRoom(room, deps) {
 
   room.onGameStart = function (byPlayer) {
     auditNativeRoomAction('start', byPlayer, roomDeps);
-    if (typeof room.getPlayerList === 'function') {
-      for (const player of room.getPlayerList()) {
-        markPlayerInput(state, player, botManager);
-      }
+    for (const player of safeGetPlayerList(room, 'GAME START')) {
+      markPlayerInput(state, player, botManager);
     }
     handleGameStart(room, state, { sendMsg, playerAssignments, t, logger });
   };
@@ -429,11 +479,9 @@ async function createRoom(room, deps) {
   lockTeams(room);
 
   setInterval(() => {
-    if (typeof room.getPlayerList === 'function') {
-      const realHumanPlayers = room.getPlayerList().filter((p) => p.id !== 0);
-      if (realHumanPlayers.length > 0) {
-        console.log(`[STATUS] Odada şu an aktif ${realHumanPlayers.length} oyuncu bulunuyor. Zaman: ${getTimestamp()}`);
-      }
+    const realHumanPlayers = safeGetPlayerList(room, 'STATUS').filter((p) => p.id !== 0);
+    if (realHumanPlayers.length > 0) {
+      console.log(`[STATUS] Odada şu an aktif ${realHumanPlayers.length} oyuncu bulunuyor. Zaman: ${getTimestamp()}`);
     }
   }, 2 * 60 * 1000);
 
@@ -442,8 +490,7 @@ async function createRoom(room, deps) {
   }, config.autoManagement.restoreCheckMs);
 
   setInterval(() => {
-    if (typeof room.getPlayerList !== 'function') return;
-    const realHumanPlayers = room.getPlayerList().filter((p) => p.id !== 0);
+    const realHumanPlayers = safeGetPlayerList(room, 'REQUEST ANNOUNCE').filter((p) => p.id !== 0);
     if (realHumanPlayers.length === 0) return;
     sendMsg(room, t('request.announce'), null, 0x00BFFF, 'bold');
   }, config.adminRequests.announceMs);
@@ -483,7 +530,7 @@ function handlePlayerLeave(room, player, state, deps) {
 
   restoreAutoManageIfNoAdmins(room, state, deps, player && player.id);
 
-  const activePlayers = room.getPlayerList().filter((p) => p.id !== 0 && (p.team === 1 || p.team === 2));
+  const activePlayers = safeGetPlayerList(room, 'LEAVE').filter((p) => p.id !== 0 && (p.team === 1 || p.team === 2));
 
   if (activePlayers.length === 0 && typeof room.stopGame === 'function') {
     try {

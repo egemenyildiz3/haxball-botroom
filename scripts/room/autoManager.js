@@ -1,6 +1,17 @@
 const { rebalanceTeams, checkAndStartGame } = require('./teamBalancer');
 const { sendMsg } = require('../commands/helpers');
 const { hasCapability } = require('../roles');
+const { handleRoomReadError } = require('./runtimeHealth');
+
+function safeGetPlayerList(room, context = 'AUTO') {
+  if (!room || typeof room.getPlayerList !== 'function') return [];
+  try {
+    return room.getPlayerList();
+  } catch (err) {
+    handleRoomReadError(context, err);
+    return [];
+  }
+}
 
 function rebalanceThenStart(room, state, deps) {
   rebalanceTeams(room, state, deps)
@@ -49,7 +60,10 @@ function restoreAutoManageIfNoAdmins(room, state, deps, excludeId) {
   const { loggedInPlayers, config } = deps;
   const roleCapabilities = config && config.adminRules && config.adminRules.roleCapabilities;
 
-  const hasAdmin = room.getPlayerList().some((p) => {
+  const players = safeGetPlayerList(room, 'AUTO RESTORE');
+  if (players.length === 0) return false;
+
+  const hasAdmin = players.some((p) => {
     if (p.id === 0) return false;
     if (excludeId !== undefined && p.id === excludeId) return false;
     if (p.admin) return true;

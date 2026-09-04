@@ -1,4 +1,5 @@
 const { desiredBotCount, desiredEvenActiveCount, isBotPlayer } = require('./botPolicy');
+const { handleRoomReadError } = require('./runtimeHealth');
 
 const REBALANCE_START_DELAY_MS = 600;
 const REBALANCE_MOVE_DELAY_MS = 300;
@@ -11,6 +12,16 @@ const DEFAULT_MAX_TEAM_SIZE = 4;
 const DEFAULT_MAX_ACTIVE_PLAYERS = 8;
 
 const fallbackSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function safeGetPlayerList(room, context = 'TEAM') {
+  if (!room || typeof room.getPlayerList !== 'function') return [];
+  try {
+    return room.getPlayerList();
+  } catch (err) {
+    handleRoomReadError(context, err);
+    return [];
+  }
+}
 
 function teamLimits(config = {}) {
   const teamManagement = config.teamManagement || {};
@@ -133,7 +144,7 @@ async function balanceBotDistribution(room, state, isBot, sleep = fallbackSleep)
   if (typeof room.getPlayerList !== 'function' || typeof room.setPlayerTeam !== 'function') return;
 
   for (let attempts = 0; attempts < 4; attempts++) {
-    const players = room.getPlayerList();
+    const players = safeGetPlayerList(room, 'BOT BALANCE');
     const redPlayers = activeTeamPlayers(players, state, 1);
     const bluePlayers = activeTeamPlayers(players, state, 2);
     const redBots = botCount(redPlayers, isBot);
@@ -195,7 +206,7 @@ async function validateTeamDistribution(room, state, deps = {}) {
   for (let attempts = 0; attempts < 8; attempts++) {
     if (!state.autoManageEnabled) return;
 
-    const players = room.getPlayerList();
+    const players = safeGetPlayerList(room, 'TEAM VALIDATOR');
     const eligiblePlayers = players.filter((p) => isAutoEligiblePlayer(p, state, isBot));
     const realPlayers = eligiblePlayers.filter((p) => !isBot(p));
     const botPlayers = eligiblePlayers.filter(isBot);
@@ -342,7 +353,7 @@ async function validateTeamDistribution(room, state, deps = {}) {
 function rememberLockedTeams(room, state) {
   if (typeof room.getPlayerList !== 'function') return;
   state.lockedTeams = new Map(
-    room.getPlayerList()
+    safeGetPlayerList(room, 'TEAM LOCK')
       .filter((p) => p.id !== 0)
       .map((p) => [p.id, p.team])
   );
@@ -370,7 +381,7 @@ function checkAndStartGame(room, state) {
 }
 
 function tryStartGame(room, state, retriesLeft) {
-  const activePlayers = room.getPlayerList().filter((p) => p.id !== 0 && (p.team === 1 || p.team === 2));
+  const activePlayers = safeGetPlayerList(room, 'START GAME').filter((p) => p.id !== 0 && (p.team === 1 || p.team === 2));
 
   if (activePlayers.length >= 1 && !state.currentGame && typeof room.startGame === 'function') {
     try {
@@ -423,7 +434,7 @@ async function runRebalanceOnce(room, state, { playerJoinOrder, botManager, slee
   await sleep(REBALANCE_START_DELAY_MS);
   if (!state.autoManageEnabled) return;
 
-  let players = room.getPlayerList();
+  let players = safeGetPlayerList(room, 'REBALANCE');
 
   const hostPlayer = players.find((p) => p.id === 0);
   if (hostPlayer && hostPlayer.team !== 0) {
@@ -451,7 +462,7 @@ async function runRebalanceOnce(room, state, { playerJoinOrder, botManager, slee
     notifyPromotionCandidates(room, state, waitingHumans.slice(0, noticeCount), { sendMsg, t, config });
     await sleep(joinDelay);
     if (!state.autoManageEnabled) return;
-    players = room.getPlayerList();
+    players = safeGetPlayerList(room, 'REBALANCE');
     autoEligiblePlayers = players.filter((p) => isAutoEligiblePlayer(p, state, isBot));
     realPlayers = autoEligiblePlayers.filter((p) => !isBot(p));
     botPlayers = autoEligiblePlayers.filter(isBot);
@@ -479,7 +490,7 @@ async function runRebalanceOnce(room, state, { playerJoinOrder, botManager, slee
         await sleep(REBALANCE_MOVE_DELAY_MS);
       }
     }
-    players = room.getPlayerList();
+    players = safeGetPlayerList(room, 'REBALANCE');
   }
 
   let redPlayers = activeTeamPlayers(players, state, 1);
@@ -523,7 +534,7 @@ async function runRebalanceOnce(room, state, { playerJoinOrder, botManager, slee
     await sleep(REBALANCE_MOVE_DELAY_MS);
   }
 
-  players = room.getPlayerList();
+  players = safeGetPlayerList(room, 'REBALANCE');
   redPlayers = activeTeamPlayers(players, state, 1);
   bluePlayers = activeTeamPlayers(players, state, 2);
   redCount = redPlayers.length;

@@ -1,3 +1,5 @@
+const { handleRoomReadError } = require('./runtimeHealth');
+
 const DEFAULT_MAP_BOUNDS = {
   minX: -1200,
   maxX: 1200,
@@ -61,7 +63,14 @@ function isRecoveryTemporarilySuspended(state, now = Date.now()) {
 function repairOutOfBoundsBall(room, state, sendMsg, t = fallbackT, config = {}) {
   if (typeof room.getBallPosition !== 'function') return;
 
-  const ballPosition = room.getBallPosition();
+  let ballPosition = null;
+  try {
+    ballPosition = room.getBallPosition();
+  } catch (err) {
+    handleRoomReadError('BALL RECOVERY', err);
+    state.ballRecovery = null;
+    return;
+  }
   if (!ballPosition) return;
 
   if (isRecoveryTemporarilySuspended(state)) {
@@ -87,12 +96,18 @@ function repairOutOfBoundsBall(room, state, sendMsg, t = fallbackT, config = {})
 
   const { x, y } = nearestSafeCorner(ballPosition, bounds, safeMargin);
 
-  room.setDiscProperties(0, {
-    x,
-    y,
-    xspeed: 0,
-    yspeed: 0,
-  });
+  try {
+    room.setDiscProperties(0, {
+      x,
+      y,
+      xspeed: 0,
+      yspeed: 0,
+    });
+  } catch (err) {
+    handleRoomReadError('BALL RECOVERY', err);
+    state.ballRecovery = null;
+    return;
+  }
   state.ballRecovery = null;
   sendMsg(room, t('ball.recovered'), null, 0xFFCC00, 'bold');
 }

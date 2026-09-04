@@ -1,4 +1,5 @@
 const { getCleanName } = require('../util');
+const { handleRoomReadError } = require('./runtimeHealth');
 
 const MIN_JOIN_ID = 100;
 const MAX_JOIN_ID = 999;
@@ -6,7 +7,16 @@ const MAX_JOIN_ID = 999;
 function sanitizePlayer(room, player, state) {
   if (!player || typeof player.id === 'undefined') return player;
 
-  const realPlayer = (typeof room.getPlayer === 'function') ? (room.getPlayer(player.id) || player) : player;
+  let realPlayer = player;
+  if (room && typeof room.getPlayer === 'function') {
+    try {
+      realPlayer = room.getPlayer(player.id) || player;
+    } catch (err) {
+      handleRoomReadError('PLAYER IDENTITY', err);
+      realPlayer = player;
+    }
+  }
+
   const cachedAuth = state.playerAuths.get(String(player.id)) || state.playerAuths.get(Number(player.id)) || '';
 
   return {

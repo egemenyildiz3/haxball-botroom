@@ -2,6 +2,17 @@ const { getCleanName } = require('../util');
 const { sendMsg } = require('../commands/helpers');
 const { isProtectedBotIdentity } = require('./botPolicy');
 const { hasCapability } = require('../roles');
+const { handleRoomReadError } = require('./runtimeHealth');
+
+function safeGetPlayerList(room) {
+  if (!room || typeof room.getPlayerList !== 'function') return [];
+  try {
+    return room.getPlayerList();
+  } catch (err) {
+    handleRoomReadError('JOIN-GUARD', err);
+    return [];
+  }
+}
 
 function hasAuthCapability(db, auth, capability, roleCapabilities) {
   if (!auth) return false;
@@ -30,7 +41,7 @@ function duplicateJoinMatch(room, player, state, botManager) {
   const playerConn = player.conn || '';
   if (!playerAuth && !playerConn) return null;
 
-  for (const candidate of room.getPlayerList()) {
+  for (const candidate of safeGetPlayerList(room)) {
     if (!candidate || candidate.id === player.id || candidate.id === 0) continue;
 
     const candidateAuth = candidate.auth

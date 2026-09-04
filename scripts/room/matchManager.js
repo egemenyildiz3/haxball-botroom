@@ -2,6 +2,7 @@ const { refreshLoggedInRoles, saveGameResult } = require('../db');
 const { getCleanName } = require('../util');
 const { checkAndStartGame, rememberLockedTeams, beginTeamTransitionLock, endTeamTransitionLock, validateTeamDistribution, teamLimits } = require('./teamBalancer');
 const { desiredBotCount, desiredEvenActiveCount, isBotPlayer, sortRealPlayersFirst } = require('./botPolicy');
+const { handleRoomReadError } = require('./runtimeHealth');
 
 const ROTATION_START_DELAY_MS = 600;
 const ROTATION_MOVE_DELAY_MS = 300;
@@ -10,6 +11,16 @@ const KICKOFF_TOUCH_DELAY_MS = 4 * 1000;
 const KICKOFF_FORCE_RETRY_MS = 2 * 1000;
 const KICKOFF_MAX_FORCE_ATTEMPTS = 6;
 const KICKOFF_FORCE_BACKOFF_MS = 8 * 1000;
+
+function safeGetPlayerList(room, context = 'MATCH') {
+  if (!room || typeof room.getPlayerList !== 'function') return [];
+  try {
+    return room.getPlayerList();
+  } catch (err) {
+    handleRoomReadError(context, err);
+    return [];
+  }
+}
 
 function shuffle(players) {
   const result = [...players];
@@ -311,7 +322,7 @@ function handleGameStart(room, state, { sendMsg, t = fallbackT, logger = null })
     started_at: new Date().toISOString(),
     redScore: 0,
     blueScore: 0,
-    players: room.getPlayerList().filter((p) => p.id !== 0).map((player) => ({
+    players: safeGetPlayerList(room, 'MATCH START').filter((p) => p.id !== 0).map((player) => ({
       id: player.id,
       cleanName: getCleanName(player),
       team: player.team,
@@ -455,7 +466,7 @@ async function handleGameStop(room, state, deps) {
     state.isRebalancing = true;
     state.manualPlacements.clear();
 
-    const allPlayers = room.getPlayerList();
+    const allPlayers = safeGetPlayerList(room, 'MATCH ROTATION');
     const activeNonAfkPlayers = allPlayers.filter((p) => p.id !== 0 && !state.afkPlayers.has(p.id));
     const isBot = (p) => isBotPlayer(botManager, p);
     const realPlayers = activeNonAfkPlayers.filter((p) => !isBot(p));
@@ -475,7 +486,9 @@ async function handleGameStop(room, state, deps) {
         }
       }
 
-      const resetPlayers = room.getPlayerList().filter((p) => p.id !== 0 && !state.afkPlayers.has(p.id)).sort(sortByPriority);
+      const resetPlayers = safeGetPlayerList(room, 'MATCH ROTATION')
+        .filter((p) => p.id !== 0 && !state.afkPlayers.has(p.id))
+        .sort(sortByPriority);
       const eligibleBotIds = new Set(resetPlayers.filter(isBot).slice(0, targetBotCount).map((p) => p.id));
       const availableSpecs = resetPlayers
         .filter((p) => p.id !== 0 && !state.afkPlayers.has(p.id))
@@ -505,12 +518,14 @@ async function handleGameStop(room, state, deps) {
         await sleep(ROTATION_MOVE_DELAY_MS);
       }
 
-      const currentSpecs = room.getPlayerList()
+      const currentSpecs = safeGetPlayerList(room, 'MATCH ROTATION')
         .filter((p) => p.id !== 0 && p.team === 0 && !state.afkPlayers.has(p.id))
         .sort(sortByPriority)
         .filter((p) => {
           if (!isBot(p)) return true;
-          const activeBots = room.getPlayerList().filter((candidate) => candidate.id !== 0 && !state.afkPlayers.has(candidate.id) && (candidate.team === 1 || candidate.team === 2) && isBot(candidate)).length;
+          const activeBots = safeGetPlayerList(room, 'MATCH ROTATION')
+            .filter((candidate) => candidate.id !== 0 && !state.afkPlayers.has(candidate.id) && (candidate.team === 1 || candidate.team === 2) && isBot(candidate))
+            .length;
           return activeBots < targetBotCount;
         });
 
