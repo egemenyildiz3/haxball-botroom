@@ -71,6 +71,7 @@ const DEFAULTS = {
   preciseAimRange: 750, // bu mesafeden yakında direk seçimine geç
   clearConeCos: -0.1, // şut bölgesi dışında yeterli olan "ileriye dönüklük"
   ownGoalGuard: -0.25, // bu değerin altındaki yön = kendi kalemize, asla vurma
+  unsafeCarryGuard: 0.08, // bu değerin altında temas varsa topu sürme, önce yana açıl
 
   // Şut bölgesinde artık sabit bir açı konisi yerine GERÇEK isabet kontrolü
   // yapılıyor: topun gideceği yön kale ağzını kesiyor mu? goalMargin, kale
@@ -587,6 +588,28 @@ function supportTarget(view, cfg, slot) {
   };
 }
 
+function unsafeCarryTarget(view, cfg) {
+  const f = fieldOf(view);
+  const upfield = upfieldOf(view);
+  const sideAxis = normalize({ x: -upfield.y, y: upfield.x });
+  const ballToSelf = sub(view.self.pos, view.ball.pos);
+  const side = dot(ballToSelf, sideAxis) >= 0 ? 1 : -1;
+  const standOff = (view.self.radius || 15) + (view.ball.radius || 10) + 18;
+
+  return {
+    x: clamp(
+      view.ball.pos.x + upfield.x * standOff * 0.55 + sideAxis.x * side * standOff * 1.8,
+      f.minX * 0.95,
+      f.maxX * 0.95
+    ),
+    y: clamp(
+      view.ball.pos.y + upfield.y * standOff * 0.55 + sideAxis.y * side * standOff * 1.8,
+      f.minY * 0.85,
+      f.maxY * 0.85
+    ),
+  };
+}
+
 function botOnlyNudgeTarget(view, target, cfg, memory) {
   if (!view.botOnly) {
     memory.botOnlyFlatTicks = 0;
@@ -780,8 +803,17 @@ function decide(view, memory, config) {
     }
   }
 
+  const dangerousCarry = role === 'attacker'
+    && inKickRange
+    && inOwnThird
+    && forwardness < activeCfg.unsafeCarryGuard;
+
+  const finalNav = dangerousCarry
+    ? navigate(view.self, unsafeCarryTarget(view, activeCfg), activeCfg, memory, { strike: false })
+    : nav;
+
   // Kaleye yakınsak isabet şartı ara; uzaktaysak topa vur ve ileri gönder.
-  const wantKick = inKickRange && safeDirection && (
+  const wantKick = inKickRange && safeDirection && !dangerousCarry && (
     inShootingRange ? onTarget : forwardness >= activeCfg.clearConeCos
   );
 
@@ -825,16 +857,17 @@ function decide(view, memory, config) {
 
   // Top vuruş menzilindeyken frenlemek istemsiz bir dokunuşa yol açar;
   // bu yüzden menzil içinde frene izin vermiyoruz.
-  const braking = nav.brake && !inKickRange && !releasingForKick;
+  const braking = finalNav.brake && !inKickRange && !releasingForKick;
   const keyDown = shot || braking;
   memory.lastKeyDown = keyDown;
 
   return {
-    dirX: nav.dirX,
-    dirY: nav.dirY,
+    dirX: finalNav.dirX,
+    dirY: finalNav.dirY,
     kick: keyDown,
     role,
     braking,
+    mode: dangerousCarry ? 'unsafe-carry' : undefined,
   };
 }
 

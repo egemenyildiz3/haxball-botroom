@@ -54,6 +54,30 @@ test('yakın ve güvenli topta vuruş üretir', () => {
   assert.equal(move.kick, true);
 });
 
+test('kendi bölgede yanlış temas açısında topu kendi kaleye sürmez', () => {
+  const view = makeView(
+    { pos: { x: -873, y: 0 }, speed: { x: 0, y: 0 } },
+    { pos: { x: -900, y: 0 }, speed: { x: 0, y: 0 } }
+  );
+  const move = decide(view, {}, {});
+
+  assert.equal(move.role, 'attacker');
+  assert.equal(move.kick, false);
+  assert.equal(move.mode, 'unsafe-carry');
+  assert.notEqual(move.dirY, 0);
+});
+
+test('kendi bölgede güvenli açı varsa topu temizler', () => {
+  const view = makeView(
+    { pos: { x: -927, y: 0 }, speed: { x: 0, y: 0 } },
+    { pos: { x: -900, y: 0 }, speed: { x: 0, y: 0 } }
+  );
+  const move = decide(view, {}, {});
+
+  assert.equal(move.role, 'attacker');
+  assert.equal(move.kick, true);
+});
+
 test('solveStrikeIntercept temas merkezini topun arkasına koyar', () => {
   const self = { pos: { x: -200, y: 20 }, speed: { x: 0, y: 0 }, radius: 15 };
   const ball = { pos: { x: 100, y: 0 }, speed: { x: -8, y: 0 }, radius: 10 };
