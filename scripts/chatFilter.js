@@ -296,6 +296,14 @@ const COMPACT_PROFANITY = [
   'amkevladi',
 ];
 
+const DEFAULT_BLOCKED_DOMAIN_PATTERNS = [
+  'joliporn',
+  'pornhub',
+  'xvideos',
+  'xnxx',
+  'onlyfans',
+];
+
 function normalizeText(text) {
   return String(text || '')
     .toLocaleLowerCase('tr-TR')
@@ -332,19 +340,42 @@ function containsProfanity(text) {
     || COMPACT_PROFANITY.some((word) => compact.includes(word));
 }
 
+function containsBlockedDomain(text, blockedDomains = DEFAULT_BLOCKED_DOMAIN_PATTERNS) {
+  const normalized = normalizeText(text)
+    .replace(/\(\s*dot\s*\)/g, '.')
+    .replace(/\bdot\b/g, '.');
+  const compact = normalized.replace(/[^a-z0-9]/g, '');
+
+  return blockedDomains.some((domain) => {
+    const cleanDomain = normalizeText(domain).replace(/[^a-z0-9]/g, '');
+    if (!cleanDomain) return false;
+    return compact.includes(`${cleanDomain}com`)
+      || compact.includes(`${cleanDomain}net`)
+      || compact.includes(`${cleanDomain}org`)
+      || compact.includes(cleanDomain);
+  });
+}
+
 function defaultT(key, vars = {}) {
   const messages = {
     'chat.tooLong': `⚠️ Mesaj çok uzun. En fazla ${vars.max} karakter yazabilirsin.`,
     'chat.profanity': '⚠️ Küfürlü mesaj gönderemezsin.',
+    'chat.spam': '⚠️ Spam veya reklam içerikli mesaj gönderemezsin.',
     'chat.flood': `⚠️ Sohbette flood yapma. ${vars.seconds} sn sonra tekrar yazabilirsin.`,
   };
   return messages[key] || key;
 }
 
-function createChatFilter({ cooldownMs = CHAT_COOLDOWN_MS, maxLength = CHAT_MAX_LENGTH, t = defaultT } = {}) {
+function createChatFilter({
+  cooldownMs = CHAT_COOLDOWN_MS,
+  maxLength = CHAT_MAX_LENGTH,
+  blockedDomains = DEFAULT_BLOCKED_DOMAIN_PATTERNS,
+  t = defaultT,
+} = {}) {
   const lastMessageAt = new Map();
   const lastCooldownWarningAt = new Map();
   const lastProfanityWarningAt = new Map();
+  const lastSpamWarningAt = new Map();
 
   function check(player, text, { loggedInPlayers, now = Date.now() } = {}) {
     if (!player || typeof player.id === 'undefined') return { allowed: true };
@@ -379,6 +410,25 @@ function createChatFilter({ cooldownMs = CHAT_COOLDOWN_MS, maxLength = CHAT_MAX_
       };
     }
 
+    if (containsBlockedDomain(text, blockedDomains)) {
+      const lastWarning = lastSpamWarningAt.get(player.id);
+      if (Number.isFinite(lastWarning) && now - lastWarning < cooldownMs) {
+        return {
+          allowed: false,
+          reason: 'spam-silent',
+          silent: true,
+        };
+      }
+
+      lastSpamWarningAt.set(player.id, now);
+      return {
+        allowed: false,
+        reason: 'spam',
+        message: t('chat.spam'),
+        color: 0xFFCC00,
+      };
+    }
+
     const last = lastMessageAt.get(player.id);
     if (!Number.isFinite(last)) {
       lastMessageAt.set(player.id, now);
@@ -408,6 +458,7 @@ function createChatFilter({ cooldownMs = CHAT_COOLDOWN_MS, maxLength = CHAT_MAX_
     lastMessageAt.set(player.id, now);
     lastCooldownWarningAt.delete(player.id);
     lastProfanityWarningAt.delete(player.id);
+    lastSpamWarningAt.delete(player.id);
     return { allowed: true };
   }
 
@@ -415,6 +466,7 @@ function createChatFilter({ cooldownMs = CHAT_COOLDOWN_MS, maxLength = CHAT_MAX_
     lastMessageAt.delete(playerId);
     lastCooldownWarningAt.delete(playerId);
     lastProfanityWarningAt.delete(playerId);
+    lastSpamWarningAt.delete(playerId);
   }
 
   return { check, forget };
@@ -423,6 +475,8 @@ function createChatFilter({ cooldownMs = CHAT_COOLDOWN_MS, maxLength = CHAT_MAX_
 module.exports = {
   CHAT_COOLDOWN_MS,
   CHAT_MAX_LENGTH,
+  DEFAULT_BLOCKED_DOMAIN_PATTERNS,
+  containsBlockedDomain,
   createChatFilter,
   containsProfanity,
   isCommand,

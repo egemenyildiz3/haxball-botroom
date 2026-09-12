@@ -37,6 +37,7 @@
   "chat": {
     "cooldownMs": 3000,
     "maxLength": 60,
+    "blockedDomains": ["joliporn", "pornhub", "xvideos", "xnxx", "onlyfans"],
     "adminColor": "CC99FF",
     "normalColor": "FFFFFF",
     "roleColors": {

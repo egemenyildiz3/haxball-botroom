@@ -289,20 +289,58 @@ function isBotUsername(username) {
   return String(username || '').trim().toLowerCase().startsWith('spacebot');
 }
 
+function upsertVisitedUser(db, username, playerUid, authKey, now) {
+  const existingUsername = scalar(db, `
+    SELECT username
+    FROM visited_users
+    WHERE LOWER(TRIM(username)) = LOWER(TRIM(?))
+    LIMIT 1
+  `, [username]);
+
+  if (existingUsername) {
+    const stmt = db.prepare(`
+      UPDATE visited_users
+      SET auth_key = COALESCE(NULLIF(?, ''), auth_key),
+          last_visited_at = ?,
+          player_uid = COALESCE(NULLIF(player_uid, ''), ?)
+      WHERE username = ?
+    `);
+    stmt.run([authKey || '', now, playerUid, existingUsername]);
+    stmt.free();
+    return;
+  }
+
+  const existingUidUsername = playerUid
+    ? scalar(db, 'SELECT username FROM visited_users WHERE player_uid = ? LIMIT 1', [playerUid])
+    : null;
+
+  if (existingUidUsername) {
+    const stmt = db.prepare(`
+      UPDATE visited_users
+      SET username = ?,
+          auth_key = COALESCE(NULLIF(?, ''), auth_key),
+          last_visited_at = ?
+      WHERE player_uid = ?
+    `);
+    stmt.run([username, authKey || '', now, playerUid]);
+    stmt.free();
+    return;
+  }
+
+  const stmt = db.prepare(`
+    INSERT INTO visited_users (username, player_uid, auth_key, first_visited_at, last_visited_at)
+    VALUES (?, ?, ?, ?, ?)
+  `);
+  stmt.run([username, playerUid, authKey || '', now, now]);
+  stmt.free();
+}
+
 function ensureVisitedUid(db, DB_FILE, username, persistFn) {
   if (!username) return '';
 
   const now = new Date().toISOString();
   const playerUid = getOrCreatePlayerUid(db, username);
-  const stmt = db.prepare(`
-    INSERT INTO visited_users (username, player_uid, auth_key, first_visited_at, last_visited_at)
-    VALUES (?, ?, '', ?, ?)
-    ON CONFLICT(username) DO UPDATE SET
-      player_uid = COALESCE(NULLIF(visited_users.player_uid, ''), excluded.player_uid),
-      last_visited_at = excluded.last_visited_at
-  `);
-  stmt.run([username, playerUid, now, now]);
-  stmt.free();
+  upsertVisitedUser(db, username, playerUid, '', now);
 
   if (typeof persistFn === 'function') persistFn(db, DB_FILE);
   return playerUid;
@@ -340,16 +378,7 @@ function logVisitedUser(db, DB_FILE, username, authKey, persistFn) {
   try {
     const now = new Date().toISOString();
     const playerUid = getOrCreatePlayerUid(db, username, authKey);
-    const stmtVisited = db.prepare(`
-      INSERT INTO visited_users (username, player_uid, auth_key, first_visited_at, last_visited_at)
-      VALUES (?, ?, ?, ?, ?)
-      ON CONFLICT(username) DO UPDATE SET
-        auth_key = COALESCE(NULLIF(excluded.auth_key, ''), visited_users.auth_key),
-        last_visited_at = excluded.last_visited_at,
-        player_uid = COALESCE(NULLIF(visited_users.player_uid, ''), excluded.player_uid)
-    `);
-    stmtVisited.run([username, playerUid, authKey || '', now, now]);
-    stmtVisited.free();
+    upsertVisitedUser(db, username, playerUid, authKey || '', now);
 
     const stmtUser = db.prepare(`
       UPDATE users
@@ -363,6 +392,15 @@ function logVisitedUser(db, DB_FILE, username, authKey, persistFn) {
     if (typeof persistFn === 'function') persistFn(db, DB_FILE);
   } catch (err) {
     console.warn('[BACKEND-DB] Visited user kaydedilemedi:', err.message);
+  }
+}
+
+function safeEnsureVisitedUid(db, DB_FILE, username, persistFn, fallbackUid) {
+  try {
+    return ensureVisitedUid(db, DB_FILE, username, persistFn);
+  } catch (err) {
+    console.warn('[BACKEND-DB] Oyuncu UID kaydı atlandı:', err.message);
+    return fallbackUid || `name:${String(username || '').trim().toLocaleLowerCase('tr-TR')}`;
   }
 }
 
@@ -396,7 +434,7 @@ function saveGameResult(db, DB_FILE, scores, winnerTeam, loserTeam, game, endedA
         username: player.cleanName,
         player_uid: isBotUsername(player.cleanName)
           ? ''
-          : ensureVisitedUid(sharedDb, sharedDB_FILE, player.cleanName, persistFn),
+          : safeEnsureVisitedUid(sharedDb, sharedDB_FILE, player.cleanName, persistFn, player.player_uid),
         team: player.team,
         goals: player.goals || 0,
         assists: player.assists || 0,

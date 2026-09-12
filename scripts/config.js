@@ -56,6 +56,7 @@ const DEFAULT_CONFIG = {
   chat: {
     cooldownMs: 3000,
     maxLength: 60,
+    blockedDomains: ['joliporn', 'pornhub', 'xvideos', 'xnxx', 'onlyfans'],
     adminColor: 'CC99FF',
     normalColor: 'FFFFFF',
     roleColors: {
@@ -301,6 +302,7 @@ const config = {
   chat: {
     cooldownMs: numberFromEnv('CHAT_COOLDOWN_MS', fileConfig.chat.cooldownMs, { min: 0 }),
     maxLength: numberFromEnv('CHAT_MAX_LENGTH', fileConfig.chat.maxLength, { min: 1, max: 500 }),
+    blockedDomains: listFromEnv('CHAT_BLOCKED_DOMAINS', fileConfig.chat.blockedDomains),
     adminColor: colorFromEnv('CHAT_ADMIN_COLOR', fileConfig.chat.adminColor),
     normalColor: colorFromEnv('CHAT_NORMAL_COLOR', fileConfig.chat.normalColor),
     roleColors: {

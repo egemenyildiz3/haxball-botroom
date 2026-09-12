@@ -1,5 +1,6 @@
 const readline = require('readline');
 const { handlePlayerChat } = require('../commands');
+const { sanitizeChatForLog } = require('../commands/router');
 const { rebalanceTeams } = require('./teamBalancer');
 
 function attachTerminalInput(room, state, deps, autoManager) {
@@ -102,14 +103,14 @@ function attachTerminalInput(room, state, deps, autoManager) {
     }
 
     if (text.startsWith('!')) {
-      console.log(`⚡ [CONSOLE CMD]: ${text}`);
+      console.log(`⚡ [CONSOLE CMD]: ${sanitizeChatForLog(text)}`);
       handlePlayerChat(room, hostPlayer, text, terminalDeps());
       return;
     }
 
     try {
       handlePlayerChat(room, hostPlayer, text, terminalDeps());
-      console.log(`💬 [TERMINAL CHAT]: ${text}`);
+      console.log(`💬 [TERMINAL CHAT]: ${sanitizeChatForLog(text)}`);
     } catch (err) {
       console.warn('Sohbet mesajı gönderilemedi:', err.message);
     }

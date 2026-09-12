@@ -12,6 +12,7 @@ const MESSAGES = {
     'chat.tooLong': '⚠️ Mesaj çok uzun. En fazla {max} karakter yazabilirsin.',
     'chat.flood': '⚠️ Sohbette flood yapma. {seconds} sn sonra tekrar yazabilirsin.',
     'chat.profanity': '⚠️ Küfürlü mesaj gönderemezsin.',
+    'chat.spam': '⚠️ Spam veya reklam içerikli mesaj gönderemezsin.',
 
     'teamRadio.onlyPlayers': '📻 Telsizi sadece sahadaki oyuncular kullanabilir.',
     'teamRadio.usage': '📻 Kullanım: !t <mesaj>',
@@ -196,6 +197,7 @@ const MESSAGES = {
     'chat.tooLong': '⚠️ Message is too long. Maximum {max} characters.',
     'chat.flood': '⚠️ Slow down. You can chat again in {seconds} sec.',
     'chat.profanity': '⚠️ You cannot send abusive messages.',
+    'chat.spam': '⚠️ Spam or advertising messages are not allowed.',
 
     'teamRadio.onlyPlayers': '📻 Team radio is only available to active players.',
     'teamRadio.usage': '📻 Usage: !t <message>',

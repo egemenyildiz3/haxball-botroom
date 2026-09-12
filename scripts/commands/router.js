@@ -20,10 +20,32 @@ const COMMAND_ROUTERS = [
   routeBotCommand,
 ];
 
+const SENSITIVE_COMMAND_KEYS = new Set(['signup', 'login', 'adminLogin']);
+const SENSITIVE_SLASH_COMMANDS = new Set(['/set_password']);
+
 const TEAM_RADIO_COLORS = {
   1: 0xFF7777,
   2: 0x77A7FF,
 };
+
+function sanitizeChatForLog(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return raw;
+
+  const [first] = raw.split(/\s+/);
+  const command = normalizeCmd(first || '');
+
+  if (SENSITIVE_SLASH_COMMANDS.has(command)) {
+    return `${command} [redacted]`;
+  }
+
+  const commandKey = resolveCommandKey(command);
+  if (SENSITIVE_COMMAND_KEYS.has(commandKey)) {
+    return `${command} [redacted]`;
+  }
+
+  return raw;
+}
 
 function chatPrefix(userData, isAdminChat, isSuperAdmin) {
   const role = roleOfUser(userData);
@@ -130,7 +152,7 @@ function handlePlayerChat(room, player, msg, deps) {
   const isSuperAdmin = isOwner(userData);
   const isRoleAdminChat = hasCapability(userData, 'admin_chat', roleCapabilities);
 
-  console.log(`[CHAT] ${displayName} : ${text}`);
+  console.log(`[CHAT] ${displayName} : ${sanitizeChatForLog(text)}`);
 
   if (text.startsWith('/')) {
     return true;
@@ -238,4 +260,4 @@ function handlePlayerChat(room, player, msg, deps) {
   return false;
 }
 
-module.exports = { handlePlayerChat };
+module.exports = { handlePlayerChat, sanitizeChatForLog };
